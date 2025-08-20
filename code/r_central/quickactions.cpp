@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -95,11 +95,11 @@ void executeQuickActionTakePicture()
 
 void executeQuickActionRecord()
 {
-   if ( get_current_timestamp_ms() < s_uTimeLastQuickActionPress + 500 )
+   if ( get_current_timestamp_ms() < s_uTimeLastQuickActionPress + 600 )
       return;
    s_uTimeLastQuickActionPress = get_current_timestamp_ms();
 
-   if ( g_bVideoRecordingStarted )
+   if ( g_bIsVideoRecording )
    {
       ruby_stop_recording();
    }
@@ -114,44 +114,6 @@ void executeQuickActionRecord()
       else
          ruby_start_recording();
    }
-}
-
-void executeQuickActionSwitchVideoProfile()
-{
-   if ( g_pCurrentModel->is_spectator )
-   {
-      warnings_add(0, "Can't execute video profile switch while in spectator mode.");
-      return;
-   }
-
-   t_packet_header PH;
-   radio_packet_init(&PH, PACKET_COMPONENT_LOCAL_CONTROL, PACKET_TYPE_LOCAL_CONTROL_FORCE_VIDEO_PROFILE, STREAM_ID_DATA);
-   PH.vehicle_id_src = PACKET_COMPONENT_RUBY;
-
-   s_uLastQuickActionSwitchVideoProfile++;
-   if ( s_uLastQuickActionSwitchVideoProfile > 2 )
-      s_uLastQuickActionSwitchVideoProfile = 0;
-
-   if ( 0 == s_uLastQuickActionSwitchVideoProfile )
-   {
-      PH.vehicle_id_dest = 0xFF;
-      warnings_add(0, "Dev: Switch to Auto Video Link Quality.");
-   }
-   if ( 1 == s_uLastQuickActionSwitchVideoProfile )
-   {
-      PH.vehicle_id_dest = VIDEO_PROFILE_MQ;
-      warnings_add(0, "Dev: Switch to Med Video Link Quality.");
-   }
-   if ( 2 == s_uLastQuickActionSwitchVideoProfile )
-   {
-      PH.vehicle_id_dest = VIDEO_PROFILE_LQ;
-      warnings_add(0, "Dev: Switch to Low Video Link Quality.");
-   }
-   PH.total_length = sizeof(t_packet_header);
-
-   u8 buffer[1024];
-   memcpy(buffer, (u8*)&PH, sizeof(t_packet_header));
-   send_packet_to_router(buffer, PH.total_length);
 }
 
 void executeQuickActionCycleOSD()

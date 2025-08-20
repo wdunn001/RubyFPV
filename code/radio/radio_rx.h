@@ -81,7 +81,8 @@ void radio_rx_set_timeout_interval(int iMiliSec);
 void radio_rx_pause_interface(int iInterfaceIndex, const char* szReason);
 void radio_rx_resume_interface(int iInterfaceIndex);
 void radio_rx_mark_quit();
-void radio_rx_set_dev_mode();
+void radio_rx_reset_signal_info();
+void radio_rx_set_dev_mode(int iDevMode);
 void radio_rx_set_packet_counter_output(u8* pCounterOutputHighPriority, u8* pCounterOutputData, u8* pCounterMissingPackets, u8* pCounterMissingPacketsMaxGap);
 void radio_rx_set_air_gap_track_output(u8* pCounterRxAirgap);
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -979,6 +979,11 @@ void RenderEngineRaw::drawRoundRect(float xPos, float yPos, float fWidth, float 
       fbg_vline(m_pFBG, x+w-1,y+h-3, 2, m_ColorStroke[0], m_ColorStroke[1], m_ColorStroke[2], m_ColorStroke[3]);
    }
    fbg_enable_rect_blending(m_pFBG, 1);
+}
+
+void RenderEngineRaw::drawRoundRectMenu(float xPos, float yPos, float fWidth, float fHeight, float fCornerRadius)
+{
+   drawRoundRect(xPos, yPos, fWidth, fHeight, fCornerRadius);
 }
 
 void RenderEngineRaw::drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3)

@@ -8,14 +8,16 @@ class MenuVehicleVideoEncodings: public Menu
    public:
       MenuVehicleVideoEncodings();
       virtual void onShow();
+      virtual void valuesToUI();
       virtual void Render();
       virtual void onSelectItem();
-      virtual void valuesToUI();
       
    private:
-      void sendVideoLinkProfile();
-      void sendVideoParams();
+      void addItems();
+      void checkAddWarningInMenu();
+      bool sendVideoParams();
 
+      int m_IndexHigherRates, m_IndexVideoBitrate;
       int m_IndexPacketSize, m_IndexBlockPackets, m_IndexBlockECRate, m_IndexECSchemeSpread;
       int m_IndexAutoKeyframe, m_IndexMaxKeyFrame, m_IndexKeyframeManual;
       int m_IndexH264Profile, m_IndexH264Level, m_IndexH264Refresh;
@@ -23,7 +25,6 @@ class MenuVehicleVideoEncodings: public Menu
       int m_IndexH264Slices;
       int m_IndexIPQuantizationDelta;
       int m_IndexCustomQuant, m_IndexQuantValue;
-      int m_IndexResetParams;
       int m_IndexEnableAdaptiveQuantization;
       int m_IndexAdaptiveH264QuantizationStrength;
       int m_IndexHDMIOutput;
@@ -32,5 +33,6 @@ class MenuVehicleVideoEncodings: public Menu
       //bool m_ShowBitrateWarning;
       MenuItemSlider* m_pItemsSlider[25];
       MenuItemSelect* m_pItemsSelect[40];
+      MenuItem* m_pMenuItemVideoWarning;
       MenuItem* m_pMenuItemVideoKeyframeWarning;
 };

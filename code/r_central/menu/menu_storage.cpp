@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -147,8 +147,8 @@ void MenuStorage::onShow()
 
    if ( m_VideoInfoFilesCount <= m_UIFilesPerPage )
    {
-      m_pMenuItems[m_StaticMenuItemsCount-1]->setEnabled(false);
       m_pMenuItems[m_StaticMenuItemsCount-2]->setEnabled(false);
+      m_pMenuItems[m_StaticMenuItemsCount-1]->setEnabled(false);
    }
 
    /*
@@ -163,7 +163,7 @@ void MenuStorage::onShow()
    */
    Menu::onShow();
 
-   if ( g_bVideoRecordingStarted )
+   if ( g_bIsVideoRecording )
    {
       MenuConfirmation* pMC = new MenuConfirmation("Recording in progress", "A recording is in progress. Do you want to stop it?", 1);
       add_menu_to_stack(pMC);
@@ -414,7 +414,7 @@ void MenuStorage::onReturnFromChild(int iChildMenuId, int returnValue)
 
    if ( 1 == iChildMenuId/1000 )
    {
-      if ( g_bVideoRecordingStarted )
+      if ( g_bIsVideoRecording )
       {
          ruby_stop_recording();
          m_uMustRefreshTime = g_TimeNow + 5000;
@@ -438,7 +438,7 @@ void MenuStorage::onReturnFromChild(int iChildMenuId, int returnValue)
 
 int MenuStorage::onBack()
 {
-   if ( g_bVideoPlaying )
+   if ( g_bIsVideoPlaying )
    {
       stopVideoPlay();
       hardware_sleep_ms(50);
@@ -806,7 +806,7 @@ bool MenuStorage::flowCopyMoveFiles(bool bDeleteToo)
    sprintf(szCommand, "mkdir -p %s", FOLDER_USB_MOUNT); 
    hw_execute_bash_command(szCommand, NULL);
 
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("copy media files");
 
    int iMountRes = hardware_try_mount_usb();
    if ( 1 != iMountRes )
@@ -832,7 +832,7 @@ bool MenuStorage::flowCopyMoveFiles(bool bDeleteToo)
 
       if ( 1 != iMountRes )
       {
-         ruby_resume_watchdog();
+         ruby_resume_watchdog("copy media failed");
          ruby_signal_alive();
          m_pPopupProgress->setTimeout(5);
          return false;
@@ -856,7 +856,7 @@ bool MenuStorage::flowCopyMoveFiles(bool bDeleteToo)
    ruby_signal_alive();
    sync();
    ruby_signal_alive();
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("copy media finished");
    invalidate();
    sprintf(szBuff, "Done. It's safe now to remove the USB memory stick [%s].", szUSBDeviceName);
    m_pPopupProgress->setTitle(szBuff);
@@ -876,7 +876,7 @@ void MenuStorage::stopVideoPlay()
    log_line("Stopping video playback...");
    hw_stop_process(VIDEO_PLAYER_OFFLINE);
  
-   g_bVideoPlaying = false;
+   g_bIsVideoPlaying = false;
    render_all(get_current_timestamp_ms(), true);
 
    log_line("Stopped video playback.");
@@ -895,7 +895,7 @@ void MenuStorage::stopVideoPlay()
 
 bool MenuStorage::periodicLoop()
 {
-   if ( g_bVideoPlaying )
+   if ( g_bIsVideoPlaying )
    {
       if ( access(CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER, R_OK) == -1 )
          g_uVideoPlayingTimeMs += g_TimeNow - m_uTimestampLastLoopMs;
@@ -921,7 +921,7 @@ bool MenuStorage::periodicLoop()
    }
 
    if ( m_uMustRefreshTime != 0 )
-   if ( (g_TimeNow > m_uMustRefreshTime) || (! g_bVideoProcessing) )
+   if ( (g_TimeNow > m_uMustRefreshTime) || (! g_bIsVideoProcessing) )
    {
       m_uMustRefreshTime = 0;
       menu_refresh_all_menus();
@@ -934,7 +934,7 @@ void MenuStorage::onSelectItem()
    if ( m_ViewScreenShotIndex != -1 )
       return;
 
-   if ( g_bVideoPlaying )
+   if ( g_bIsVideoPlaying )
    {
       char szComm[256];
       if ( access(CONFIG_FILE_FULLPATH_PAUSE_VIDEO_PLAYER, R_OK) != -1 )
@@ -947,7 +947,18 @@ void MenuStorage::onSelectItem()
    }
 
    Menu::onSelectItem();
-   if ( (-1 == m_SelectedIndex) || (m_pMenuItems[m_SelectedIndex]->isEditing()) )
+
+   int maxMenuIndex = m_StaticMenuItemsCount-1;
+   int indexStartThisPage = m_UIFilesPerPage * m_UIFilesPage;
+   if ( m_VideoInfoFilesCount > indexStartThisPage + m_UIFilesPerPage )
+      maxMenuIndex += m_UIFilesPerPage;
+   else
+      maxMenuIndex += m_VideoInfoFilesCount - indexStartThisPage;
+
+   log_line("MenuStorage: selected item index %d, top items: %d, static items: %d, max selectable index: %d, video items: %d, page: %d, start index this page: %d",
+       m_SelectedIndex, m_StaticMenuItemsCountBeforeUIFiles, m_StaticMenuItemsCount, maxMenuIndex, m_VideoInfoFilesCount, m_UIFilesPage, indexStartThisPage );
+
+   if ( -1 == m_SelectedIndex )
       return;
 
    if ( m_IndexCopy == m_SelectedIndex )
@@ -969,6 +980,11 @@ void MenuStorage::onSelectItem()
 
    if ( m_IndexViewPictures == m_SelectedIndex )
    {
+      if ( ! m_pMenuItems[m_IndexViewPictures]->isEnabled() )
+      {
+         addMessage("View screenshots is not supported on Radxa hardware.");
+         return;
+      }
       m_ViewScreenShotIndex = media_get_screenshots_count()-1;
 
       char szFile[MAX_FILE_PATH_SIZE];
@@ -986,17 +1002,14 @@ void MenuStorage::onSelectItem()
       return;
    }
 
-   int maxMenuIndex = m_StaticMenuItemsCount-1;
-   int indexStartThisPage = m_UIFilesPerPage * m_UIFilesPage;
-   if ( m_VideoInfoFilesCount > indexStartThisPage + m_UIFilesPerPage )
-      maxMenuIndex += m_UIFilesPerPage;
-   else
-      maxMenuIndex += m_VideoInfoFilesCount - indexStartThisPage;
-
    if ( m_SelectedIndex == (maxMenuIndex-1))
    {
-      if ( m_UIFilesPage > 0 )
-         m_UIFilesPage--;
+      if ( ! m_pMenuItems[m_StaticMenuItemsCount-2]->isEnabled() )
+         return;
+      if ( m_UIFilesPage <= 0 )
+         return;
+
+      m_UIFilesPage--;
 
       int maxMenuIndex = m_StaticMenuItemsCount-1;
       int indexStartThisPage = m_UIFilesPerPage * m_UIFilesPage;
@@ -1008,11 +1021,17 @@ void MenuStorage::onSelectItem()
 
       return;
    }
+
    if ( m_SelectedIndex == maxMenuIndex )
    {
+      if ( ! m_pMenuItems[m_StaticMenuItemsCount-1]->isEnabled() )
+         return;
       int indexStartThisPage = m_UIFilesPerPage * m_UIFilesPage;
-      if ( m_VideoInfoFilesCount > indexStartThisPage + m_UIFilesPerPage )
-         m_UIFilesPage++;
+
+      if ( m_VideoInfoFilesCount <= indexStartThisPage + m_UIFilesPerPage )
+         return;
+
+      m_UIFilesPage++;
 
       int maxMenuIndex = m_StaticMenuItemsCount-1;
       indexStartThisPage = m_UIFilesPerPage * m_UIFilesPage;
@@ -1079,7 +1098,7 @@ void MenuStorage::playVideoFile(int iMenuItemIndex)
    #endif
    hw_execute_bash_command_nonblock(szBuff, NULL);
    hardware_sleep_ms(100);
-   g_bVideoPlaying = true;
+   g_bIsVideoPlaying = true;
    g_uVideoPlayingTimeMs = 0;
    g_uVideoPlayingLengthSec = m_VideoFilesDuration[index];
    m_uTimestampLastLoopMs = g_TimeNow;

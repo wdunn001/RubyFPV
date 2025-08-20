@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -36,7 +36,6 @@
 #include "menu_item_section.h"
 #include "menu_confirmation.h"
 #include "menu_system_dev_stats.h"
-#include "menu_system_video_profiles.h"
 #include "../../radio/radiolink.h"
 #include "../../base/utils.h"
 
@@ -61,9 +60,6 @@ void MenuVehicleDev::addItems()
 
    m_IndexDevStats = addMenuItem( new MenuItem("Developer Stats Windows") );
    m_pMenuItems[m_IndexDevStats]->showArrow();
-
-   m_IndexVideoProfiles = addMenuItem(new MenuItem("Video Link Profiles", "Change video link profiles and params."));
-   m_pMenuItems[m_IndexVideoProfiles]->showArrow();
 
    addMenuItem(new MenuItemSection("Radio Links"));
 
@@ -107,7 +103,6 @@ void MenuVehicleDev::addItems()
    m_IndexRadioSilence = addMenuItem(m_pItemsSelect[1]);
 
    m_pItemsSlider[9] = new MenuItemSlider("Radio Rx Loop Check Max Time (ms)", "The threshold for generating an alarm when radio Rx loop takes too much time (in miliseconds).", 1,1000,10, fSliderWidth);
-   m_pItemsSlider[9]->setStep(1);
    m_pItemsSlider[9]->setCurrentValue(pCS->iDevRxLoopTimeout);
    m_IndexRxLoopTimeout = addMenuItem(m_pItemsSlider[9]);
 
@@ -131,6 +126,11 @@ void MenuVehicleDev::addItems()
       m_pItemsSelect[12]->setSelectedIndex(1);
    m_IndexInjectVideoFaults = addMenuItem(m_pItemsSelect[12]);
 
+   m_pItemsSelect[2] = new MenuItemSelect("Test Adaptive Video", "Tests adaptive video functionality.");
+   m_pItemsSelect[2]->addSelection(L("Off"));
+   m_pItemsSelect[2]->addSelection(L("On"));
+   m_pItemsSelect[2]->setSelection(g_bIsTestingAdaptiveVideo?1:0);
+   m_IndexTestAdaptive = addMenuItem(m_pItemsSelect[2]);
 
    m_IndexResetDev = addMenuItem(new MenuItem("Reset Developer Settings", "Resets all the developer settings to the factory default values."));
 
@@ -200,12 +200,6 @@ void MenuVehicleDev::onSelectItem()
       add_menu_to_stack(new MenuSystemDevStats());
       return;
    }
-
-   if ( m_IndexVideoProfiles == m_SelectedIndex )
-   {
-      add_menu_to_stack(new MenuSystemVideoProfiles());
-      return;
-   }
    
    if ( m_IndexPCAPRadioTx == m_SelectedIndex )
    {
@@ -214,7 +208,7 @@ void MenuVehicleDev::onSelectItem()
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_USE_PCAP_RADIO_TX);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_USE_PCAP_RADIO_TX;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();
       return;
    }
@@ -247,7 +241,7 @@ void MenuVehicleDev::onSelectItem()
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_RADIO_SILENCE_FAILSAFE);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_RADIO_SILENCE_FAILSAFE;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();
       return;
    }
@@ -260,7 +254,7 @@ void MenuVehicleDev::onSelectItem()
       valuesToUI();
       send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED, PACKET_COMPONENT_LOCAL_CONTROL);
       
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI(); 
       return;
    }
@@ -272,7 +266,7 @@ void MenuVehicleDev::onSelectItem()
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_INJECT_VIDEO_FAULTS);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_INJECT_VIDEO_FAULTS;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();  
    }
 
@@ -283,8 +277,22 @@ void MenuVehicleDev::onSelectItem()
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_INJECT_RECOVERABLE_VIDEO_FAULTS);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_INJECT_RECOVERABLE_VIDEO_FAULTS;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();  
+   }
+
+   if ( m_IndexTestAdaptive == m_SelectedIndex )
+   {
+      bool bTest = false;
+      if ( 1 == m_pItemsSelect[2]->getSelectedIndex() )
+         bTest = true;
+      if ( bTest == g_bIsTestingAdaptiveVideo )
+         return;
+      g_bIsTestingAdaptiveVideo = bTest;
+      log_line("MenuVehicleDev: Send test adaptive mode to router: %d", g_bIsTestingAdaptiveVideo);
+      send_control_message_to_router(PACKET_TYPE_TEST_ADAPTIVE_VIDEO, g_bIsTestingAdaptiveVideo?1:0);
+      valuesToUI();
+      return;
    }
 
    if ( m_IndexResetDev == m_SelectedIndex )

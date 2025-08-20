@@ -19,7 +19,6 @@ class MenuVehicleDev: public Menu
       MenuItemSlider* m_pItemsSlider[15];
 
       int m_IndexDevStats;
-      int m_IndexVideoProfiles;
       int m_IndexPCAPRadioTx;
       int m_IndexBypassSocketBuffers;
       int m_IndexClockSyncType;
@@ -27,5 +26,6 @@ class MenuVehicleDev: public Menu
       int m_IndexRxLoopTimeout;
       int m_IndexInjectMinorVideoFaults;
       int m_IndexInjectVideoFaults;
+      int m_IndexTestAdaptive;
       int m_IndexResetDev;
 };

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -98,7 +98,6 @@ MenuControllerExpert::MenuControllerExpert(void)
    m_IndexVoltageEnabled = addMenuItem(m_pItemsSelect[4]);
 
    m_pItemsSlider[7] = new MenuItemSlider(L("Overvoltage (steps)"), L("Sets the overvoltage value, in 0.025V increments. Requires a reboot."), 1,8,4, fSliderWidth);
-   m_pItemsSlider[7]->setStep(1);
    m_IndexVoltage = addMenuItem(m_pItemsSlider[7]);
 
    m_IndexReset = addMenuItem(new MenuItem(L("Reset CPU Freq"), L("Resets the controller CPU and GPU frequencies to default values.")));
@@ -128,7 +127,6 @@ MenuControllerExpert::MenuControllerExpert(void)
    m_IndexIONiceRouter = addMenuItem(m_pItemsSelect[0]);
 
    m_pItemsSlider[1] = new MenuItemSlider("Core I/O Priority", "Sets the I/O priority value for the core Ruby components, 1 is highest priority, 7 is lowest priority.", 1,7,4, fSliderWidth);
-   m_pItemsSlider[1]->setStep(1);
    m_IndexIONiceRouterValue = addMenuItem(m_pItemsSlider[1]);
 
    m_pItemsSelect[5] = new MenuItemSelect("Video Priority", "Sets a manual CPU and IO priority for the video renderer process.");  
@@ -147,7 +145,6 @@ MenuControllerExpert::MenuControllerExpert(void)
    m_IndexIONiceRXVideo = addMenuItem(m_pItemsSelect[1]);
 
    m_pItemsSlider[3] = new MenuItemSlider("   Video I/O Priority", "Sets the I/O priority value for RX video pipeline, 1 is highest priority, 7 is lowest priority.", 1,7,4, fSliderWidth);
-   m_pItemsSlider[3]->setStep(1);
    m_IndexIONiceValueRXVideo = addMenuItem(m_pItemsSlider[3]);
 
 

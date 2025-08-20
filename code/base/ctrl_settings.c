@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -69,9 +69,6 @@ void reset_ControllerSettings()
    s_CtrlSettings.iTelemetryForwardUSBType = 0;
    s_CtrlSettings.iTelemetryForwardUSBPort = 5002;
    s_CtrlSettings.iTelemetryForwardUSBPacketSize = 128;
-   s_CtrlSettings.iTelemetryOutputSerialPortIndex = -1;
-   s_CtrlSettings.iTelemetryInputSerialPortIndex = -1;
-   s_CtrlSettings.iMAVLinkSysIdController = DEFAULT_MAVLINK_SYS_ID_CONTROLLER;
 
    s_CtrlSettings.iDisableHDMIOverscan = 0;
    s_CtrlSettings.iDeveloperMode = 0;
@@ -87,12 +84,11 @@ void reset_ControllerSettings()
    s_CtrlSettings.nRotaryEncoderFunction2 = 2; // 0 - none, 1 - menu, 2 - camera
    s_CtrlSettings.nRotaryEncoderSpeed2 = 0; // 0 - normal, 1 - slow
    s_CtrlSettings.nPingClockSyncFrequency = DEFAULT_PING_FREQUENCY;
-   s_CtrlSettings.nGraphRadioRefreshInterval = 50;
    s_CtrlSettings.nGraphVideoRefreshInterval = 50;
    s_CtrlSettings.iDisableRetransmissionsAfterControllerLinkLostMiliseconds = DEFAULT_CONTROLLER_LINK_MILISECONDS_TIMEOUT_TO_DISABLE_RETRANSMISSIONS;
    s_CtrlSettings.iVideoDecodeStatsSnapshotClosesOnTimeout = 1;
    s_CtrlSettings.iFreezeOSD = 0;
-   s_CtrlSettings.iDevSwitchVideoProfileUsingQAButton = -1;
+   s_CtrlSettings.iDummyCS1 = -1;
    s_CtrlSettings.iShowControllerAdaptiveInfoStats = 0;
    s_CtrlSettings.iShowVideoStreamInfoCompactType = 1; // 0 full, 1 compact, 2 minimal
 
@@ -115,6 +111,7 @@ void reset_ControllerSettings()
    s_CtrlSettings.iStreamerOutputMode = 0;
    s_CtrlSettings.iVideoMPPBuffersSize = DEFAULT_MPP_BUFFERS_SIZE;
    s_CtrlSettings.iHDMIVSync = 1;
+   s_CtrlSettings.iEasterEgg1 = 0;
    if ( s_CtrlSettingsLoaded )
       log_line("Reseted controller settings.");
 }
@@ -138,9 +135,9 @@ int save_ControllerSettings()
 
    fprintf(fd, "video_usb: %d %d %d\n", s_CtrlSettings.iVideoForwardUSBType, s_CtrlSettings.iVideoForwardUSBPort, s_CtrlSettings.iVideoForwardUSBPacketSize);
    fprintf(fd, "telem_usb: %d %d %d\n", s_CtrlSettings.iTelemetryForwardUSBType, s_CtrlSettings.iTelemetryForwardUSBPort, s_CtrlSettings.iTelemetryForwardUSBPacketSize);
-   fprintf(fd, "%d %d\n", s_CtrlSettings.iTelemetryOutputSerialPortIndex, s_CtrlSettings.iTelemetryInputSerialPortIndex);
+   fprintf(fd, "%d %d\n", 0,0);
 
-   fprintf(fd, "%d %d\n", s_CtrlSettings.iMAVLinkSysIdController, s_CtrlSettings.iDisableHDMIOverscan);
+   fprintf(fd, "%d %d\n", 0, s_CtrlSettings.iDisableHDMIOverscan);
    fprintf(fd, "%d %d\n", s_CtrlSettings.iRenderFPS, s_CtrlSettings.iShowVoltage);
 
    fprintf(fd, "%d %d\n", s_CtrlSettings.nRetryRetransmissionAfterTimeoutMS, s_CtrlSettings.nRequestRetransmissionsOnVideoSilenceMs);
@@ -151,14 +148,14 @@ int save_ControllerSettings()
 
    fprintf(fd, "%d\n", s_CtrlSettings.nAutomaticTxCard);
    fprintf(fd, "%d %d\n", s_CtrlSettings.nRotaryEncoderFunction, s_CtrlSettings.nRotaryEncoderSpeed);
-   fprintf(fd, "%d %d %d\n", s_CtrlSettings.nPingClockSyncFrequency, s_CtrlSettings.nGraphRadioRefreshInterval, s_CtrlSettings.nGraphVideoRefreshInterval);
+   fprintf(fd, "%d %d %d\n", s_CtrlSettings.nPingClockSyncFrequency, 0, s_CtrlSettings.nGraphVideoRefreshInterval);
 
    // Extra params
 
    fprintf(fd, "%d %d\n", s_CtrlSettings.iDisableRetransmissionsAfterControllerLinkLostMiliseconds, s_CtrlSettings.iVideoDecodeStatsSnapshotClosesOnTimeout);
    fprintf(fd, "%d %d\n", s_CtrlSettings.nRotaryEncoderFunction2, s_CtrlSettings.nRotaryEncoderSpeed2);
    fprintf(fd, "%d %d\n", -1, s_CtrlSettings.iFreezeOSD);
-   fprintf(fd, "%d %d\n", s_CtrlSettings.iDevSwitchVideoProfileUsingQAButton, s_CtrlSettings.iShowControllerAdaptiveInfoStats);
+   fprintf(fd, "%d %d\n", s_CtrlSettings.iDummyCS1, s_CtrlSettings.iShowControllerAdaptiveInfoStats);
    fprintf(fd, "%d\n", s_CtrlSettings.iShowVideoStreamInfoCompactType);
 
    fprintf(fd, "%d %d %d %d\n", s_CtrlSettings.iSearchSiKAirRate, s_CtrlSettings.iSearchSiKECC, s_CtrlSettings.iSearchSiKLBT, s_CtrlSettings.iSearchSiKMCSTR);
@@ -169,7 +166,7 @@ int save_ControllerSettings()
    fprintf(fd, "%d %d %d\n", s_CtrlSettings.iRadioTxUsesPPCAP, s_CtrlSettings.iRadioBypassSocketBuffers, s_CtrlSettings.iFixedTxPower);
    fprintf(fd, "%d %d\n", s_CtrlSettings.iCoresAdjustment, s_CtrlSettings.iPrioritiesAdjustment);
    fprintf(fd, "%d %d\n", s_CtrlSettings.iStreamerOutputMode, s_CtrlSettings.iVideoMPPBuffersSize);
-   fprintf(fd, "%d\n", s_CtrlSettings.iHDMIVSync);
+   fprintf(fd, "%d %d\n", s_CtrlSettings.iHDMIVSync, s_CtrlSettings.iEasterEgg1);
    fclose(fd);
 
    log_line("Saved controller settings to file: %s", szFile);
@@ -194,6 +191,7 @@ int load_ControllerSettings()
    }
 
    int iDummy = 0;
+   int iDummy2 = 0;
    int failed = 0;
    int iWriteOptionalValues = 0;
    char szBuff[256];
@@ -226,10 +224,10 @@ int load_ControllerSettings()
    if ( 3 != fscanf(fd, "%*s %d %d %d", &s_CtrlSettings.iTelemetryForwardUSBType, &s_CtrlSettings.iTelemetryForwardUSBPort, &s_CtrlSettings.iTelemetryForwardUSBPacketSize) )
       { failed = 1; log_softerror_and_alarm("Load ctrl settings, failed on line 5"); }
 
-   if ( 2 != fscanf(fd, "%d %d", &s_CtrlSettings.iTelemetryOutputSerialPortIndex, &s_CtrlSettings.iTelemetryInputSerialPortIndex) )
+   if ( 2 != fscanf(fd, "%d %d", &iDummy, &iDummy2) )
       { failed = 1; log_softerror_and_alarm("Load ctrl settings, failed on line 6"); }
 
-   if ( 2 != fscanf(fd, "%d %d", &s_CtrlSettings.iMAVLinkSysIdController, &s_CtrlSettings.iDisableHDMIOverscan) )
+   if ( 2 != fscanf(fd, "%d %d", &iDummy, &s_CtrlSettings.iDisableHDMIOverscan) )
       { failed = 1; log_softerror_and_alarm("Load ctrl settings, failed on line 7"); }
 
    if ( 2 != fscanf(fd, "%d %d", &s_CtrlSettings.iRenderFPS, &s_CtrlSettings.iShowVoltage) )
@@ -247,7 +245,7 @@ int load_ControllerSettings()
    if ( 3 != fscanf(fd, "%d %d %d", &s_CtrlSettings.nAutomaticTxCard, &s_CtrlSettings.nRotaryEncoderFunction, &s_CtrlSettings.nRotaryEncoderSpeed) )
       { failed = 1; log_softerror_and_alarm("Load ctrl settings, failed on line 12"); }
 
-   if ( 3 != fscanf(fd, "%d %d %d", &s_CtrlSettings.nPingClockSyncFrequency, &s_CtrlSettings.nGraphRadioRefreshInterval, &s_CtrlSettings.nGraphVideoRefreshInterval) )
+   if ( 3 != fscanf(fd, "%d %d %d", &s_CtrlSettings.nPingClockSyncFrequency, &iDummy, &s_CtrlSettings.nGraphVideoRefreshInterval) )
       { failed = 1; log_softerror_and_alarm("Load ctrl settings, failed on line 13"); }
 
    // Extended values
@@ -261,7 +259,7 @@ int load_ControllerSettings()
    if ( 2 != fscanf(fd, "%d %d", &iDummy, &s_CtrlSettings.iFreezeOSD) )
       { failed = 1; log_softerror_and_alarm("Load ctrl settings, failed on line 16"); }
 
-   if ( 2 != fscanf(fd, "%d %d", &s_CtrlSettings.iDevSwitchVideoProfileUsingQAButton, &s_CtrlSettings.iShowControllerAdaptiveInfoStats) )
+   if ( 2 != fscanf(fd, "%d %d", &s_CtrlSettings.iDummyCS1, &s_CtrlSettings.iShowControllerAdaptiveInfoStats) )
       { failed = 1; log_softerror_and_alarm("Load ctrl settings, failed on line 17"); }
 
    if ( 1 != fscanf(fd, "%d", &s_CtrlSettings.iShowVideoStreamInfoCompactType) )
@@ -304,6 +302,9 @@ int load_ControllerSettings()
       s_CtrlSettings.iHDMIVSync = 1;
       iWriteOptionalValues = 1;
    }
+
+   if ( 1 != fscanf(fd, "%d", &s_CtrlSettings.iEasterEgg1) )
+      s_CtrlSettings.iEasterEgg1 = 0;
    fclose(fd);
 
    //--------------------------------------------------------
@@ -315,8 +316,6 @@ int load_ControllerSettings()
    if ( (s_CtrlSettings.iVideoMPPBuffersSize < 5) || (s_CtrlSettings.iVideoMPPBuffersSize > 128) )
       s_CtrlSettings.iVideoMPPBuffersSize = DEFAULT_MPP_BUFFERS_SIZE;
      
-   if ( s_CtrlSettings.iMAVLinkSysIdController <= 0 || s_CtrlSettings.iMAVLinkSysIdController > 255 )
-      s_CtrlSettings.iMAVLinkSysIdController = DEFAULT_MAVLINK_SYS_ID_CONTROLLER;
    if ( s_CtrlSettings.iVideoForwardUSBType < 0 || s_CtrlSettings.iVideoForwardUSBType > 1 || s_CtrlSettings.iVideoForwardUSBPacketSize == 0 || s_CtrlSettings.iVideoForwardUSBPort == 0 )
       { s_CtrlSettings.iVideoForwardUSBType = 0; s_CtrlSettings.iVideoForwardUSBPort = 0; s_CtrlSettings.iVideoForwardUSBPacketSize = 1024; }
 

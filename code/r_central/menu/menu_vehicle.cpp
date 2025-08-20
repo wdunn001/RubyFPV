@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -422,6 +422,12 @@ void MenuVehicle::onSelectItem()
    }
    if ( m_IndexVideo == m_SelectedIndex )
    {
+      if ( get_sw_version_build(g_pCurrentModel) < 289 )
+      {
+         addMessage(L("Video Settings have changed. You need to update your vehicle first."));
+         return;
+      }
+
       if ( (NULL == g_pCurrentModel) || (g_pCurrentModel->iCameraCount <=0) )
          addMessage(L("This vehicle has no cameras or video streams."));
       else if ( (NULL != g_pCurrentModel) && g_pCurrentModel->is_spectator )

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -1176,7 +1176,7 @@ void MenuSearch::onReturnFromChild(int iChildMenuId, int returnValue)
             deleteModel(pExistingModel);
       }
       Model* pModel = addSpectatorModel(g_SearchVehicleRuntimeInfo.headerRubyTelemetryExtended.uVehicleId);
-      pModel->populateFromVehicleTelemetryData_v4(&(g_SearchVehicleRuntimeInfo.headerRubyTelemetryExtended));
+      pModel->populateFromVehicleTelemetryData_v5(&(g_SearchVehicleRuntimeInfo.headerRubyTelemetryExtended));
       pModel->is_spectator = true;
 
       set_model_main_connect_frequency(g_SearchVehicleRuntimeInfo.headerRubyTelemetryExtended.uVehicleId, m_CurrentSearchFrequencyKhz);
@@ -1237,7 +1237,7 @@ void MenuSearch::onReturnFromChild(int iChildMenuId, int returnValue)
          else
             log_line("Search: Found existing controller vehicle model for VID %u.", pModel->uVehicleId);
       }
-      pModel->populateFromVehicleTelemetryData_v4(&(g_SearchVehicleRuntimeInfo.headerRubyTelemetryExtended));
+      pModel->populateFromVehicleTelemetryData_v5(&(g_SearchVehicleRuntimeInfo.headerRubyTelemetryExtended));
       pModel->is_spectator = false;
       set_model_main_connect_frequency(g_SearchVehicleRuntimeInfo.headerRubyTelemetryExtended.uVehicleId, m_CurrentSearchFrequencyKhz);
 

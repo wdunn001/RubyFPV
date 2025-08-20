@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -58,10 +58,10 @@ float osd_render_stats_video_bitrate_history_get_height()
    height += hGraph + height_text + height_text_small*s_OSDStatsLineSpacing;
 
    height += height_text*s_OSDStatsLineSpacing + height_text;
-   //if ( ! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
+   //if ( ! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
    //   height += height_text*s_OSDStatsLineSpacing;
    //else
-   if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION )
+   if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION )
       height += hGraph2;
    
    height += 4.0*height_text_small*s_OSDStatsLineSpacing;
@@ -190,7 +190,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
    for( int i=0; i<(int)g_SM_DevVideoBitrateHistory.uTotalDataPoints; i++ )
    {
       float hDatarate = g_SM_DevVideoBitrateHistory.history[i].uMinVideoDataRateMbps*hGraph/uMaxGraphValue;
-      float hDatarateLow = hDatarate*DEFAULT_VIDEO_LINK_MAX_LOAD_PERCENT/100.0;
+      float hDatarateLow = hDatarate*pActiveModel->radioLinksParams.uMaxLinkLoadPercent[0]/100.0;
       float hVideoBitrate = g_SM_DevVideoBitrateHistory.history[i].uVideoBitrateKb*hGraph/uMaxGraphValue/1000.0;
       float hVideoBitrateAvg = g_SM_DevVideoBitrateHistory.history[i].uVideoBitrateAvgKb*hGraph/uMaxGraphValue/1000.0;
       float hTotalBitrateAvg = g_SM_DevVideoBitrateHistory.history[i].uTotalVideoBitrateAvgKb*hGraph/uMaxGraphValue/1000.0;
@@ -224,12 +224,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
          {
             int iVideoProfile = (g_SM_DevVideoBitrateHistory.history[i-1].uVideoProfileSwitches)>>4;
 
-            if ( iVideoProfile == VIDEO_PROFILE_LQ )
-               g_pRenderEngine->setStroke(250,50,50, s_fOSDStatsGraphLinesAlpha);
-            else if ( iVideoProfile == VIDEO_PROFILE_MQ )
-               g_pRenderEngine->setStroke(200,250,50, s_fOSDStatsGraphLinesAlpha);
-            else
-               g_pRenderEngine->setStroke(50,250,50, s_fOSDStatsGraphLinesAlpha);
+            g_pRenderEngine->setStroke(50,250,50, s_fOSDStatsGraphLinesAlpha);
 
             g_pRenderEngine->drawLine(xBarMiddle - widthBar*0.5, y, xBarMiddle - widthBar*0.5, y + hGraph);
          }
@@ -302,7 +297,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
    y += height_text_small*s_OSDStatsLineSpacing;
    
    strcpy(szBuff, "Auto Quantization: On");
-   if (!((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION) )
+   if (!((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION) )
       strcpy(szBuff, "Auto Quantization: Off");
    g_pRenderEngine->drawText(xPos, y, s_idFontStats, szBuff);
    y += height_text*s_OSDStatsLineSpacing;
@@ -310,7 +305,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
    //---------------------------------------------------------------------------
    // Second graph
 
-   if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION )
+   if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION )
    {   
       u32 uMaxQuant = 0;
       u32 uMinQuant = 1000;
@@ -326,7 +321,7 @@ void osd_render_stats_video_bitrate_history(float xPos, float yPos)
 
       if ( uMaxQuant == uMinQuant || uMaxQuant == uMinQuant+1 )
       {
-         //if ( ! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
+         //if ( ! ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
          //{
          //   g_pRenderEngine->drawText(xPos, y, s_idFontStats, "Auto Adjustments is Off.");
          //   return;

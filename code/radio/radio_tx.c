@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -281,7 +281,7 @@ int radio_tx_start_tx_thread()
       log_error_and_alarm("[RadioTx] Failed to create thread for radio rx.");
       return 0;
    }
-
+   pthread_detach(s_pThreadRadioTx);
    s_iRadioTxInitialized = 1;
    log_line("[RadioTx] Started radio Tx thread.");
    return 1;
@@ -318,10 +318,10 @@ void radio_tx_set_custom_thread_priority(int iPriority)
    s_iPendingTxThreadPriority = iPriority;
 }
 
-void radio_tx_set_dev_mode()
+void radio_tx_set_dev_mode(int iDevMode)
 {
-   s_iRadioTxDevMode = 1;
-   log_line("[RadioTx] Set dev mode");
+   s_iRadioTxDevMode = iDevMode;
+   log_line("[RadioTx] Set dev mode: %d", s_iRadioTxDevMode);
 }
 
 

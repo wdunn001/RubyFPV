@@ -1,6 +1,7 @@
 #pragma once
 #include "base.h"
 #include "config.h"
+#include "hardware_radio.h"
 
 #define SHARED_MEM_CONTROLLER_RUNTIME_INFO "/SYSTEM_RUBY_CONTROLLER_RT_INFO"
 
@@ -15,23 +16,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif 
-
-typedef struct 
-{
-   int iCountAntennas;
-   int iDbmLast[MAX_RADIO_ANTENNAS];
-   int iDbmMin[MAX_RADIO_ANTENNAS];
-   int iDbmMax[MAX_RADIO_ANTENNAS];
-   int iDbmAvg[MAX_RADIO_ANTENNAS];
-   int iDbmChangeSpeedMin[MAX_RADIO_ANTENNAS];
-   int iDbmChangeSpeedMax[MAX_RADIO_ANTENNAS];
-   int iDbmNoiseLast[MAX_RADIO_ANTENNAS];
-   int iDbmNoiseMin[MAX_RADIO_ANTENNAS];
-   int iDbmNoiseMax[MAX_RADIO_ANTENNAS];
-   int iDbmNoiseAvg[MAX_RADIO_ANTENNAS];
-   u32 uLastTimeCapture[MAX_RADIO_ANTENNAS];
-} ALIGN_STRUCT_SPEC_INFO controller_runtime_info_radio_interface_rx_signal;
-
 
 typedef struct
 {
@@ -48,13 +32,28 @@ typedef struct
 
 typedef struct
 {
+   int iMaxSNRDataForInterface;
+   int iMaxDBMDataForInterface;
+   u32 uLastUpdateTimeData;
+   int iMaxSNRVideoForInterface;
+   int iMaxDBMVideoForInterface;
+   u32 uLastUpdateTimeVideo;
+   int iMaxSNRForInterface;
+   int iMaxDBMForInterface;
+   u32 uLastUpdateTime;
+} ALIGN_STRUCT_SPEC_INFO controller_runtime_info_radio_signals;
+
+typedef struct
+{
    u32 uUpdateIntervalMs;
    u32 uCurrentSliceStartTime;
    int iCurrentIndex;
    int iCurrentIndex2;
    int iCurrentIndex3;
    int iDeltaIndexFromVehicle;
-   u32 uSliceUpdateTime[SYSTEM_RT_INFO_INTERVALS];
+   u32 uSliceStartTimeMs[SYSTEM_RT_INFO_INTERVALS];
+   u32 uSliceDurationMs[SYSTEM_RT_INFO_INTERVALS];
+   u8 uRxLastDeltaTime[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES]; // From start of slice, in ms
    u8 uRxVideoPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uRxVideoECPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uRxDataPackets[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
@@ -65,33 +64,38 @@ typedef struct
    u8 uRxMaxAirgapSlots[SYSTEM_RT_INFO_INTERVALS];
    u8 uRxMaxAirgapSlots2[SYSTEM_RT_INFO_INTERVALS];
 
+   u8 uTxFirstDeltaTime[SYSTEM_RT_INFO_INTERVALS]; // From start of slice, in ms
+   u8 uTxLastDeltaTime[SYSTEM_RT_INFO_INTERVALS]; // From start of slice, in ms
    u8 uTxPackets[SYSTEM_RT_INFO_INTERVALS];
    u8 uTxHighPriorityPackets[SYSTEM_RT_INFO_INTERVALS];
 
    u8 uRecvVideoDataPackets[SYSTEM_RT_INFO_INTERVALS];
    u8 uRecvVideoECPackets[SYSTEM_RT_INFO_INTERVALS];
-   u8 uRecvFramesInfo[SYSTEM_RT_INFO_INTERVALS];
-     // bit 0: is IFrame
-     // bit 1: is PFrame
-     // bit 2: end of IFrame
-     // bit 3: end of PFrame
-     // bit 4: parsed start output of IFrame
-     // bit 5: parsed start output of PFrame
-     // bit 6: parsed start output of other frames
+   u32 uOutputFramesInfo[SYSTEM_RT_INFO_INTERVALS];
+     // byte 0: VIDEO_STATUS_FLAGS2_IS_NAL*** flags
+     // byte 1-2: output video bytes
+     // byte 3: end of frame or last rx delta milisec from start of this slice
    
    u8 uOutputedVideoPackets[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedVideoPacketsRetransmitted[SYSTEM_RT_INFO_INTERVALS];
-   u8 uOutputedVideoPacketsSingleECUsed[SYSTEM_RT_INFO_INTERVALS];
-   u8 uOutputedVideoPacketsTwoECUsed[SYSTEM_RT_INFO_INTERVALS];
-   u8 uOutputedVideoPacketsMultipleECUsed[SYSTEM_RT_INFO_INTERVALS];
-   u8 uOutputedVideoPacketsMaxECUsed[SYSTEM_RT_INFO_INTERVALS];
-   u8 uOutputedVideoPacketsSkippedBlocks[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoBlocks[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoBlocksSkippedBlocks[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoBlocksECUsed[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoBlocksSingleECUsed[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoBlocksTwoECUsed[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoBlocksMultipleECUsed[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoBlocksMaxECUsed[SYSTEM_RT_INFO_INTERVALS];
 
    u8 uOutputedAudioPackets[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedAudioPacketsCorrected[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedAudioPacketsSkipped[SYSTEM_RT_INFO_INTERVALS];
 
-   controller_runtime_info_radio_interface_rx_signal radioInterfacesDbm[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
+   type_runtime_radio_rx_signal_info radioInterfacesSignalInfoAll[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
+   type_runtime_radio_rx_signal_info radioInterfacesSignalInfoVideo[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
+   type_runtime_radio_rx_signal_info radioInterfacesSignalInfoData[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
+   controller_runtime_info_radio_signals radioInterfacesSignals[MAX_RADIO_INTERFACES];
+
+   int iRecvVideoDataRate[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uDbmChangeSpeed[SYSTEM_RT_INFO_INTERVALS][MAX_RADIO_INTERFACES];
    u8 uRadioLinkQuality[SYSTEM_RT_INFO_INTERVALS];
 
@@ -105,7 +109,7 @@ typedef struct
 controller_runtime_info* controller_rt_info_open_for_read();
 controller_runtime_info* controller_rt_info_open_for_write();
 void controller_rt_info_close(controller_runtime_info* pAddress);
-void controller_rt_info_init(controller_runtime_info* pRTInfo);
+void controller_rt_info_init(controller_runtime_info* pCRTInfo);
 controller_runtime_info_vehicle* controller_rt_info_get_vehicle_info(controller_runtime_info* pRTInfo, u32 uVehicleId);
 void controller_rt_info_update_ack_rt_time(controller_runtime_info* pRTInfo, u32 uVehicleId, int iRadioLink, u32 uRoundTripTime);
 int controller_rt_info_will_advance_index(controller_runtime_info* pRTInfo, u32 uTimeNowMs);

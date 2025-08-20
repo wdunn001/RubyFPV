@@ -25,10 +25,11 @@ class MenuVehicleRadioConfig: public Menu
       int m_IndexDisableUplink;
       int m_IndexEncryption;
       int m_IndexTxPowers[MAX_RADIO_INTERFACES];
-      int m_IndexDataRates[MAX_RADIO_INTERFACES];
+      int m_IndexShowTxPower;
       int m_IndexPitMode;
       int m_IndexRadioConfig;
       int m_IndexOptimizeLinks;
+      int m_IndexDevRuntimeInfo;
       int m_IndexFreq[MAX_RADIO_INTERFACES];
       int m_IndexConfigureLinks[MAX_RADIO_INTERFACES];
       u32 m_SupportedChannels[MAX_RADIO_INTERFACES][100];
@@ -39,7 +40,6 @@ class MenuVehicleRadioConfig: public Menu
 
       void populate();
       void populateFrequencies();
-      void populateRadioRates();
       void populateTxPowers();
       void sendNewRadioLinkFrequency(int iVehicleLinkIndex, u32 uNewFreqKhz);
       void computeSendPowerToVehicle(int iVehicleLinkIndex);

@@ -8,8 +8,6 @@ extern type_radio_tx_timers g_RadioTxTimers;
 
 // Globals
 
-extern u32 g_TimeNow;
-extern u32 g_TimeStart;
 extern u32 g_TimeLastPeriodicCheck;
 
 // Vehicle
@@ -35,6 +33,10 @@ extern u32 g_TimeLastQualityMeasurement;
 extern u32 g_TimeFirstReceivedRadioPacketFromController;
 extern u32 g_TimeLastReceivedFastRadioPacketFromController;
 extern u32 g_TimeLastReceivedSlowRadioPacketFromController;
+
+extern u32 g_LastTimeLostFastLinkFromController;
+extern u32 g_LastTimeLostSlowLinkFromController;
+
 extern u32 g_TimeLastDebugFPSComputeTime;
 extern u32 g_TimeLastLiveLogCheck;
 extern u32 g_TimeLastSetRadioLinkFlagsStartOperation;

@@ -47,6 +47,7 @@ class Popup
    void setMaxWidth(float width);
    void setFixedWidth(float width);
    void setRenderBelowMenu(bool bBelowMenu);
+   void showTimeoutProgress();
    void setCentered();
    void setCenteredTexts();
    void setBottomAlign(bool b);
@@ -67,6 +68,7 @@ class Popup
       bool m_bInvalidated;
       bool m_bBelowMenu;
       bool m_bTopmost;
+      bool m_bShowTimeoutBar;
       bool m_bCentered;
       bool m_bCenterTexts;
       bool m_bBottomAlign;

@@ -84,27 +84,41 @@ extern "C" {
 
 typedef struct
 {
+   u32 uLastTimeCapture;
+
+   int iDbmLast;
+   int iDbmMin;
+   int iDbmMax;
+   int iDbmNoiseLast;
+   int iDbmNoiseMin;
+   int iDbmNoiseMax;
+   int iSNRLast;
+   int iSNRMin;
+   int iSNRMax;
+   int iDbmThreshMin;
+   int iDbmThreshMinDatarate;
+   int iSNRThreshMin;
+   int iSNRThreshMinDatarate;
+   int iSNRThreshMinDBMValue;
+   int iSNRThreshMinSNRValue;
+} ALIGN_STRUCT_SPEC_INFO type_runtime_radio_rx_signal_info;
+
+typedef struct
+{
    int nChannel;
    int nChannelFlags;
    int nFreq;
    int nDataRateBPSMCS; // positive: bps, negative: mcs rate, 0: never
    int nRadiotapFlags;
    int nAntennaCount;
-   int nDbmLast[MAX_RADIO_ANTENNAS];
-   int nDbmLastChange[MAX_RADIO_ANTENNAS];
-   int nDbmAvg[MAX_RADIO_ANTENNAS];
-   int nDbmMin[MAX_RADIO_ANTENNAS];
-   int nDbmMax[MAX_RADIO_ANTENNAS];
-   int nDbmNoiseLast[MAX_RADIO_ANTENNAS];
-   int nDbmNoiseAvg[MAX_RADIO_ANTENNAS];
-   int nDbmNoiseMin[MAX_RADIO_ANTENNAS];
-   int nDbmNoiseMax[MAX_RADIO_ANTENNAS];
-   u32 uLastTimeCapture[MAX_RADIO_ANTENNAS];
+   type_runtime_radio_rx_signal_info signalInfoAll;
+   type_runtime_radio_rx_signal_info signalInfoVideo;
+   type_runtime_radio_rx_signal_info signalInfoData;
 } ALIGN_STRUCT_SPEC_INFO type_runtime_radio_rx_info;
 
 
 void reset_runtime_radio_rx_info(type_runtime_radio_rx_info* pRuntimeRadioRxInfo);
-void reset_runtime_radio_rx_info_dbminfo(type_runtime_radio_rx_info* pRuntimeRadioRxInfo);
+void reset_runtime_radio_rx_signal_info(type_runtime_radio_rx_signal_info* pRuntimeRadioRxSignalInfo);
 
 typedef struct
 {

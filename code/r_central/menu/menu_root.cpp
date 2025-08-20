@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -74,7 +74,7 @@ MenuRoot::~MenuRoot()
 void MenuRoot::onShow()
 {
    int iPrevSelectedItem = m_SelectedIndex;
-   log_line("Entering root menu...");
+   log_line("MenuRoot: onShow...");
    
    load_Preferences();
    addItems();
@@ -93,12 +93,20 @@ void MenuRoot::addItems()
    removeAllItems();
    m_iIndexSpectator = -1;
 
-   m_iIndexSimpleSetup = addMenuItem(new MenuItem(L("Quick vehicle setup"), L("Quickly change the most common vehicle settings.")));
+   Preferences* pP = get_Preferences();
+   
+   if ( pP->iShowCompactMenus )
+      m_iIndexSimpleSetup = addMenuItem(new MenuItem(L("Quick vehicle setup"), L("Quickly change the most common vehicle settings.")));
+   else
+      m_iIndexSimpleSetup = addMenuItem(new MenuItem(L("Vehicle Settings"), L("Change current vehicle settings.")));
    m_iIndexSearch = addMenuItem(new MenuItem(L("Search"), L("Search for vehicles.")));
    m_iIndexMyVehicles = addMenuItem(new MenuItem(L("My vehicles"), L("Manage my vehicles.")));
    addSeparator();
    //m_iIndexSpectator = addMenuItem(new MenuItem("Spectator Vehicles", "See the list of vehicles you recently connected to as a spectator."));
-   m_iIndexVehicle = addMenuItem(new MenuItem(L("Vehicle settings"), L("Change vehicle settings.")));
+   if ( pP->iShowCompactMenus )
+      m_iIndexVehicle = addMenuItem(new MenuItem(L("Vehicle settings"), L("Change vehicle settings.")));
+   else
+      m_iIndexVehicle = -1;
    m_iIndexController = addMenuItem(new MenuItem(L("Controller settings"), L("Change controller settings and user interface preferences.")));
    m_iIndexSystem = addMenuItem(new MenuItem(L("System"), L("Configure system options, shows detailed information about the system.")));
    addSeparator();
@@ -346,12 +354,16 @@ void MenuRoot::onSelectItem()
          addMessage2(0, "Not connected to a vehicle.", "Can't change settings when not connected to the vehicle. Connect to a vehicle first.");
          return;
       }
-      MenuVehicleSimpleSetup* pMenu = new MenuVehicleSimpleSetup();
-      add_menu_to_stack(pMenu);
+
+      Preferences* pP = get_Preferences();
+      if ( pP->iShowCompactMenus )
+         add_menu_to_stack(new MenuVehicleSimpleSetup());
+      else
+         add_menu_to_stack(new MenuVehicle());
       return;
    }
 
-   if ( m_iIndexVehicle == m_SelectedIndex )
+   if ( (-1 != m_iIndexVehicle) && (m_iIndexVehicle == m_SelectedIndex) )
    {
       if ( (NULL == g_pCurrentModel) || (0 == g_uActiveControllerModelVID) ||
         (g_bFirstModelPairingDone && (0 == getControllerModelsCount()) && (0 == getControllerModelsSpectatorCount())) )

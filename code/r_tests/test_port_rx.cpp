@@ -30,7 +30,6 @@ u32 g_uTotalRecvPacketsOnStreams[256];
 u32 uSummaryLastUpdateTime = 0;
 int g_iOnlyStreamId = -1;
 
-u32 g_TimeNow = 0;
 shared_mem_radio_stats g_SM_RadioStats;
 
 void handle_sigint(int sig) 

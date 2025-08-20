@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -69,7 +69,7 @@ MenuControllerPeripherals::MenuControllerPeripherals(void)
    m_bShownUSBWarning = false;
    char szBuff[64];
 
-   addMenuItem(new MenuItemSection("Serial Ports"));
+   addMenuItem(new MenuItemSection(L("Serial Ports")));
 
    for( int i=0; i<10; i++ )
    {
@@ -90,7 +90,7 @@ MenuControllerPeripherals::MenuControllerPeripherals(void)
    ControllerInterfacesSettings* pCI = get_ControllerInterfacesSettings();
    m_iSerialBuiltInOptionsCount = 0;
 
-   if ( NULL == pcs || NULL == pCI )
+   if ( (NULL == pcs) || (NULL == pCI) )
    {
       log_softerror_and_alarm("Failed to get pointer to controller settings structure");
       return;
@@ -106,7 +106,7 @@ MenuControllerPeripherals::MenuControllerPeripherals(void)
       u32 uUsage = (u32)pInfo->iPortUsage;
       
       snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s Usage", pInfo->szName );
-      m_pItemsSelect[10+i*2] = new MenuItemSelect(szBuff, "Enables this serial port on the controller for a particular use.");
+      m_pItemsSelect[10+i*2] = new MenuItemSelect(szBuff, L("Enables this serial port on the controller for a particular use."));
       
       if ( uUsage == SERIAL_PORT_USAGE_SIK_RADIO )
       {
@@ -116,7 +116,7 @@ MenuControllerPeripherals::MenuControllerPeripherals(void)
       else
       {
          m_pItemsSelect[10+i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_NONE));
-         m_pItemsSelect[10+i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_TELEMETRY_MAVLINK));
+         m_pItemsSelect[10+i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_TELEMETRY));
          m_pItemsSelect[10+i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_DATA_LINK));
          m_pItemsSelect[10+i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_433));
          m_pItemsSelect[10+i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_868));
@@ -143,7 +143,7 @@ MenuControllerPeripherals::MenuControllerPeripherals(void)
       m_IndexSerialType[i] = addMenuItem(m_pItemsSelect[10+i*2]);
 
       snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s Baudrate", pInfo->szName );
-      m_pItemsSelect[11+i*2] = new MenuItemSelect(szBuff, "Sets the baud rate of this serial port on the controller.");
+      m_pItemsSelect[11+i*2] = new MenuItemSelect(szBuff, L("Sets the baud rate of this serial port on the controller."));
       for( int n=0; n<hardware_get_serial_baud_rates_count(); n++ )
       {
          sprintf(szBuff, "%d bps", hardware_get_serial_baud_rates()[n]);
@@ -153,7 +153,7 @@ MenuControllerPeripherals::MenuControllerPeripherals(void)
       m_IndexSerialSpeed[i] = addMenuItem(m_pItemsSelect[11+i*2]);
    }
 
-   addMenuItem(new MenuItemSection("Input Devices / Joysticks"));
+   addMenuItem(new MenuItemSection(L("Input Devices / Joysticks")));
 
    controllerInterfacesEnumJoysticks();
 
@@ -219,7 +219,7 @@ void MenuControllerPeripherals::valuesToUI()
       {
          if ( pInfo->iPortUsage == SERIAL_PORT_USAGE_NONE )
             m_pItemsSelect[10+i*2]->setSelectedIndex(0);
-         if ( pInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK )
+         if ( pInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY )
             m_pItemsSelect[10+i*2]->setSelectedIndex(1);
          if ( pInfo->iPortUsage == SERIAL_PORT_USAGE_DATA_LINK )
             m_pItemsSelect[10+i*2]->setSelectedIndex(2);
@@ -443,7 +443,7 @@ void MenuControllerPeripherals::onSelectItem()
             if ( 0 == m_pItemsSelect[10+i*2]->getSelectedIndex() )
                newUsage = SERIAL_PORT_USAGE_NONE;
             if ( 1 == m_pItemsSelect[10+i*2]->getSelectedIndex() )
-               newUsage = SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
+               newUsage = SERIAL_PORT_USAGE_TELEMETRY;
             if ( 2 == m_pItemsSelect[10+i*2]->getSelectedIndex() )
                newUsage = SERIAL_PORT_USAGE_DATA_LINK;
             if ( 3 == m_pItemsSelect[10+i*2]->getSelectedIndex() )
@@ -483,14 +483,6 @@ void MenuControllerPeripherals::onSelectItem()
          if ( newUsage == pPortInfo->iPortUsage )
             return;
 
-         bool bTelemetryChanged = false;
-         if ( (pPortInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) )
-         {
-            pCS->iTelemetryOutputSerialPortIndex = -1;
-            pCS->iTelemetryInputSerialPortIndex = -1;
-            bTelemetryChanged = true;
-         }
-
          pPortInfo->iPortUsage = newUsage;
 
          // Allow only one port for telemetry
@@ -500,12 +492,16 @@ void MenuControllerPeripherals::onSelectItem()
             hw_serial_port_info_t* pInfo = hardware_get_serial_port_info(n);
             if ( NULL == pInfo )
                continue;
-            if ( pInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK )
+            if ( pInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY )
                iCountPortsTelemetry++;
          }
 
          if ( iCountPortsTelemetry > 1 )
+         {
             addMessage("You have multiple serial ports assigned to telemetry. This will be an issue.");
+            valuesToUI();
+            return;
+         }
 
          // Allow only one port for a specific usage
 
@@ -520,48 +516,16 @@ void MenuControllerPeripherals::onSelectItem()
                char szBuff[128];
                sprintf(szBuff, "You have multiple serial ports assigned to %s. This will be an issue.", str_get_serial_port_usage(newUsage));
                addMessage(szBuff);
-               break;
+               valuesToUI();
+               return;
             }
-         }
-
-         if ( newUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK )
-         {
-            pCS->iTelemetryOutputSerialPortIndex = i;
-            pCS->iTelemetryInputSerialPortIndex = i;
-            bTelemetryChanged = true;
          }
 
          hardware_serial_save_configuration();
          save_ControllerSettings();
          save_ControllerInterfacesSettings();
          send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED, PACKET_COMPONENT_LOCAL_CONTROL);
-
          valuesToUI();
-         if ( bTelemetryChanged && (NULL != g_pCurrentModel) )
-         {
-            u32 uParam = 0;
-            if ( pCS->iTelemetryOutputSerialPortIndex >= 0 )
-               uParam |= 0x01;
-
-            if ( pCS->iTelemetryInputSerialPortIndex >= 0 )
-               uParam |= 0x02;
-
-            if ( pairing_isStarted() )
-            if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_CONTROLLER_TELEMETRY_OPTIONS, uParam, NULL, 0) )
-               valuesToUI();
-         }
-         /* if ( newVal == serialPortUsageRCInIBus )
-         {
-            Popup* p = new Popup(true, "IBUS protocol not supported", 4 );
-            p->setIconId(g_idIconWarning, get_Color_IconWarning());
-            popups_add_topmost(p);
-         }
-         if ( newVal == serialPortUsageRCInSBus )
-         {
-            Popup* p = new Popup(true, "SBUS protocol not supported", 4 );
-            p->setIconId(g_idIconWarning, get_Color_IconWarning());
-            popups_add_topmost(p);
-         } */
          return;
       } 
 

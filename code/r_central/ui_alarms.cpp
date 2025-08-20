@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -196,6 +196,7 @@ void alarms_add_from_vehicle(u32 uVehicleId, u32 uAlarms, u32 uFlags1, u32 uFlag
    char szAlarmText[256];
    char szAlarmText2[256];
    char szAlarmText3[256];
+   int iAlarmTimeoutSeconds = 7;
 
    char szAlarmDesc[2048];
    alarms_to_string(uAlarms, uFlags1, uFlags2, szAlarmDesc);
@@ -254,7 +255,7 @@ void alarms_add_from_vehicle(u32 uVehicleId, u32 uAlarms, u32 uFlags1, u32 uFlag
       if ( (uFlags1 & 0xFF) == ALARM_FLAG_DEVELOPER_ALARM_RETRANSMISSIONS_OFF )
       {
          g_uTotalLocalAlarmDevRetransmissions++;
-         strcpy(szAlarmText, L("Retransmissions are enabled but not requested/received from/to vehicle."));
+         strcpy(szAlarmText, L("Vehicle: Retransmissions are enabled but not requested/received from/to vehicle."));
          snprintf(szAlarmText2, sizeof(szAlarmText2)/sizeof(szAlarmText2[0]), L("Please notify the developers about this alarm (id %d)"), uFlags1);
          if ( (NULL != g_pCurrentModel) && g_pCurrentModel->isVideoLinkFixedOneWay() )
             strcpy(szAlarmText3, L("Vehicle is in one way video link mode."));
@@ -346,18 +347,15 @@ void alarms_add_from_vehicle(u32 uVehicleId, u32 uAlarms, u32 uFlags1, u32 uFlag
 
    if ( uAlarms & ALARM_ID_VEHICLE_VIDEO_CAPTURE_RESTARTED )
    {
-      sprintf(szAlarmText, "%s The video capture was restarted", szAlarmPrefix);
-      if ( 0 == uFlags1 )
+      sprintf(szAlarmText, "%s The video capture was restarted (for unknown reason)", szAlarmPrefix);
+      if ( ALARM_FLAG_VIDEO_CAPTURE_MALFUNCTION == uFlags1 )
          sprintf(szAlarmText2, "%s There was a malfunctioning of the capture program", szAlarmPrefix);
-      else if ( 1 == uFlags1 )
+      else if ( ALARM_FLAG_VIDEO_CAPTURE_PARAMETERS_UPDATE == uFlags1 )
       {
          sprintf(szAlarmText2, "%s There where parameters changes that required restart of the capture program", szAlarmPrefix);
          warnings_add( uVehicleId, "Video capture was restarted due to changed parameters", g_idIconCamera);
          return;
-      }
-      else
-         sprintf(szAlarmText2, "%s There was a unknown malfunctioning of the capture program", szAlarmPrefix);
-   
+      }   
    }
 
    if ( uAlarms & ALARM_ID_VEHICLE_LOW_STORAGE_SPACE )
@@ -441,7 +439,7 @@ void alarms_add_from_vehicle(u32 uVehicleId, u32 uAlarms, u32 uFlags1, u32 uFlag
       int ms = (int)(uFlags1 & 0xFFFF);
       int msMax = (int)(uFlags1 >> 16);
 
-      if ( (uFlags2 && (g_pCurrentModel->radioLinksParams.link_datarate_video_bps[0] < 0)) || ((g_pCurrentModel->radioLinksParams.links_count > 1) && (g_pCurrentModel->radioLinksParams.link_datarate_video_bps[1] < 0)) )
+      if ( (uFlags2 && (g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[0] < 0)) || ((g_pCurrentModel->radioLinksParams.links_count > 1) && (g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[1] < 0)) )
       {
          sprintf(szAlarmText, "%s Video link transmission is overloaded. Switch to default radio data rates or decrease video bitrate and radio data rate.", szAlarmPrefix);
          strcpy(szAlarmText2, "Not all radio cards do support MCS data rates properly.");
@@ -521,7 +519,7 @@ void alarms_add_from_vehicle(u32 uVehicleId, u32 uAlarms, u32 uFlags1, u32 uFlag
       }
       else
       {
-         Popup* p = _get_next_available_alarm_popup(szAlarmText, 7);
+         Popup* p = _get_next_available_alarm_popup(szAlarmText, iAlarmTimeoutSeconds);
          p->setFont(g_idFontOSDSmall);
          p->setIconId(uIconId, get_Color_IconNormal());
          
@@ -550,6 +548,7 @@ void alarms_add_from_local(u32 uAlarms, u32 uFlags1, u32 uFlags2)
    char szAlarmText[256];
    char szAlarmText2[256];
    char szAlarmText3[128];
+   int iAlarmTimeoutSeconds = 15;
 
    char szAlarmDesc[2048];
    alarms_to_string(uAlarms, uFlags1, uFlags2, szAlarmDesc);
@@ -586,6 +585,7 @@ void alarms_add_from_local(u32 uAlarms, u32 uFlags1, u32 uFlags2)
       if ( (uFlags1 & 0xFF) == ALARM_FLAG_DEVELOPER_ALARM_RETRANSMISSIONS_OFF )
       {
          bLargeFont = true;
+         iAlarmTimeoutSeconds = 7;
          g_uTotalLocalAlarmDevRetransmissions++;
          strcpy(szAlarmText, L("Retransmissions are enabled but not requested/received from/to vehicle."));
          snprintf(szAlarmText2, sizeof(szAlarmText2)/sizeof(szAlarmText2[0]), L("Please notify the developers about this alarm (id %d)"), uFlags1);
@@ -639,18 +639,6 @@ void alarms_add_from_local(u32 uAlarms, u32 uFlags1, u32 uFlags2)
          }
          else
             return;
-      }
-      if ( uFlags1 == ALARM_ID_GENERIC_TYPE_ADAPTIVE_VIDEO_LEVEL_MISSMATCH )
-      {
-         uIconId = g_idIconCamera;
-
-         int iProfile = g_pCurrentModel->get_video_profile_from_total_levels_shift((int)(uFlags2>>16));
-         char szTmp1[64];
-         char szTmp2[64];
-         strcpy(szTmp1, str_get_video_profile_name(uFlags2 & 0xFFFF));
-         strcpy(szTmp2, str_get_video_profile_name(iProfile));
-               
-         sprintf(szAlarmText, "Received video stream profile (%s) is different than the last requested one (%s, level shift %u). Requesting it again.", szTmp1, szTmp2, uFlags2 >> 16);
       }
    }
 
@@ -980,7 +968,7 @@ void alarms_add_from_local(u32 uAlarms, u32 uFlags1, u32 uFlags2)
          warnings_add(0, szAlarmText, uIconId);
       else
       {
-         Popup* p = _get_next_available_alarm_popup(szAlarmText, 15);
+         Popup* p = _get_next_available_alarm_popup(szAlarmText, iAlarmTimeoutSeconds);
          if ( bLargeFont )
             p->setFont(g_idFontOSDWarnings);
          else

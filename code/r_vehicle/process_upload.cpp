@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -257,6 +257,7 @@ static void * _thread_process_upload(void *argument)
    }
    else
    {
+      pthread_detach(s_pThreadProcessArchive);
       while ( ! s_bThreadProcessArchiveFinished )
       {
          hardware_sleep_ms(200);
@@ -354,6 +355,11 @@ static void * _thread_process_upload(void *argument)
    strcat(szFile, "ruby_update_vehicle");
    if ( access( szFile, R_OK ) != -1 )
       hw_execute_ruby_process_wait(NULL, "ruby_update_vehicle", "-pre", NULL, 1);
+
+
+   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
+   hw_execute_bash_command("rm -rf /etc/init.d/S*majestic", NULL);
+   #endif
 
    // Copy log file to last update
    #if defined(HW_PLATFORM_OPENIPC_CAMERA)
@@ -660,6 +666,7 @@ void process_sw_upload_new(u32 command_param, u8* pBuffer, int length)
       _process_upload_send_status_to_controller(OTA_UPDATE_STATUS_FAILED, 10);
       return;
    }
+   pthread_detach(s_pThreadProcessUpload);
 }
 
 bool process_sw_upload_is_started()

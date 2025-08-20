@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -110,6 +110,7 @@ void MenuConfirmationVehicleBoard::onSelectItem()
    uBoardType &= ~(u32)BOARD_SUBTYPE_MASK;
    uBoardType |= (hardware_get_board_subtype_at_index(m_SelectedIndex)) << BOARD_SUBTYPE_SHIFT;
    
+   send_pause_adaptive_to_router(6000);
    if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_VEHICLE_BOARD_TYPE, uBoardType, NULL, 0) )
       valuesToUI();
 }

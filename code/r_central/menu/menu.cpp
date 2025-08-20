@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -11,9 +11,9 @@
         * Redistributions in binary form (partially or complete) must reproduce
         the above copyright notice, this list of conditions and the following disclaimer
         in the documentation and/or other materials provided with the distribution.
-         * Copyright info and developer info must be preserved as is in the user
+        * Copyright info and developer info must be preserved as is in the user
         interface, additions could be made to that info.
-       * Neither the name of the organization nor the
+        * Neither the name of the organization nor the
         names of its contributors may be used to endorse or promote products
         derived from this software without specific prior written permission.
         * Military use is not permitted.
@@ -602,6 +602,7 @@ void menu_loop_parse_input_events()
 {
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_MENU )
    {
+      log_line("[Menu] (loop %d) Pressed [Menu] Key", menu_get_loop_counter()%1000);
       if ( osd_is_stats_flight_end_on() )
       {
          osd_remove_stats_flight_end();
@@ -619,6 +620,7 @@ void menu_loop_parse_input_events()
 
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_BACK )
    {
+      log_line("[Menu] (loop %d) Pressed [Back] Key", menu_get_loop_counter()%1000);
       if ( g_bDebugStats )
       {
          Preferences* pP = get_Preferences();
@@ -651,7 +653,8 @@ void menu_loop_parse_input_events()
 
    if ( isKeyBackPressed() && keyboard_has_long_press_flag() )
    {
-      log_line("[Menu] Long pressed back key");
+      log_line("[Menu] Long pressed [Back] Key");
+
       if ( NULL != g_pPopupCameraParams && popups_has_popup(g_pPopupCameraParams) )
       {
          g_pPopupCameraParams->handleRotaryEvents(false, false, false, false, false, true);
@@ -675,6 +678,7 @@ void menu_loop_parse_input_events()
 
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_MINUS )
    {
+      log_line("[Menu] Pressed [Minus] Key");
       if ( g_iMenuStackTopIndex > 0 )
       if ( NULL != g_pMenuStack[g_iMenuStackTopIndex-1] )
       {
@@ -686,6 +690,7 @@ void menu_loop_parse_input_events()
 
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_PLUS )
    {
+      log_line("[Menu] Pressed [Plus] Key");
       if ( g_iMenuStackTopIndex > 0 )
       if ( NULL != g_pMenuStack[g_iMenuStackTopIndex-1] )
       {
@@ -738,6 +743,21 @@ void menu_rearrange_all_menus_no_animation()
          g_pMenuStack[i]->resetRenderXPos();
    }
    log_line("[Menu] Updated UI for all menus.");
+}
+
+void menu_rearrange_all_menus_xpos_no_animation()
+{
+   log_line("[Menu] Rearrange all menus xPos with no animation.");
+   int iCountMenus = g_iMenuStackTopIndex;
+   g_iMenuStackTopIndex = 0;
+   for ( int i=0; i<iCountMenus; i++ )
+   {
+      if ( NULL != g_pMenuStack[i] )
+         g_pMenuStack[i]->m_xPos = menu_get_XStartPos(g_pMenuStack[i]->m_Width);
+      g_iMenuStackTopIndex++;
+   }
+   
+   menu_rearrange_all_menus_no_animation();
 }
 
 u32 menu_get_loop_counter()

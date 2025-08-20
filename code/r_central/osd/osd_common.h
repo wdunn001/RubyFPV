@@ -44,6 +44,7 @@ extern u32 g_idIconSDCard;
 extern u32 g_idImgMSPOSDBetaflight;
 extern u32 g_idImgMSPOSDINAV;
 extern u32 g_idImgMSPOSDArdupilot;
+extern u32 g_idImgMSPOSDPitLab;
 
 extern float g_fOSDStatsForcePanelWidth;
 extern float g_fOSDStatsBgTransparency;
@@ -119,5 +120,4 @@ int osd_get_current_data_source_vehicle_index();
 Model* osd_get_current_data_source_vehicle_model();
 u32 osd_get_current_data_source_vehicle_id();
 
-char* osd_format_video_adaptive_level(Model* pModel, int iLevel);
 

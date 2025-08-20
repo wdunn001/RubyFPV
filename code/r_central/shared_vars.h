@@ -38,12 +38,13 @@ extern RenderEngineUI* g_pRenderEngineOSDPlugins;
 
 
 
-extern u32 g_uVideoRecordStartTime;
-extern bool g_bVideoRecordingStarted;
-extern bool g_bVideoProcessing;
-extern bool g_bVideoPlaying;
+extern u32 g_uVideoRecordingStartTime;
+extern bool g_bIsVideoRecording;
+extern bool g_bIsVideoProcessing;
+extern bool g_bIsVideoPlaying;
 extern u32 g_uVideoPlayingTimeMs;
 extern u32 g_uVideoPlayingLengthSec;
+extern bool g_bIsTestingAdaptiveVideo;
 
 extern int g_iControllerCPUSpeedMhz;
 extern int g_iControllerCPULoad;

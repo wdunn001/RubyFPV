@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -144,7 +144,7 @@ void radio_links_reinit_radio_interfaces()
       if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] >= 0 )
       if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] < g_pCurrentModel->radioLinksParams.links_count )
       {
-         int dataRateMb = g_pCurrentModel->radioLinksParams.link_datarate_video_bps[g_pCurrentModel->radioInterfacesParams.interface_link_id[i]];
+         int dataRateMb = g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[g_pCurrentModel->radioInterfacesParams.interface_link_id[i]];
          if ( dataRateMb > 0 )
             dataRateMb = dataRateMb / 1000 / 1000;
          if ( dataRateMb > 0 )
@@ -178,18 +178,6 @@ void radio_links_reinit_radio_interfaces()
    radio_links_open_rxtx_radio_interfaces();
 
    send_alarm_to_central(ALARM_ID_GENERIC_STATUS_UPDATE, ALARM_FLAG_GENERIC_STATUS_RECONFIGURED_RADIO_INTERFACE, 0);
-}
-
-void radio_links_compute_set_tx_powers()
-{
-   load_ControllerSettings();
-   load_ControllerInterfacesSettings();
-
-   if ( g_bSearching )
-      apply_controller_radio_tx_powers(NULL, NULL);
-   else
-      apply_controller_radio_tx_powers(g_pCurrentModel, &g_SM_RadioStats);
-   save_ControllerInterfacesSettings();
 }
 
 void radio_links_close_rxtx_radio_interfaces()
@@ -242,7 +230,6 @@ void radio_links_open_rxtx_radio_interfaces_for_search( u32 uSearchFreq )
    }
 
    radio_links_set_monitor_mode();
-   radio_links_compute_set_tx_powers();
 
    s_iFailedInitRadioInterface = -1;
 
@@ -353,7 +340,6 @@ void radio_links_open_rxtx_radio_interfaces()
    }
 
    radio_links_set_monitor_mode();
-   radio_links_compute_set_tx_powers();
 
    log_line("Opening RX/TX radio interfaces for current vehicle (firmware: %s)...", str_format_firmware_type(g_pCurrentModel->getVehicleFirmwareType()));
 
@@ -391,21 +377,23 @@ void radio_links_open_rxtx_radio_interfaces()
       if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[nVehicleRadioLinkId] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
          continue;
 
+      // To fix may2025
+      /*
       if ( (pRadioHWInfo->iRadioType == RADIO_TYPE_ATHEROS) ||
            (pRadioHWInfo->iRadioType == RADIO_TYPE_RALINK) )
       {
-         int nRateTx = DEFAULT_RADIO_DATARATE_DATA;
+         int nRateTx = DEFAULT_RADIO_DATARATE_LOWEST;
          if ( NULL != g_pCurrentModel )
          {
             nRateTx = compute_packet_uplink_datarate(nVehicleRadioLinkId, i, &(g_pCurrentModel->radioLinksParams), NULL);
             log_line("Current model uplink radio datarate for vehicle radio link %d (%s): %d, %u, uplink rate type: %d",
                nVehicleRadioLinkId+1, pRadioHWInfo->szName, nRateTx, getRealDataRateFromRadioDataRate(nRateTx, 0),
-               g_pCurrentModel->radioLinksParams.uUplinkDataDataRateType[nVehicleRadioLinkId]);
+               g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[nVehicleRadioLinkId]);
          }
          Preferences* pP = get_Preferences();
          radio_utils_set_datarate_atheros(NULL, i, nRateTx, pP->iDebugWiFiChangeDelay);
       }
-
+      */
       u32 cardFlags = controllerGetCardFlags(pRadioHWInfo->szMAC);
 
       if ( cardFlags & RADIO_HW_CAPABILITY_FLAG_CAN_RX )
@@ -600,6 +588,8 @@ bool radio_links_apply_settings(Model* pModel, int iRadioLink, type_radio_links_
          memcpy((u8*)g_pSM_RadioStats, (u8*)&g_SM_RadioStats, sizeof(shared_mem_radio_stats));
    }
 
+   // To fix may2025
+   /*
    // Apply data rates
 
    // If uplink data rate for an Atheros card has changed, update it.
@@ -619,7 +609,7 @@ bool radio_links_apply_settings(Model* pModel, int iRadioLink, type_radio_links_
       update_atheros_card_datarate(pModel, i, nRateTx, g_pProcessStats);
       g_TimeNow = get_current_timestamp_ms();
    }
-
+   */
    // Radio flags are applied on the fly, when sending each radio packet
    
    return true;

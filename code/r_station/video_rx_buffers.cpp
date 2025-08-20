@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -59,10 +59,10 @@ VideoRxPacketsBuffer::VideoRxPacketsBuffer(int iVideoStreamIndex, int iCameraInd
          m_VideoBlocks[i].packets[k].pPHVSImp = NULL;
       }
    }
+   m_bBuffersEmpty = true;
    m_iTopBufferIndex = 0;
-   m_iBottomBufferIndexToOutput = 0;
-   m_iBottomPacketIndexToOutput = 0;
-   m_iCountBlocksPresent = 0;
+   m_iBottomBufferIndex = 0;
+   m_iBottomBufferPacketIndex = 0;
 }
 
 VideoRxPacketsBuffer::~VideoRxPacketsBuffer()
@@ -139,6 +139,9 @@ bool VideoRxPacketsBuffer::_check_allocate_video_block_in_buffer(int iBufferInde
       m_VideoBlocks[iBufferIndex].packets[i].pPH = (t_packet_header*)pRawData;
       m_VideoBlocks[iBufferIndex].packets[i].pPHVS = (t_packet_header_video_segment*)(pRawData + sizeof(t_packet_header));
       m_VideoBlocks[iBufferIndex].packets[i].pPHVSImp = (t_packet_header_video_segment_important*)(pRawData + sizeof(t_packet_header) + sizeof(t_packet_header_video_segment));
+
+      m_VideoBlocks[iBufferIndex].packets[i].pPHVS->uCurrentBlockDataPackets = m_VideoBlocks[iBufferIndex].iBlockDataPackets;
+      m_VideoBlocks[iBufferIndex].packets[i].pPHVS->uCurrentBlockECPackets = m_VideoBlocks[iBufferIndex].iBlockECPackets;
       _empty_block_buffer_packet_index(iBufferIndex, i);
    }
    return true;
@@ -150,13 +153,11 @@ void VideoRxPacketsBuffer::_empty_block_buffer_packet_index(int iBufferIndex, in
    m_VideoBlocks[iBufferIndex].packets[iPacketIndex].uRequestedTime = 0;
    m_VideoBlocks[iBufferIndex].packets[iPacketIndex].bEmpty = true;
    m_VideoBlocks[iBufferIndex].packets[iPacketIndex].bReconstructed = false;
-   m_VideoBlocks[iBufferIndex].packets[iPacketIndex].bOutputed = false;
 }
 
 void VideoRxPacketsBuffer::_empty_block_buffer_index(int iBufferIndex)
 {
    m_VideoBlocks[iBufferIndex].uVideoBlockIndex = 0;
-   m_VideoBlocks[iBufferIndex].bEmpty = true;
    m_VideoBlocks[iBufferIndex].uReceivedTime = 0;
    m_VideoBlocks[iBufferIndex].iMaxReceivedDataPacketIndex = -1;
    m_VideoBlocks[iBufferIndex].iMaxReceivedDataOrECPacketIndex = -1;
@@ -179,43 +180,47 @@ void VideoRxPacketsBuffer::_empty_buffers(const char* szReason, t_packet_header*
   
    char szLog[256];
    if ( NULL == szReason )
-      strcpy(szLog, "[VRXBuffers] Empty buffers (no reason)");
+      strcpy(szLog, "[VRXBuffers] Empty buffers: (no reason)");
    else
-      sprintf(szLog, "[VRXBuffers] Empty buffers (%s)", szReason);
+      sprintf(szLog, "[VRXBuffers] Empty buffers: (%s)", szReason);
 
    if ( (NULL == pPH) || (NULL == pPHVS) )
       log_softerror_and_alarm("%s (no additional data)", szLog);
    else
    {
-      log_softerror_and_alarm("%s (recv video packet [%u/%u] (retransmitted: %s), frame index: %u, stream id/packet index: %u, radio index: %u)",
+      log_softerror_and_alarm("%s (while processing recv video packet [%u/%u] (retransmitted: %s), frame index: %u, stream id/packet index: %u, radio index: %u)",
          szLog, pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex,
          (pPH->packet_flags & PACKET_FLAGS_BIT_RETRANSMITED)?"yes":"no",
          pPHVS->uH264FrameIndex,
          (pPH->stream_packet_idx & PACKET_FLAGS_MASK_STREAM_INDEX) >> PACKET_FLAGS_MASK_SHIFT_STREAM_INDEX,
          pPH->stream_packet_idx & PACKET_FLAGS_MASK_STREAM_PACKET_IDX, pPH->radio_link_packet_index);
-   
-      log_softerror_and_alarm("[VRXBuffers] Top video block index: %d, top data packet received: [%u/%d], top max data/ec packet received: [%u/%d]",
-         m_iTopBufferIndex,
-         m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex, m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataPacketIndex,
-         m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex, m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex);
-      log_softerror_and_alarm("[VRXBuffers] Bottom block buffer index: %d, packet: [%u/%d]",
-         m_iBottomBufferIndexToOutput, m_VideoBlocks[m_iBottomBufferIndexToOutput].uVideoBlockIndex, m_iBottomPacketIndexToOutput);
-      log_softerror_and_alarm("[VRXBuffers] Bottom block buffer index: %d, received packets: %d/%d",
-         m_iBottomBufferIndexToOutput, m_VideoBlocks[m_iBottomBufferIndexToOutput].iRecvDataPackets, m_VideoBlocks[m_iBottomBufferIndexToOutput].iRecvECPackets);
    }
+
+   if ( m_bBuffersEmpty )
+   {
+      log_softerror_and_alarm("[VRXBuffers] Empty buffers: Already empty. Do nothing.");
+      return;
+   }
+
+   log_softerror_and_alarm("[VRXBuffers] Empty buffers: State: bottom buffer index: %d/%d, bottom video block: %u, emtpy? %s, top buffer index: %d, top video block: %u, empty? %s, max recv block packet index: %d",
+      m_iBottomBufferIndex, m_iBottomBufferPacketIndex, m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex,
+      (m_VideoBlocks[m_iBottomBufferIndex].iBlockDataPackets == 0)?"yes":"no",
+      m_iTopBufferIndex, m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex,
+      (m_VideoBlocks[m_iTopBufferIndex].iBlockDataPackets == 0)?"yes":"no",
+      m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex);
 
    for( int i=0; i<MAX_RXTX_BLOCKS_BUFFER; i++ )
       _empty_block_buffer_index(i);
 
-   g_SMControllerRTInfo.uOutputedVideoPacketsSkippedBlocks[g_SMControllerRTInfo.iCurrentIndex]++;
+   g_SMControllerRTInfo.uOutputedVideoBlocksSkippedBlocks[g_SMControllerRTInfo.iCurrentIndex]++;
    if ( g_TimeNow > g_TimeLastVideoParametersOrProfileChanged + 3000 )
    if ( g_TimeNow > g_TimeStart + 5000 )
       g_SMControllerRTInfo.uTotalCountOutputSkippedBlocks++;
 
+   m_bBuffersEmpty = true;
    m_iTopBufferIndex = 0;
-   m_iBottomBufferIndexToOutput = 0;
-   m_iBottomPacketIndexToOutput = 0;
-   m_iCountBlocksPresent = 0;
+   m_iBottomBufferIndex = 0;
+   m_iBottomBufferPacketIndex = 0;
    log_line("[VRXBuffers] Done emptying buffers.");
 }
 
@@ -235,21 +240,11 @@ void VideoRxPacketsBuffer::_check_do_ec_for_video_block(int iBufferIndex)
 
    m_VideoBlocks[iBufferIndex].iReconstructedECUsed = m_VideoBlocks[iBufferIndex].iBlockDataPackets - m_VideoBlocks[iBufferIndex].iRecvDataPackets;
 
-   t_packet_header* pPHGood = NULL;
-   t_packet_header_video_segment* pPHVSGood = NULL;
    int iPacketIndexGood = -1;
 
    // Add existing data packets, mark and count the ones that are missing
-   // Find a good PH, PHVF and video-debug-info (if any) in the block to reuse it in reconstruction
+   // Find a good PH, PHVS and video-debug-info (if any) in the block to reuse it in reconstruction
 
-   /*
-   log_line("DBG doing ec for block %u, recv data/ec: %d/%d, scheme: %d/%d, max recv index: %d, eof: %d",
-      m_VideoBlocks[iBufferIndex].uVideoBlockIndex,
-      m_VideoBlocks[iBufferIndex].iRecvDataPackets, m_VideoBlocks[iBufferIndex].iRecvECPackets,
-      m_VideoBlocks[iBufferIndex].iBlockDataPackets, m_VideoBlocks[iBufferIndex].iBlockECPackets,
-      m_VideoBlocks[iBufferIndex].iMaxReceivedDataOrECPacketIndex,
-      m_VideoBlocks[iBufferIndex].iEndOfFrameDetectedAtPacketIndex);
-   */
    m_ECRxInfo.missing_packets_count = 0;
    for( int i=0; i<m_VideoBlocks[iBufferIndex].iBlockDataPackets; i++ )
    {
@@ -260,16 +255,9 @@ void VideoRxPacketsBuffer::_check_do_ec_for_video_block(int iBufferIndex)
          m_ECRxInfo.decode_missing_packets_indexes[m_ECRxInfo.missing_packets_count] = i;
          m_ECRxInfo.missing_packets_count++;
       }
-      else
-      {
-         pPHGood = m_VideoBlocks[iBufferIndex].packets[i].pPH;
-         pPHVSGood = m_VideoBlocks[iBufferIndex].packets[i].pPHVS;
+      else if ( -1 == iPacketIndexGood )
          iPacketIndexGood = i;
-      }
    }
-
-   if ( -1 == iPacketIndexGood )
-      return;
 
    // Add the needed FEC packets to the list
    int pos = 0;
@@ -278,12 +266,33 @@ void VideoRxPacketsBuffer::_check_do_ec_for_video_block(int iBufferIndex)
    {
       if ( ! m_VideoBlocks[iBufferIndex].packets[i+iECDelta].bEmpty )
       {
+         if ( -1 == iPacketIndexGood )
+            iPacketIndexGood = i+iECDelta;
+
          m_ECRxInfo.p_decode_ec_packets_pointers[pos] = m_VideoBlocks[iBufferIndex].packets[i+iECDelta].pVideoData;
          m_ECRxInfo.decode_ec_packets_indexes[pos] = i;
          pos++;
          if ( pos == (int)(m_ECRxInfo.missing_packets_count) )
             break;
       }
+   }
+
+   if ( -1 == iPacketIndexGood )
+      return;
+
+   t_packet_header* pPHGood = m_VideoBlocks[iBufferIndex].packets[iPacketIndexGood].pPH;
+   t_packet_header_video_segment* pPHVSGood = m_VideoBlocks[iBufferIndex].packets[iPacketIndexGood].pPHVS;
+   bool bIsEOF = false;
+   bool bHasDataAfterEOF = false;
+   int iEOFDeltaFromBlockStart = -1;
+
+   if ( pPHGood->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_END_OF_TRANSMISSION_FRAME )
+   {
+      bIsEOF = true;
+      u16 uEOFDelta = pPHGood->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK;
+      iEOFDeltaFromBlockStart = uEOFDelta + iPacketIndexGood;
+      if ( pPHGood->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_HAS_DATA_AFTER_VIDEO )
+         bHasDataAfterEOF = true;
    }
 
    int iRes = fec_decode(m_VideoBlocks[iBufferIndex].iBlockDataSize, m_ECRxInfo.p_decode_data_packets_pointers, m_VideoBlocks[iBufferIndex].iBlockDataPackets, m_ECRxInfo.p_decode_ec_packets_pointers, m_ECRxInfo.decode_ec_packets_indexes, m_ECRxInfo.decode_missing_packets_indexes, m_ECRxInfo.missing_packets_count);
@@ -306,7 +315,6 @@ void VideoRxPacketsBuffer::_check_do_ec_for_video_block(int iBufferIndex)
       int iPacketIndexToFix = m_ECRxInfo.decode_missing_packets_indexes[i];
       m_VideoBlocks[iBufferIndex].packets[iPacketIndexToFix].bEmpty = false;
       m_VideoBlocks[iBufferIndex].packets[iPacketIndexToFix].bReconstructed = true;
-      m_VideoBlocks[iBufferIndex].packets[iPacketIndexToFix].bOutputed = false;
       m_VideoBlocks[iBufferIndex].packets[iPacketIndexToFix].uReceivedTime = g_TimeNow;
       m_VideoBlocks[iBufferIndex].iRecvDataPackets++;
       if ( iPacketIndexToFix > m_VideoBlocks[iBufferIndex].iMaxReceivedDataPacketIndex )
@@ -320,89 +328,114 @@ void VideoRxPacketsBuffer::_check_do_ec_for_video_block(int iBufferIndex)
       memcpy(pPHToFix, pPHGood, sizeof(t_packet_header));
       memcpy(pPHVSToFix, pPHVSGood, sizeof(t_packet_header_video_segment));
       
+      // Fix packet header
       pPHToFix->total_length = sizeof(t_packet_header) + sizeof(t_packet_header_video_segment) + pPHVSGood->uCurrentBlockPacketSize;
       pPHToFix->packet_flags &= ~PACKET_FLAGS_BIT_RETRANSMITED;
-      pPHToFix->stream_packet_idx = (pPHGood->stream_packet_idx & PACKET_FLAGS_MASK_STREAM_INDEX) | (((pPHGood->stream_packet_idx & PACKET_FLAGS_MASK_STREAM_PACKET_IDX) + (iPacketIndexToFix-iPacketIndexGood)) & PACKET_FLAGS_MASK_STREAM_PACKET_IDX);
+      u32 uStreamPacketIndex = pPHGood->stream_packet_idx & PACKET_FLAGS_MASK_STREAM_PACKET_IDX;
+      uStreamPacketIndex += (iPacketIndexToFix-iPacketIndexGood);
+      pPHToFix->stream_packet_idx = (pPHGood->stream_packet_idx & PACKET_FLAGS_MASK_STREAM_INDEX) | ( uStreamPacketIndex & PACKET_FLAGS_MASK_STREAM_PACKET_IDX);
       pPHToFix->radio_link_packet_index = pPHGood->radio_link_packet_index + (iPacketIndexToFix-iPacketIndexGood);
 
+      if ( bIsEOF )
+      {
+         u16 uEOFDelta = iEOFDeltaFromBlockStart + iPacketIndexToFix;
+         if ( uEOFDelta <= PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK )
+         {
+            pPHToFix->packet_flags_extended |= (PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK & uEOFDelta);
+            pPHToFix->packet_flags_extended |= PACKET_FLAGS_EXTENDED_BIT_END_OF_TRANSMISSION_FRAME;
+            if ( bHasDataAfterEOF )
+               pPHToFix->packet_flags_extended |= PACKET_FLAGS_EXTENDED_BIT_HAS_DATA_AFTER_VIDEO;
+         }
+      }
+
+      // Fix video segment packet header
       pPHVSToFix->uCurrentBlockPacketIndex = iPacketIndexToFix;
       pPHVSToFix->uStreamInfoFlags = 0;
       pPHVSToFix->uStreamInfo = 0;
+
+      t_packet_header_video_segment_important* pPHVSImp = m_VideoBlocks[iBufferIndex].packets[iPacketIndexToFix].pPHVSImp;
+      if ( pPHVSImp->uVideoImportantFlags & VIDEO_IMPORTANT_FLAG_EOF )
+      {
+         m_bFrameEndDetected = true;
+         m_uFrameEndDetectedTime = g_TimeNow;
+         m_VideoBlocks[iBufferIndex].iEndOfFrameDetectedAtPacketIndex = iPacketIndexToFix;
+      }
    }
 }
 
-void VideoRxPacketsBuffer::_add_video_packet_to_buffer(int iBufferIndex, u8* pPacket, int iPacketLength)
+bool VideoRxPacketsBuffer::_add_video_packet_to_buffer(int iBufferIndex, u8* pPacket, int iPacketLength)
 {
    if ( (NULL == pPacket) || (iPacketLength < (int)(sizeof(t_packet_header)+sizeof(t_packet_header_video_segment) + sizeof(t_packet_header_video_segment_important))) || (iBufferIndex < 0) || (iBufferIndex >= MAX_RXTX_BLOCKS_BUFFER) )
-      return;
+      return false;
 
    t_packet_header* pPH = (t_packet_header*)pPacket;
    t_packet_header_video_segment* pPHVS = (t_packet_header_video_segment*)(pPacket + sizeof(t_packet_header));
    t_packet_header_video_segment_important* pPHVSImp = (t_packet_header_video_segment_important*)(pPacket + sizeof(t_packet_header) + sizeof(t_packet_header_video_segment));
 
+   /*   
+   log_line("DBG vrx add [%u/%u] (scheme %u/%u) to buf index %d, vrx buff current bottom index: %d/%d, video block: %u, empty? %s, top index: %d, video block: %u, empty? %s, max recv block packet index: %d",
+       pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex, 
+       pPHVS->uCurrentBlockDataPackets, pPHVS->uCurrentBlockECPackets, iBufferIndex,
+       m_iBottomBufferIndex, m_iBottomBufferPacketIndex, m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex,
+       (m_VideoBlocks[m_iBottomBufferIndex].iBlockDataPackets == 0)?"yes":"no",
+       m_iTopBufferIndex, m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex,
+       (m_VideoBlocks[m_iTopBufferIndex].iBlockDataPackets == 0)?"yes":"no",
+       m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex);
+   */
    if ( NULL != m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].pRawData )
    if ( ! m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].bEmpty )
-      return;
+      return false;
 
-   if ( NULL != m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].pRawData )
-   if ( m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].bOutputed )
-      return;
-
-   // Set basic video block info before check allocate block in buffer as it needs block info about packets   
+   // Set basic video block size info before check allocate block in buffer as it needs block info about packets
    m_VideoBlocks[iBufferIndex].uVideoBlockIndex = pPHVS->uCurrentBlockIndex;
-   m_VideoBlocks[iBufferIndex].uReceivedTime = g_TimeNow;
-   if ( pPHVS->uCurrentBlockPacketIndex > m_VideoBlocks[iBufferIndex].iMaxReceivedDataOrECPacketIndex )
+
+   if ( (0 == m_VideoBlocks[iBufferIndex].iBlockDataPackets) && (0 == m_VideoBlocks[iBufferIndex].iBlockECPackets) )
    {
-      if ( (pPHVS->uCurrentBlockDataPackets != m_VideoBlocks[iBufferIndex].iBlockDataPackets) ||
-           (pPHVS->uCurrentBlockECPackets != m_VideoBlocks[iBufferIndex].iBlockECPackets) )
-      {
-         for(u8 u=0; u<pPHVS->uCurrentBlockPacketIndex; u++)
-         {
-            if ( ! m_VideoBlocks[iBufferIndex].packets[u].bEmpty )
-            {
-               m_VideoBlocks[iBufferIndex].packets[u].pPHVS->uCurrentBlockDataPackets = pPHVS->uCurrentBlockDataPackets;
-               m_VideoBlocks[iBufferIndex].packets[u].pPHVS->uCurrentBlockECPackets = pPHVS->uCurrentBlockECPackets;
-            }
-         }
-      }
       m_VideoBlocks[iBufferIndex].iBlockDataPackets = pPHVS->uCurrentBlockDataPackets;
       m_VideoBlocks[iBufferIndex].iBlockECPackets = pPHVS->uCurrentBlockECPackets;
       m_VideoBlocks[iBufferIndex].iBlockDataSize = pPHVS->uCurrentBlockPacketSize;
    }
-   if ( ! _check_allocate_video_block_in_buffer(iBufferIndex) )
-      return;
+   if ( (pPHVS->uCurrentBlockDataPackets > m_VideoBlocks[iBufferIndex].iBlockDataPackets) ||
+        (pPHVS->uCurrentBlockPacketSize != m_VideoBlocks[iBufferIndex].iBlockDataSize) )
+   {
+      char szLog[128];
+      sprintf(szLog, "invalid video block: scheme changed from [%d/%d]-%d to [%u/%u]-%u",
+        m_VideoBlocks[iBufferIndex].iBlockDataPackets, m_VideoBlocks[iBufferIndex].iBlockECPackets, m_VideoBlocks[iBufferIndex].iBlockDataSize,
+        pPHVS->uCurrentBlockDataPackets, pPHVS->uCurrentBlockECPackets, pPHVS->uCurrentBlockPacketSize);
+      _empty_buffers(szLog, pPH, pPHVS);
+      return false;
+   }
 
-   if ( m_VideoBlocks[m_iTopBufferIndex].bEmpty )
+   if ( pPHVS->uCurrentBlockPacketIndex >= m_VideoBlocks[iBufferIndex].iMaxReceivedDataOrECPacketIndex )
+   if ( m_VideoBlocks[iBufferIndex].iBlockDataPackets != pPHVS->uCurrentBlockDataPackets )
+   {
+      //log_line("DBG updated video block scheme from [%d/%d] to [%u/%u] at packet index %u",
+      //   m_VideoBlocks[iBufferIndex].iBlockDataPackets, m_VideoBlocks[iBufferIndex].iBlockECPackets,
+      //pPHVS->uCurrentBlockDataPackets, pPHVS->uCurrentBlockECPackets, pPHVS->uCurrentBlockPacketIndex);
+
+      m_VideoBlocks[iBufferIndex].iBlockDataPackets = pPHVS->uCurrentBlockDataPackets;
+      m_VideoBlocks[iBufferIndex].iBlockECPackets = pPHVS->uCurrentBlockECPackets;
+
+      for(u8 u=0; u<pPHVS->uCurrentBlockDataPackets+pPHVS->uCurrentBlockECPackets; u++)
+      {
+         if ( NULL != m_VideoBlocks[iBufferIndex].packets[u].pRawData )
+         {
+            m_VideoBlocks[iBufferIndex].packets[u].pPHVS->uCurrentBlockDataPackets = pPHVS->uCurrentBlockDataPackets;
+            m_VideoBlocks[iBufferIndex].packets[u].pPHVS->uCurrentBlockECPackets = pPHVS->uCurrentBlockECPackets;
+         }
+      }
+   }
+
+   if ( ! _check_allocate_video_block_in_buffer(iBufferIndex) )
+      return false;
+
+   if ( m_bBuffersEmpty )
       log_line("[VRXBuffers] Start adding video packets to empty buffer. Adding [%u/%u] at buffer index %d",
          pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex, m_iTopBufferIndex);
+   m_bBuffersEmpty = false;
    
-   // Begin - Update Runtime Stats
+   m_VideoBlocks[iBufferIndex].uReceivedTime = g_TimeNow;
 
-   g_SMControllerRTInfo.uSliceUpdateTime[g_SMControllerRTInfo.iCurrentIndex] = g_TimeNow;
-   if ( pPHVS->uCurrentBlockPacketIndex < pPHVS->uCurrentBlockDataPackets )
-      g_SMControllerRTInfo.uRecvVideoDataPackets[g_SMControllerRTInfo.iCurrentIndex]++;
-   else
-      g_SMControllerRTInfo.uRecvVideoECPackets[g_SMControllerRTInfo.iCurrentIndex]++;
-
-   // To fix
-   //if ( pPHVF->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_IFRAME )
-   //   g_SMControllerRTInfo.uRecvFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= 0b01;
-   //else
-   //   g_SMControllerRTInfo.uRecvFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= 0b10;
-
-   // To fix
-   /*
-   if ( pPHVF->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_END_FRAME )
-   {
-      if ( pPHVF->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_IFRAME )
-         g_SMControllerRTInfo.uRecvFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= 0b0100;
-      else
-         g_SMControllerRTInfo.uRecvFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= 0b1000;
-   }
-   */
-   // End - Update Runtime Stats
-
-   m_VideoBlocks[iBufferIndex].bEmpty = false;
    if ( pPHVS->uCurrentBlockPacketIndex < pPHVS->uCurrentBlockDataPackets )
    {
       m_VideoBlocks[iBufferIndex].iRecvDataPackets++;
@@ -418,33 +451,42 @@ void VideoRxPacketsBuffer::_add_video_packet_to_buffer(int iBufferIndex, u8* pPa
          m_VideoBlocks[iBufferIndex].iMaxReceivedDataOrECPacketIndex = (int)pPHVS->uCurrentBlockPacketIndex;
    }
 
-   if ( ! (pPH->packet_flags & PACKET_FLAGS_BIT_RETRANSMITED) )
-   if ( pPHVS->uCurrentBlockPacketIndex < pPHVS->uCurrentBlockDataPackets )
-   if ( (pPHVSImp->uFrameAndNALFlags & VIDEO_PACKET_FLAGS_IS_END_OF_TRANSMISSION_FRAME) ||
-        (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_END) )
+   /*
+   log_line("DBG added [%u/%u], frame: %u, nal: %u, packet eof: %d, in %d, vid imp EOF: %d, end NAL: %d",
+      pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex,
+      pPHVS->uH264FrameIndex, pPHVS->uH264NALIndex,
+      (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_END_OF_TRANSMISSION_FRAME)?1:0,
+      pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK,
+      pPHVSImp->uVideoImportantFlags & VIDEO_IMPORTANT_FLAG_EOF,
+      (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_END));
+   */
+
+   if ( pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_END_OF_TRANSMISSION_FRAME )
+   if ( 0 == (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK) )
    {
       m_bFrameEndDetected = true;
       m_uFrameEndDetectedTime = g_TimeNow;
-      m_VideoBlocks[iBufferIndex].iEndOfFrameDetectedAtPacketIndex = ((int)pPHVS->uCurrentBlockPacketIndex) + (int)(pPHVSImp->uFrameAndNALFlags & 0x03);
+      m_VideoBlocks[iBufferIndex].iEndOfFrameDetectedAtPacketIndex = ((int)pPHVS->uCurrentBlockPacketIndex);
    }
+
+   if ( pPHVSImp->uVideoImportantFlags & VIDEO_IMPORTANT_FLAG_EOF )
+   {
+      m_bFrameEndDetected = true;
+      m_uFrameEndDetectedTime = g_TimeNow;
+      m_VideoBlocks[iBufferIndex].iEndOfFrameDetectedAtPacketIndex = ((int)pPHVS->uCurrentBlockPacketIndex);
+   }
+
    if ( pPHVS->uCurrentBlockPacketIndex >= pPHVS->uCurrentBlockDataPackets )
    if ( (m_VideoBlocks[iBufferIndex].iEndOfFrameDetectedAtPacketIndex != -1) ||
-        (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_END) )
+        (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_END_OF_FRAME) )
    {
       m_bFrameEndDetected = true;
       m_uFrameEndDetectedTime = g_TimeNow;
-   }
-   if ( pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_END )
-   if ( (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_I) || (pPHVS->uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_NAL_P) )
-   {
-      m_bFrameEndDetected = true;
-      m_uFrameEndDetectedTime = g_TimeNow;    
    }
 
    m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].uReceivedTime = g_TimeNow;
    m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].bEmpty = false;
    m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].bReconstructed = false;
-   m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].bOutputed = false;
    
    memcpy(m_VideoBlocks[iBufferIndex].packets[pPHVS->uCurrentBlockPacketIndex].pRawData, pPacket, iPacketLength);
    
@@ -459,8 +501,9 @@ void VideoRxPacketsBuffer::_add_video_packet_to_buffer(int iBufferIndex, u8* pPa
          memset(pVideoSource, 0, iSizeToZero);
    }
    _check_do_ec_for_video_block(iBufferIndex);
+   return true;
 }
-      
+
 // Returns true if the packet has the highest video block/packet index received (in order)
 bool VideoRxPacketsBuffer::checkAddVideoPacket(u8* pPacket, int iPacketLength)
 {
@@ -469,237 +512,241 @@ bool VideoRxPacketsBuffer::checkAddVideoPacket(u8* pPacket, int iPacketLength)
 
    t_packet_header* pPH = (t_packet_header*)pPacket;
    t_packet_header_video_segment* pPHVS = (t_packet_header_video_segment*)(pPacket + sizeof(t_packet_header));
-  
+
    // Empty buffers?
-   if ( m_VideoBlocks[m_iTopBufferIndex].bEmpty )
+   if ( m_bBuffersEmpty )
    {
-      // Wait for start of a block
-      if ( 0 != pPHVS->uCurrentBlockPacketIndex )
+      // Wait for start of a recoverable block
+      if ( (pPHVS->uCurrentBlockECPackets != 0) && (pPHVS->uCurrentBlockPacketIndex > pPHVS->uCurrentBlockECPackets/2) )
          return false;
-      m_iCountBlocksPresent = 1;
       _add_video_packet_to_buffer(m_iTopBufferIndex, pPacket, iPacketLength);
       return true;
    }
 
-   // Top block is not empty
-   // Non-empty buffers from now on
+   // Non-empty buffers from here on
 
    // On the current top block?
-   if ( m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex == pPHVS->uCurrentBlockIndex )
+   if (  pPHVS->uCurrentBlockIndex == m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex )
    {
-      _add_video_packet_to_buffer(m_iTopBufferIndex, pPacket, iPacketLength);
-      if ( pPHVS->uCurrentBlockPacketIndex >= m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex )
-         return true;
+      bool bIsNewMax = false;
+      if ( pPHVS->uCurrentBlockPacketIndex > m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex )
+         bIsNewMax = true;
+      if ( _add_video_packet_to_buffer(m_iTopBufferIndex, pPacket, iPacketLength) )
+         return bIsNewMax;
       return false;
    }
 
-   // Stream restarted?
-   if ( m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex > 200 )
-   if ( pPHVS->uCurrentBlockIndex < m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex - 200 )
+   // Stream restarted or rolled over?
+   if ( m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex >= MAX_RXTX_BLOCKS_BUFFER )
+   if ( pPHVS->uCurrentBlockIndex < m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex - MAX_RXTX_BLOCKS_BUFFER )
    {
-      _empty_buffers("stream restarted", pPH, pPHVS);
-      // Wait for start of a block
-      if ( pPHVS->uCurrentBlockPacketIndex != 0 )
+      _empty_buffers("vrxbuffer stream restarted", pPH, pPHVS);
+      // Wait for start of a recoverable block
+      if ( (pPHVS->uCurrentBlockECPackets != 0) && (pPHVS->uCurrentBlockPacketIndex > pPHVS->uCurrentBlockECPackets/2) )
          return false;
-      m_iCountBlocksPresent = 1;
       _add_video_packet_to_buffer(m_iTopBufferIndex, pPacket, iPacketLength);
       return true;
    }
 
-   // Compute difference from top
+   // Too old
+   if ( pPHVS->uCurrentBlockIndex < m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex )
+      return false;
+   if ( pPHVS->uCurrentBlockIndex == m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex )
+   if ( pPHVS->uCurrentBlockPacketIndex < m_iBottomBufferPacketIndex )
+      return false;
 
-   // Old block packet (older than top block)?
-
-   if ( pPHVS->uCurrentBlockIndex < m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex )
+   // Compute difference from top for older blocks
+   if ( pPHVS->uCurrentBlockIndex <= m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex )
    {
-      if ( pPHVS->uCurrentBlockIndex < m_VideoBlocks[m_iBottomBufferIndexToOutput].uVideoBlockIndex )
-         return false;
-
       u32 uDiffBlocks = m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex - pPHVS->uCurrentBlockIndex;
+      // Too old
       if ( uDiffBlocks >= MAX_RXTX_BLOCKS_BUFFER - 1 )
          return false;
 
       int iBufferIndex = m_iTopBufferIndex - (int) uDiffBlocks;
       if ( iBufferIndex < 0 )
          iBufferIndex += MAX_RXTX_BLOCKS_BUFFER;
-      _add_video_packet_to_buffer(iBufferIndex, pPacket, iPacketLength);
+
+      bool bIsNewMax = false;
+      if ( pPHVS->uCurrentBlockIndex == m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex )
+      if ( pPHVS->uCurrentBlockPacketIndex > m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex )
+         bIsNewMax = true;
+
+      if ( _add_video_packet_to_buffer(iBufferIndex, pPacket, iPacketLength) )
+         return bIsNewMax;
+
       return false;
    }
 
-   // Future block packet
+   // Only future blocks (greater than top) from here on
 
-   u32 uDiffBlocks = pPHVS->uCurrentBlockIndex - m_VideoBlocks[m_iBottomBufferIndexToOutput].uVideoBlockIndex;
-   if ( uDiffBlocks >= MAX_RXTX_BLOCKS_BUFFER - 1 )
+   u32 uDiffBlocks = pPHVS->uCurrentBlockIndex - m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex;
+   if ( (int)uDiffBlocks >= MAX_RXTX_BLOCKS_BUFFER - getCountBlocksInBuffer() - 1 )
    {
-      _empty_buffers("too much gap in received blocks", pPH, pPHVS);
+      char szLog[64];
+      sprintf(szLog, "too much gap (overflow) (%d blocks) in received blocks", (int)uDiffBlocks);
+      _empty_buffers(szLog, pPH, pPHVS);
 
-      if ( pPHVS->uCurrentBlockPacketIndex != 0 )
+      // Wait for start of a recoverable block
+      if ( (pPHVS->uCurrentBlockECPackets != 0) && (pPHVS->uCurrentBlockPacketIndex > pPHVS->uCurrentBlockECPackets/2) )
          return false;
-      m_iCountBlocksPresent = 1;
       _add_video_packet_to_buffer(m_iTopBufferIndex, pPacket, iPacketLength);
       return true;
    }
 
-   uDiffBlocks = pPHVS->uCurrentBlockIndex - m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex;
-
+   int iNextTop = m_iTopBufferIndex;
    for(u32 uBlk=m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex+1; uBlk<=pPHVS->uCurrentBlockIndex; uBlk++)
    {
-      m_iTopBufferIndex++;
-      if ( m_iTopBufferIndex >= MAX_RXTX_BLOCKS_BUFFER )
-         m_iTopBufferIndex = 0;
+      iNextTop++;
+      if ( iNextTop >= MAX_RXTX_BLOCKS_BUFFER )
+         iNextTop = 0;
 
-      if ( m_iTopBufferIndex == m_iBottomBufferIndexToOutput )
-      {
-         _empty_buffers("too old data in stream, inconsistent.", pPH, pPHVS);
-         // Wait for start of a block
-         if ( pPHVS->uCurrentBlockPacketIndex != 0 )
-            return false;
-         m_iCountBlocksPresent = 1;
-         _add_video_packet_to_buffer(m_iTopBufferIndex, pPacket, iPacketLength);
-         return true;
-      }
-      if ( ! _check_allocate_video_block_in_buffer(m_iTopBufferIndex) )
+      if ( ! _check_allocate_video_block_in_buffer(iNextTop) )
          return false;
-      m_iCountBlocksPresent++;
-      _empty_block_buffer_index(m_iTopBufferIndex);
-      m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex = uBlk;
-      m_VideoBlocks[m_iTopBufferIndex].bEmpty = false;
-      m_VideoBlocks[m_iTopBufferIndex].uReceivedTime = g_TimeNow;
-      m_VideoBlocks[m_iTopBufferIndex].iBlockDataSize = pPHVS->uCurrentBlockPacketSize;
-      m_VideoBlocks[m_iTopBufferIndex].iBlockDataPackets = pPHVS->uCurrentBlockDataPackets;
-      m_VideoBlocks[m_iTopBufferIndex].iBlockECPackets = pPHVS->uCurrentBlockECPackets;
-      if ( m_iTopBufferIndex == m_iBottomBufferIndexToOutput )
-      {
-         m_iBottomPacketIndexToOutput = 0;
-         m_iBottomBufferIndexToOutput++;
-         if ( m_iBottomBufferIndexToOutput >= MAX_RXTX_BLOCKS_BUFFER )
-            m_iBottomBufferIndexToOutput = 0;
-         m_iCountBlocksPresent--;
-      }
+
+      _empty_block_buffer_index(iNextTop);
+      m_VideoBlocks[iNextTop].uVideoBlockIndex = uBlk;
+      m_VideoBlocks[iNextTop].uReceivedTime = g_TimeNow;
    }
+
+   m_iTopBufferIndex = iNextTop;
    _add_video_packet_to_buffer(m_iTopBufferIndex, pPacket, iPacketLength);
    return true;
 }
 
-u32 VideoRxPacketsBuffer::getBufferBottomReceivedVideoBlockIndex()
+int VideoRxPacketsBuffer::getBufferBottomIndex()
 {
-   return m_VideoBlocks[m_iBottomBufferIndexToOutput].uVideoBlockIndex;
+   return m_iBottomBufferIndex;
 }
 
-u32 VideoRxPacketsBuffer::getBufferTopReceivedVideoBlockIndex()
+u32 VideoRxPacketsBuffer::getBufferBottomVideoBlockIndex()
+{
+   return m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex;
+}
+
+int VideoRxPacketsBuffer::getBufferTopIndex()
+{
+   return m_iTopBufferIndex;
+}
+
+u32 VideoRxPacketsBuffer::getBufferTopVideoBlockIndex()
 {
    return m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex;
 }
+
 
 int VideoRxPacketsBuffer::getTopBufferMaxReceivedVideoBlockPacketIndex()
 {
    return m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex;
 }
 
-int VideoRxPacketsBuffer::getBlocksCountInBuffer()
+int VideoRxPacketsBuffer::getCountBlocksInBuffer()
 {
-   if ( m_VideoBlocks[m_iTopBufferIndex].bEmpty )
+   if ( m_bBuffersEmpty )
       return 0;
-
-   return m_iCountBlocksPresent;
-   /*
-   if ( m_iTopBufferIndex == m_iBottomBufferIndexToOutput )
-      return 1;
-   if ( m_iTopBufferIndex > m_iBottomBufferIndexToOutput )
-      return m_iTopBufferIndex - m_iBottomBufferIndexToOutput + 1;
-
-   return m_iTopBufferIndex + (MAX_RXTX_BLOCKS_BUFFER - m_iBottomBufferIndexToOutput) + 1;
-   */
+   if ( m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex > m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex )
+      return 0;
+   return (m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex - m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex + 1);
 }
 
-type_rx_video_block_info* VideoRxPacketsBuffer::getVideoBlockInBuffer(int iStartPosition)
+type_rx_video_block_info* VideoRxPacketsBuffer::getBlockInBufferFromBottom(int iDeltaPosition)
 {
-   int iIndex = m_iBottomBufferIndexToOutput + iStartPosition;
+   int iIndex = m_iBottomBufferIndex + iDeltaPosition;
    if ( iIndex >= MAX_RXTX_BLOCKS_BUFFER )
       iIndex -= MAX_RXTX_BLOCKS_BUFFER;
    return &(m_VideoBlocks[iIndex]);
 }
 
-type_rx_video_packet_info* VideoRxPacketsBuffer::getFirstPacketInBuffer(type_rx_video_block_info** ppOutputBlock)
+type_rx_video_packet_info* VideoRxPacketsBuffer::getBottomBlockAndPacketInBuffer(type_rx_video_block_info** ppOutputBlock)
 {
    if ( NULL != ppOutputBlock )
-      *ppOutputBlock = NULL;
+      *ppOutputBlock = &(m_VideoBlocks[m_iBottomBufferIndex]);
 
-   if ( m_VideoBlocks[m_iTopBufferIndex].bEmpty )
-      return NULL;
-
-   if ( m_iBottomBufferIndexToOutput == m_iTopBufferIndex )
-   if ( m_iBottomPacketIndexToOutput > m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex )
-      return NULL;
-
-   if ( NULL != ppOutputBlock )
-      *ppOutputBlock = &(m_VideoBlocks[m_iBottomBufferIndexToOutput]);
-   
-   return &(m_VideoBlocks[m_iBottomBufferIndexToOutput].packets[m_iBottomPacketIndexToOutput]);
+   return &(m_VideoBlocks[m_iBottomBufferIndex].packets[m_iBottomBufferPacketIndex]);
 }
 
-void VideoRxPacketsBuffer::goToNextPacketInBuffer()
-{
-   // If we are already at the top packet, do nothing
-   if ( m_VideoBlocks[m_iTopBufferIndex].bEmpty )
-      return;
-
-   if ( m_iBottomBufferIndexToOutput == m_iTopBufferIndex )
-   if ( m_iBottomPacketIndexToOutput >= m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataPacketIndex )
-      return;
-
-   // Will adavance by +1 the bottom rx packet index in buffer (either empty or outputed already)
-
-   if ( m_VideoBlocks[m_iBottomBufferIndexToOutput].packets[m_iBottomPacketIndexToOutput].bEmpty ||
-       (!m_VideoBlocks[m_iBottomBufferIndexToOutput].packets[m_iBottomPacketIndexToOutput].bOutputed) )
-   {
-      g_SMControllerRTInfo.uOutputedVideoPacketsSkippedBlocks[g_SMControllerRTInfo.iCurrentIndex]++;
-      if ( g_TimeNow > g_TimeLastVideoParametersOrProfileChanged + 3000 )
-      if ( g_TimeNow > g_TimeStart + 5000 )
-         g_SMControllerRTInfo.uTotalCountOutputSkippedBlocks++;
-   }
-   
-   m_iBottomPacketIndexToOutput++;
-
-   if ( m_iBottomPacketIndexToOutput >= m_VideoBlocks[m_iBottomBufferIndexToOutput].iBlockDataPackets )
-   {
-      m_iBottomPacketIndexToOutput = 0;
-      m_iBottomBufferIndexToOutput++;
-      if ( m_iBottomBufferIndexToOutput >= MAX_RXTX_BLOCKS_BUFFER )
-         m_iBottomBufferIndexToOutput = 0;
-      m_iCountBlocksPresent--;
-   }
-}
 
 int VideoRxPacketsBuffer::discardOldBlocks(u32 uCutOffTime)
 {
-   if ( m_VideoBlocks[m_iTopBufferIndex].bEmpty )
+   if ( m_bBuffersEmpty )
       return 0;
 
    int iCountDiscarded = 0;
-   while ( (m_iBottomBufferIndexToOutput != m_iTopBufferIndex) && (m_iCountBlocksPresent > 1) )
+   
+   while ( m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex <= m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex )
    {
-      if ( m_VideoBlocks[m_iBottomBufferIndexToOutput].uReceivedTime > uCutOffTime )
+      if ( (m_VideoBlocks[m_iBottomBufferIndex].uReceivedTime > uCutOffTime) ||
+           (m_VideoBlocks[m_iBottomBufferIndex].uReceivedTime == 0) )
          break;
+      
       /*
       if ( iCountDiscarded < 3 )
-         log_line("DBG discard bottom index: %d, block %u (recv time: %u ms ago, recv packets data,ec: %d,%d, scheme: %d/%d), top index: %d, block %u",
-            m_iBottomBufferIndexToOutput, m_VideoBlocks[m_iBottomBufferIndexToOutput].uVideoBlockIndex,
-            g_TimeNow - m_VideoBlocks[m_iBottomBufferIndexToOutput].uReceivedTime,
-            m_VideoBlocks[m_iBottomBufferIndexToOutput].iRecvDataPackets, m_VideoBlocks[m_iBottomBufferIndexToOutput].iRecvECPackets,
-            m_VideoBlocks[m_iBottomBufferIndexToOutput].iBlockDataPackets, m_VideoBlocks[m_iBottomBufferIndexToOutput].iBlockECPackets,
-            m_iTopBufferIndex, m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex);
+         log_line("DBG discard bottom index: %d, block %u (recv time: %u ms ago, recv packets data,ec: %d,%d, scheme: %d/%d), top index: %d, block %u, max recv pckt index: %d",
+            m_iBottomBufferIndex, m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex,
+            g_TimeNow - m_VideoBlocks[m_iBottomBufferIndex].uReceivedTime,
+            m_VideoBlocks[m_iBottomBufferIndex].iRecvDataPackets, m_VideoBlocks[m_iBottomBufferIndex].iRecvECPackets,
+            m_VideoBlocks[m_iBottomBufferIndex].iBlockDataPackets, m_VideoBlocks[m_iBottomBufferIndex].iBlockECPackets,
+            m_iTopBufferIndex, m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex, m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex);
       */
       iCountDiscarded++;
-      _empty_block_buffer_index(m_iBottomBufferIndexToOutput);
-      m_iBottomPacketIndexToOutput = 0;
-      m_iBottomBufferIndexToOutput++;
-      if ( m_iBottomBufferIndexToOutput >= MAX_RXTX_BLOCKS_BUFFER )
-         m_iBottomBufferIndexToOutput = 0;
-      m_iCountBlocksPresent--;
+      u32 uVideoBlockIndex = m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex;
+      _empty_block_buffer_index(m_iBottomBufferIndex);
+      if (m_iBottomBufferIndex == m_iTopBufferIndex )
+         m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex = uVideoBlockIndex;
+      m_iBottomBufferPacketIndex = 0;
+      m_iBottomBufferIndex++;
+      if ( m_iBottomBufferIndex >= MAX_RXTX_BLOCKS_BUFFER )
+         m_iBottomBufferIndex = 0;
+      m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex = uVideoBlockIndex+1;
    }
 
    return iCountDiscarded;
+}
+
+bool VideoRxPacketsBuffer::discardBottomBlockIfIncomplete()
+{
+   if ( m_bBuffersEmpty )
+      return false;
+   if ( m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex >= m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex )
+      return false;
+
+   if ( (m_VideoBlocks[m_iBottomBufferIndex].iBlockDataPackets == 0) ||
+        (m_VideoBlocks[m_iBottomBufferIndex].iRecvDataPackets < m_VideoBlocks[m_iBottomBufferIndex].iBlockDataPackets) )
+   {
+      u32 uVideoBlockIndex = m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex;
+      _empty_block_buffer_index(m_iBottomBufferIndex);
+      if (m_iBottomBufferIndex == m_iTopBufferIndex )
+         m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex = uVideoBlockIndex;
+      m_iBottomBufferPacketIndex = 0;
+      m_iBottomBufferIndex++;
+      if ( m_iBottomBufferIndex >= MAX_RXTX_BLOCKS_BUFFER )
+         m_iBottomBufferIndex = 0;
+      m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex = uVideoBlockIndex+1;
+
+      return true;
+   }
+   return false;
+}
+
+
+void VideoRxPacketsBuffer::advanceBottomPacketInBuffer()
+{
+   m_iBottomBufferPacketIndex++;
+
+   if ( m_iBottomBufferPacketIndex < m_VideoBlocks[m_iBottomBufferIndex].iBlockDataPackets )
+      return;
+   
+   u32 uVideoBlockIndex = m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex;
+   _empty_block_buffer_index(m_iBottomBufferIndex);
+   
+   if (m_iBottomBufferIndex == m_iTopBufferIndex )
+      m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex = uVideoBlockIndex;
+   m_iBottomBufferPacketIndex = 0;
+   m_iBottomBufferIndex++;
+   if ( m_iBottomBufferIndex >= MAX_RXTX_BLOCKS_BUFFER )
+      m_iBottomBufferIndex = 0;
+   m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex = uVideoBlockIndex+1;
+
 }
 
 void VideoRxPacketsBuffer::resetFrameEndDetectedFlag()

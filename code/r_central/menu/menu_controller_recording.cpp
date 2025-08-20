@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -105,7 +105,6 @@ MenuControllerRecording::MenuControllerRecording(void)
 
    float fSliderWidth = 0.12;
    m_pItemsSlider[0] = new MenuItemSlider("Delay (seconds)", "Sets a delay to automatically stop recording if link is lost for too long.", 1,100,20, fSliderWidth);
-   m_pItemsSlider[0]->setStep(1);
    m_iIndexStopOnLinkLostTime = addMenuItem(m_pItemsSlider[0]);
 }
 

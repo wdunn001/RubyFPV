@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -73,122 +73,6 @@ u32 vehicle_utils_getControllerId()
    log_line("No current controller id stored on file.");
    return 0;
 }
-
-bool videoLinkProfileIsOnlyVideoKeyframeChanged(type_video_link_profile* pOldProfile, type_video_link_profile* pNewProfile)
-{
-   if ( NULL == pOldProfile || NULL == pNewProfile )
-      return false;
-
-   type_video_link_profile tmp;
-   memcpy(&tmp, pNewProfile, sizeof(type_video_link_profile) );
-   tmp.keyframe_ms = pOldProfile->keyframe_ms;
-   tmp.uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
-   tmp.uProfileEncodingFlags |= (pOldProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME);
-
-   if ( 0 == memcmp(pOldProfile, &tmp, sizeof(type_video_link_profile)) )
-      return true;
-   return false;
-}
-
-bool videoLinkProfileIsOnlyBitrateChanged(type_video_link_profile* pOldProfile, type_video_link_profile* pNewProfile)
-{
-   if ( NULL == pOldProfile || NULL == pNewProfile )
-      return false;
-
-   type_video_link_profile tmp;
-   memcpy(&tmp, pNewProfile, sizeof(type_video_link_profile) );
-   tmp.bitrate_fixed_bps = pOldProfile->bitrate_fixed_bps;
-
-   if ( 0 == memcmp(pOldProfile, &tmp, sizeof(type_video_link_profile)) )
-   if ( pOldProfile->bitrate_fixed_bps != pNewProfile->bitrate_fixed_bps )
-      return true;
-
-   return false;
-}
-
-bool videoLinkProfileIsOnlyIPQuantizationDeltaChanged(type_video_link_profile* pOldProfile, type_video_link_profile* pNewProfile)
-{
-   if ( NULL == pOldProfile || NULL == pNewProfile )
-      return false;
-
-   type_video_link_profile tmp;
-   memcpy(&tmp, pNewProfile, sizeof(type_video_link_profile) );
-   tmp.iIPQuantizationDelta = pOldProfile->iIPQuantizationDelta;
-
-   if ( 0 == memcmp(pOldProfile, &tmp, sizeof(type_video_link_profile)) )
-   if ( pOldProfile->iIPQuantizationDelta != pNewProfile->iIPQuantizationDelta )
-      return true;
-
-   return false;
-}
-
-
-bool videoLinkProfileIsOnlyECSchemeChanged(type_video_link_profile* pOldProfile, type_video_link_profile* pNewProfile)
-{
-   if ( NULL == pOldProfile || NULL == pNewProfile )
-      return false;
-
-   type_video_link_profile tmp;
-   memcpy(&tmp, pNewProfile, sizeof(type_video_link_profile) );
-   tmp.iBlockPackets = pOldProfile->iBlockPackets;
-   tmp.iBlockECs = pOldProfile->iBlockECs;
-   tmp.iECPercentage = pOldProfile->iECPercentage;
- 
-   if ( 0 == memcmp(pOldProfile, &tmp, sizeof(type_video_link_profile)) )
-   if ( (pOldProfile->iBlockPackets != pNewProfile->iBlockPackets) ||
-        (pOldProfile->iBlockECs != pNewProfile->iBlockECs) ||
-        (pOldProfile->iECPercentage != pNewProfile->iECPercentage) )
-      return true;
-   return false;
-}
-
-bool videoLinkProfileIsOnlyAdaptiveVideoChanged(type_video_link_profile* pOldProfile, type_video_link_profile* pNewProfile)
-{
-   if ( NULL == pOldProfile || NULL == pNewProfile )
-      return false;
-
-   type_video_link_profile tmp;
-   memcpy(&tmp, pNewProfile, sizeof(type_video_link_profile) );
-   tmp.uProfileEncodingFlags = (tmp.uProfileEncodingFlags & (~(VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK | VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO | VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO))) | (pOldProfile->uProfileEncodingFlags & ( VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK | VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO | VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO));
-
-   if ( 0 == memcmp(pOldProfile, &tmp, sizeof(type_video_link_profile)) )
-   {
-      if ( (pOldProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) != (pNewProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK) )
-         return true;
-      if ( (pOldProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO) != (pNewProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ADAPTIVE_VIDEO_LINK_USE_CONTROLLER_INFO_TOO) )
-         return true;
-      if ( (pOldProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO) != (pNewProfile->uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO) )
-         return true;
-   }
-   return false;
-}
-
-// To fix
-/*
-void video_overwrites_init(shared_mem_video_link_overwrites* pSMLVO, Model* pModel)
-{
-   if ( NULL == pSMLVO )
-      return;
-   if ( NULL == pModel )
-      return;
-
-   pSMLVO->userVideoLinkProfile = pModel->video_params.user_selected_video_link_profile;
-   pSMLVO->currentVideoLinkProfile = pSMLVO->userVideoLinkProfile;
-   pSMLVO->uTimeSetCurrentVideoLinkProfile = g_TimeNow;
-   pSMLVO->currentProfileMaxVideoBitrate = utils_get_max_allowed_video_bitrate_for_profile_or_user_video_bitrate(pModel, pSMLVO->currentVideoLinkProfile);
-   pSMLVO->currentProfileAndLevelDefaultBitrate = pSMLVO->currentProfileMaxVideoBitrate;
-   pSMLVO->currentSetVideoBitrate = pSMLVO->currentProfileMaxVideoBitrate;
-
-   pSMLVO->currentDataBlocks = pModel->video_link_profiles[pSMLVO->currentVideoLinkProfile].block_packets;
-   pSMLVO->currentECBlocks = pModel->video_link_profiles[pSMLVO->currentVideoLinkProfile].block_fecs;
-   pSMLVO->currentProfileShiftLevel = 0;
-   pSMLVO->currentH264QUantization = 0;
-   
-   pSMLVO->hasEverSwitchedToLQMode = 0;
-   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-      pSMLVO->profilesTopVideoBitrateOverwritesDownward[i] = 0;
-}
-*/
 
 // Returns true if configuration has been updated
 // It's called only on vehicle side
@@ -283,7 +167,7 @@ bool configure_radio_interfaces_for_current_model(Model* pModel, shared_mem_proc
             }
             hardware_radio_sik_set_frequency_txpower_airspeed_lbt_ecc(pRadioHWInfo,
                uRadioLinkFrequency, pModel->radioInterfacesParams.interface_raw_power[iInterface],
-               pModel->radioLinksParams.link_datarate_data_bps[iLink],
+               pModel->radioLinksParams.downlink_datarate_data_bps[iLink],
                (u32)((pModel->radioLinksParams.link_radio_flags[iLink] & RADIO_FLAGS_SIK_ECC)?1:0),
                (u32)((pModel->radioLinksParams.link_radio_flags[iLink] & RADIO_FLAGS_SIK_LBT)?1:0),
                (u32)((pModel->radioLinksParams.link_radio_flags[iLink] & RADIO_FLAGS_SIK_MCSTR)?1:0),

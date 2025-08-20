@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -1237,6 +1237,10 @@ void RenderEngine::drawRoundRect(float xPos, float yPos, float fWidth, float fHe
 {
 }
 
+void RenderEngine::drawRoundRectMenu(float xPos, float yPos, float fWidth, float fHeight, float fCornerRadius)
+{
+}
+     
 void RenderEngine::drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3)
 {
 }

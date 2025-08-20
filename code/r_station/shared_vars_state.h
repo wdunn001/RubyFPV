@@ -40,17 +40,38 @@ typedef struct
    u32 uMaxCommandRoundtripMiliseconds;
    u32 uMinCommandRoundtripMiliseconds;
 
+   // Transmission frame info
+   u32 uTimeLastDequeuedFrameData;
+   u32 uTimeLastFrameStart;
+   u16 uCurrentFrameId;
+   int iLastVideoDatarateBPS;
+   bool bIsReceivingFrameData;
+   bool bIsFrameEndDetected;
+   bool bIsFrameEnded;
+   u32 uTimeStartWindowTxData;
+   u32 uTimeEndWindowTxData;
+   u32 uTimeLastTxData;
+
    // Adaptive video info
    bool bIsDoingRetransmissions;
-   bool bIsDoingAdaptive;
-   u8 uPendingVideoProfileToSet;
-   u32 uPendingVideoProfileToSetRequestedBy;
-   u32 uVideoProfileRequestId;
-   u32 uLastTimeSentVideoProfileRequest;
-   u32 uLastTimeRecvVideoProfileAck;
+   bool bIsAdaptiveVideoActive;
+   u32 uAdaptiveVideoActivationTime;
+   bool bDidFirstTimeAdaptiveHandshake;
+   u32 uAdaptiveVideoLastCheckTime;
+   u32 uAdaptiveVideoRequestId;
+   u32 uAdaptiveVideoAckId;
+   u32 uLastTimeSentAdaptiveVideoRequest;
+   u32 uLastTimeRecvAdaptiveVideoAck;
 
-   u32 uPendingKeyFrameToSet;
-   u8 uVideoKeyframeRequestId;
+   u32 uCurrentAdaptiveVideoTargetVideoBitrateBPS;
+   u16 uCurrentAdaptiveVideoECScheme; // high: data, low: EC
+   u8  uCurrentDRBoost;
+   int iCurrentAdaptiveVideoKeyFrameMsTarget;
+   u32 uPendingVideoBitrateToSet;
+   u16 uPendingECSchemeToSet;
+   u8  uPendingDRBoostToSet;
+   int iPendingKeyFrameMsToSet;
+   int iAdaptiveLevelNow; // from 0 to max lowest adaptive level
 } ALIGN_STRUCT_SPEC_INFO type_global_state_vehicle_runtime_info;
 
 

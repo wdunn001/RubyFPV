@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -226,25 +226,6 @@ void shared_mem_video_frames_stats_radio_out_close(shared_mem_video_frames_stats
    if ( NULL != pAddress )
       munmap(pAddress, sizeof(shared_mem_video_frames_stats));
 }
-
-shared_mem_video_link_graphs* shared_mem_video_link_graphs_open_for_read()
-{
-   void *retVal = open_shared_mem_for_read(SHARED_MEM_VIDEO_LINK_GRAPHS , sizeof(shared_mem_video_link_graphs));
-   return (shared_mem_video_link_graphs*)retVal;
-}
-
-shared_mem_video_link_graphs* shared_mem_video_link_graphs_open_for_write()
-{
-   void *retVal = open_shared_mem_for_write(SHARED_MEM_VIDEO_LINK_GRAPHS , sizeof(shared_mem_video_link_graphs));
-   return (shared_mem_video_link_graphs*)retVal;
-}
-
-void shared_mem_video_link_graphs_close(shared_mem_video_link_graphs* pAddress)
-{
-   if ( NULL != pAddress )
-      munmap(pAddress, sizeof(shared_mem_video_link_graphs));
-}
-
 
 t_packet_header_rc_info_downstream* shared_mem_rc_downstream_info_open_read()
 {

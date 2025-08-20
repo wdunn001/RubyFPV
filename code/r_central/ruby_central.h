@@ -43,8 +43,8 @@ int ruby_get_start_sequence_step();
 
 void ruby_signal_alive();
 
-void ruby_pause_watchdog();
-void ruby_resume_watchdog();
+void ruby_pause_watchdog(const char* szReason);
+void ruby_resume_watchdog(const char* szReason);
 
 void synchronize_shared_mems();
 
@@ -54,3 +54,5 @@ void ruby_mark_reinit_hdmi_display();
 void ruby_reinit_hdmi_display();
 
 bool ruby_central_has_sdcard_update(bool bDoUpdateToo);
+void ruby_central_show_mira(bool bShow);
+bool ruby_central_is_showing_mira();

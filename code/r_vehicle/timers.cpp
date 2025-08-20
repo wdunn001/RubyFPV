@@ -1,9 +1,6 @@
 #include "timers.h"
 
 // Globals
-
-u32 g_TimeNow = 0;
-u32 g_TimeStart = 0;
 u32 g_TimeLastPeriodicCheck = 0;
 
 // Vehicle
@@ -29,6 +26,10 @@ u32 g_TimeLastQualityMeasurement = 0;
 u32 g_TimeFirstReceivedRadioPacketFromController = 0;
 u32 g_TimeLastReceivedFastRadioPacketFromController = 0;
 u32 g_TimeLastReceivedSlowRadioPacketFromController = 0;
+
+u32 g_LastTimeLostFastLinkFromController = 0;
+u32 g_LastTimeLostSlowLinkFromController = 0;
+
 u32 g_TimeLastDebugFPSComputeTime = 0;
 u32 g_TimeLastLiveLogCheck = 0;
 u32 g_TimeLastSetRadioLinkFlagsStartOperation = 0;

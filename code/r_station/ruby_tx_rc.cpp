@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -273,8 +273,6 @@ int main (int argc, char *argv[])
       g_bSearching = true;
 
    if ( strcmp(argv[argc-1], "-debug") == 0 )
-      g_bDebugState = true;
-   if ( g_bDebugState )
       log_enable_stdout();
   
    loadAllModels();
@@ -358,6 +356,7 @@ int main (int argc, char *argv[])
       g_iFPSFramesCount++;
       hardware_sleep_ms(iSleepTime);
 
+      g_uLoopCounter++;
       g_TimeNow = get_current_timestamp_ms();
       u32 tTime0 = g_TimeNow;
       if ( NULL != s_pProcessStats )

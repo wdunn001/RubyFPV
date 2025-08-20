@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -157,17 +157,6 @@ void osd_warnings_render()
    {
       xAlarm += osd_getVerticalBarWidth();
       xAlarmIcon += osd_getVerticalBarWidth();
-   }
-
-   if ( g_bVideoProcessing || s_bDebugOSDShowAll )
-   if ( ( g_TimeNow / 500 ) % 2 )
-   {
-      osd_set_colors();
-      g_pRenderEngine->drawIcon(xAlarmIcon, yAlarmIcon, 1.2*height_text/g_pRenderEngine->getAspectRatio(), 1.2*height_text, g_idIconCamera);
-      g_pRenderEngine->drawText(xAlarm, yAlarm, g_idFontOSDWarnings, "Processing video file...");
-
-      yAlarm -= dyAlarm;
-      yAlarmIcon -= dyAlarm;
    }
 
    for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )

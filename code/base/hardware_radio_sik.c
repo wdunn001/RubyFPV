@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -1163,6 +1163,7 @@ int hardware_radio_sik_get_all_params_async(int iRadioInterfaceIndex, int* piFin
       *piFinished = -1;
       return 0;
    }
+   pthread_detach(s_pThreadGetSiKConfigAsync);
    s_iGetSiKConfigAsyncInterfaceIndex = iRadioInterfaceIndex;
    s_iGetSiKConfigAsyncRunning = 1;
    return 1;

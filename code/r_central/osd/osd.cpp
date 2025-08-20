@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -57,6 +57,7 @@
 #include "../../base/hardware.h"
 #include "../../base/hw_procs.h"
 #include "../../base/utils.h"
+#include "../../base/tx_powers.h"
 
 #include "../link_watch.h"
 #include "../pairing.h"
@@ -420,7 +421,10 @@ float osd_show_video_link_mbs(float xPos, float yPos, bool bLeft)
    if ( pActiveModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_LEFT_RIGHT )
       bMultiLine = true;
 
+   u32 uVideoBitrate = 0;
    u32 totalMaxVideo_bps = 0;
+   if ( g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].bGotRubyTelemetryInfo )
+      uVideoBitrate = g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtended.downlink_tx_video_bitrate_bps;
    if ( g_bIsRouterReady )
    {
       for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
@@ -432,23 +436,18 @@ float osd_show_video_link_mbs(float xPos, float yPos, bool bLeft)
       }
    }
 
+   u32 uMaxVideoRadioBitrate = pActiveModel->getMaxVideoBitrateSupportedForCurrentRadioLinks();
+
    strcpy(szSuffix, "Mbps");
 
-   //if ( ! g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].bGotRubyTelemetryInfo )
+   if ( ! g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].bGotRubyTelemetryInfo )
       sprintf(szBuff,"%.1f", totalMaxVideo_bps/1000.0/1000.0);
-   //else
+   else
       //sprintf(szBuff, "%.1f (%.1f)", totalMaxVideo_bps/1000.0/1000.0, g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtended.downlink_tx_video_bitrate_bps/1000.0/1000.0);
-      //sprintf(szBuff, "%.1f", g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerRubyTelemetryExtended.downlink_tx_video_bitrate_bps/1000.0/1000.0);
+      //sprintf(szBuff, "%.1f", uVideoBitrate/1000.0/1000.0);
+      sprintf(szBuff,"%.1f", totalMaxVideo_bps/1000.0/1000.0);
 
-   u32 uMaxVideoRadioDataRate = pActiveModel->getRadioLinkVideoDataRateBSP(0);
-   if ( pActiveModel->radioLinksParams.links_count > 1 )
-   if ( pActiveModel->getRadioLinkVideoDataRateBSP(1) > uMaxVideoRadioDataRate )
-      uMaxVideoRadioDataRate = pActiveModel->getRadioLinkVideoDataRateBSP(1);
-   if ( pActiveModel->radioLinksParams.links_count > 2 )
-   if ( pActiveModel->getRadioLinkVideoDataRateBSP(2) > uMaxVideoRadioDataRate )
-      uMaxVideoRadioDataRate = pActiveModel->getRadioLinkVideoDataRateBSP(2);
-
-   if ( totalMaxVideo_bps >= (float)(uMaxVideoRadioDataRate) * DEFAULT_VIDEO_LINK_MAX_LOAD_PERCENT / 100.0 )
+   if ( uVideoBitrate >= uMaxVideoRadioBitrate )
       g_pRenderEngine->setColors(get_Color_IconWarning());
    if ( g_bHasVideoDataOverloadAlarm && (g_TimeLastVideoDataOverloadAlarm > 0) && (g_TimeNow <  g_TimeLastVideoDataOverloadAlarm + 5000) )
       g_pRenderEngine->setColors(get_Color_IconError());
@@ -458,15 +457,15 @@ float osd_show_video_link_mbs(float xPos, float yPos, bool bLeft)
       if ( bMultiLine )
       {
          float height_text = osd_getFontHeight();
-         osd_show_value_left(xPos,yPos-0.4*osd_getSpacingV(), szBuff, g_idFontOSD);
+         osd_show_value_left(xPos,yPos, szBuff, g_idFontOSD);
          yPos += height_text;
-         osd_show_value_left(xPos,yPos-0.4*osd_getSpacingV(), szSuffix, g_idFontOSDSmall);
+         osd_show_value_left(xPos,yPos, szSuffix, g_idFontOSDSmall);
       }
       else
-         w = osd_show_value_sufix_left(xPos,yPos-0.4*osd_getSpacingV(), szBuff, szSuffix, g_idFontOSD, g_idFontOSDSmall);
+         w = osd_show_value_sufix_left(xPos,yPos, szBuff, szSuffix, g_idFontOSDSmall, g_idFontOSDSmall);
    }
    else
-      w = osd_show_value_sufix(xPos,yPos-0.4*osd_getSpacingV(), szBuff, szSuffix, g_idFontOSD, g_idFontOSDSmall);
+      w = osd_show_value_sufix(xPos,yPos, szBuff, szSuffix, g_idFontOSDSmall, g_idFontOSDSmall);
 
    osd_set_colors();
    return w;
@@ -638,6 +637,91 @@ float osd_show_home(float xPos, float yPos, bool showHeading, float fScale)
    osd_set_colors();
 
    return fWidth + 0.01;
+}
+
+// Returns new xPos
+float osd_show_txpowers(float xPos)
+{
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+   if ( NULL == pActiveModel )
+      return xPos;
+
+   float height_text = osd_getFontHeight();
+
+   for( int iVehicleRadioLink=pActiveModel->radioLinksParams.links_count-1; iVehicleRadioLink >= 0; iVehicleRadioLink-- )
+   {
+      char szTxPower[32];
+      bool bRed = true;
+      bool bYellow = false;
+      bool bPITMode = false;
+
+      t_structure_vehicle_info* pVRTInfo = get_vehicle_runtime_info_for_vehicle_id(pActiveModel->uVehicleId);
+      if ( (NULL != pVRTInfo) && pVRTInfo->bGotRubyTelemetryInfo && (pVRTInfo->headerRubyTelemetryExtended.uExtraRubyFlags & FLAG_RUBY_TELEMETRY_EXTRA_FLAGS_IS_IN_TX_PIT_MODE) )
+         bPITMode = true;
+      if ( (NULL != pVRTInfo) && pVRTInfo->bGotRubyTelemetryInfo && (pVRTInfo->headerRubyTelemetryExtended.uExtraRubyFlags & FLAG_RUBY_TELEMETRY_EXTRA_FLAGS_IS_IN_TX_PIT_MODE_HOT) )
+         bPITMode = true;
+
+      strcpy(szTxPower, "0 mW");
+      if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
+         strcpy(szTxPower, "- mW");
+      else if ( pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink] <= 0 )
+      {
+         strcpy(szTxPower, "N/A mW");
+         bYellow = true;
+      }
+      else
+      {
+         /*
+         int iPowerMw = -1;
+         for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
+         {
+            if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] != iVehicleRadioLink )
+               continue;
+            if ( ! hardware_radio_type_is_ieee(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) )
+               continue;
+
+            int iCardModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[i];
+            iPowerMw = tx_powers_convert_raw_to_mw(g_pCurrentModel->hwCapabilities.uBoardType, iCardModel, g_pCurrentModel->radioInterfacesParams.interface_raw_power[i]);
+            break;
+         }
+         */
+         int iPowerMw = pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink];
+         if ( iPowerMw < 1000 )
+            sprintf(szTxPower, "%d mW", iPowerMw);
+         else
+            sprintf(szTxPower, "%.1f W", ((float)iPowerMw)/1000.0);
+
+         if ( iPowerMw >= 0 )
+            bRed = false;
+         if ( iPowerMw < 10 )
+            bYellow = true;
+
+         if ( !(g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS) )
+            bRed = true;
+
+         if ( !(g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED) )
+            bRed = true;
+      }
+      if ( bRed || bPITMode )
+         g_pRenderEngine->setColors(get_Color_IconError());
+      else if ( bYellow )
+         g_pRenderEngine->setColors(get_Color_IconWarning());
+      else
+         g_pRenderEngine->setColors(get_Color_OSDText());
+
+      float fyPower = osd_getMarginY() + 0.5*osd_getSpacingV();
+      float fPowerWidth = g_pRenderEngine->textWidth(g_idFontOSD, szTxPower);
+      float fwPowerIcon = osd_getFontHeight()*0.6;
+      osd_show_value_left(xPos, fyPower, szTxPower, g_idFontOSD);
+      if ( bPITMode )
+         osd_show_value(xPos-fPowerWidth*0.7, fyPower + height_text, "PIT", g_idFontOSD);
+      else
+         g_pRenderEngine->drawIcon(xPos - 0.5*fPowerWidth - 0.5 * fwPowerIcon, fyPower + height_text, fwPowerIcon, fwPowerIcon * g_pRenderEngine->getAspectRatio(), g_idIconRadio);
+      g_pRenderEngine->setColors(get_Color_OSDText());
+      xPos -= fPowerWidth;
+      xPos -= osd_getSpacingH();
+   }
+   return xPos;
 }
 
 float osd_show_throttle(float xPos, float yPos, bool bLeft)
@@ -1062,7 +1146,7 @@ void osd_show_recording(bool bShowWhenStopped, float xPos, float yPos)
    //static long s_lMemDiskOSDTotal = 0;
    //static u32  s_lMemDiskLastTime = 0;
 
-   if ( (! g_bVideoRecordingStarted) && (!s_bDebugOSDShowAll) )
+   if ( (! g_bIsVideoRecording) && (!s_bDebugOSDShowAll) )
    {
       if ( !(g_pCurrentModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_LAYOUT_LEFT_RIGHT) )
       if ( g_pCurrentModel->osd_params.osd_flags[osd_get_current_layout_index()] & OSD_FLAG_SHOW_VIDEO_MODE )
@@ -1107,7 +1191,7 @@ void osd_show_recording(bool bShowWhenStopped, float xPos, float yPos)
    Preferences *p = get_Preferences();
 
    char szTime[64];
-   u32 tMili = g_TimeNow - g_uVideoRecordStartTime;
+   u32 tMili = g_TimeNow - g_uVideoRecordingStartTime;
 
    //if ( p->iVideoDestination == prefVideoDestination_Disk )
    {
@@ -2130,6 +2214,9 @@ void osd_render_elements()
       }
    }
 
+   if ( s_bDebugOSDShowAll || (pActiveModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_SHOW_TX_POWER) )
+      x = osd_show_txpowers(x);
+
    float xStartRecording = x;
    osd_show_recording(true,x,y);
 
@@ -2618,6 +2705,8 @@ void _osd_render_msp(Model* pModel)
       uImgId = g_idImgMSPOSDINAV;
    if ( (pRuntimeInfo->mspState.headerTelemetryMSP.uFlags & MSP_FLAGS_FC_TYPE_MASK) == MSP_FLAGS_FC_TYPE_ARDUPILOT )
       uImgId = g_idImgMSPOSDArdupilot;
+   if ( (pRuntimeInfo->mspState.headerTelemetryMSP.uFlags & MSP_FLAGS_FC_TYPE_MASK) == MSP_FLAGS_FC_TYPE_PITLAB )
+      uImgId = g_idImgMSPOSDPitLab;
    if ( (pModel->osd_params.uFlags & OSD_BIT_FLAGS_MASK_MSPOSD_FONT) != 0 )
    {
       u32 uFont = pModel->osd_params.uFlags & OSD_BIT_FLAGS_MASK_MSPOSD_FONT;
@@ -2627,6 +2716,8 @@ void _osd_render_msp(Model* pModel)
          uImgId = g_idImgMSPOSDINAV;
       if ( uFont == 3 )
          uImgId = g_idImgMSPOSDArdupilot;
+      if ( uFont == 4 )
+         uImgId = g_idImgMSPOSDPitLab;
    }
    
    int iImgCharWidth = 36;

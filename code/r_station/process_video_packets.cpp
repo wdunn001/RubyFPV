@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -109,7 +109,6 @@ int _process_received_video_data_packet(int iInterfaceIndex, u8* pPacket, int iP
 
    pProcessorVideo->handleReceivedVideoPacket(iInterfaceIndex, pPacket, iPacketLength);
 
-
 // To fix
      /*
 
@@ -137,9 +136,10 @@ int process_received_video_packet(int iInterfaceIndex, u8* pPacket, int iPacketL
          return -1;
 
    t_packet_header* pPH = (t_packet_header*)pPacket;
+
    u32 uVehicleId = pPH->vehicle_id_src;
    Model* pModel = findModelWithId(uVehicleId, 111);
-   if ( (NULL == pModel) || (get_sw_version_build(pModel) < 284) )
+   if ( (NULL == pModel) || (get_sw_version_build(pModel) < 290) )
       return -1;
 
    if ( ! is_sw_version_atleast(pModel, 10, 6) )
@@ -155,13 +155,11 @@ int process_received_video_packet(int iInterfaceIndex, u8* pPacket, int iPacketL
       nRet = _process_received_video_data_packet(iInterfaceIndex, pPacket, iPacketLength);
    }
 
-   if ( pPH->packet_type == PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL_ACK )
+   if ( pPH->packet_type == PACKET_TYPE_VIDEO_ADAPTIVE_VIDEO_PARAMS_ACK )
    {
       u32 uRequestId = 0;
-      u8 uVideoProfile = 0;
       memcpy((u8*)&uRequestId, pPacket + sizeof(t_packet_header), sizeof(u32));
-      memcpy((u8*)&uVideoProfile, pPacket + sizeof(t_packet_header) + sizeof(u32), sizeof(u8));
-      adaptive_video_received_video_profile_switch_confirmation(uRequestId, uVideoProfile, pPH->vehicle_id_src, iInterfaceIndex);
+      adaptive_video_received_vehicle_msg_ack(uRequestId, pPH->vehicle_id_src, iInterfaceIndex);
    }
    return nRet;
 }

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -129,9 +129,14 @@ int main(int argc, char *argv[])
    strcpy(szFileAlarm, FOLDER_RUBY_TEMP);
    strcat(szFileAlarm, FILE_TEMP_ALARM_ON);
 
+   char szFileReboot[MAX_FILE_PATH_SIZE];
+   strcpy(szFileReboot, FOLDER_RUBY_TEMP);
+   strcat(szFileReboot, "reboot.txt");
+
    bool bHasAlarm = false;
    bool bHasUpdateInProgress = false;
    bool bHasUpdateApplyInProgress = false;
+   bool bHasReboot = false;
 
    int nSleepMs = 100;
 
@@ -139,6 +144,7 @@ int main(int argc, char *argv[])
 
    while ( ! gbQuit )
    {
+      g_uLoopCounter++;
       u32 uTimeStart = get_current_timestamp_ms();
 
       _check_cpu_watchdog(uTimeStart, counter);
@@ -149,6 +155,14 @@ int main(int argc, char *argv[])
 
       if ( (counter % 20) == 0 )
       {
+         if ( ! bHasReboot )
+         if ( access(szFileReboot, R_OK) != -1 )
+         {
+            log_line("Switched to rebootr state.");
+            bHasReboot = true;
+            nSleepMs = 50;
+         }
+
          if ( access(szFileAlarm, R_OK) != -1 )
             bHasAlarm = true;
          else
@@ -176,7 +190,20 @@ int main(int argc, char *argv[])
             log_line("Pi is alive");
       }
 
-      if ( bHasAlarm )
+      if ( bHasReboot )
+      {
+         if ( (counter % 40) < 20 )
+         {
+            if ( counter % 2 )
+            {
+               nLeds = 1 - nLeds;
+               power_leds(nLeds);
+            }
+         }
+         else
+            power_leds(0);
+      }
+      else if ( bHasAlarm )
       {
          if ( counter % 2 )
          {

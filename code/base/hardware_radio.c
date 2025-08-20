@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -77,27 +77,32 @@ void reset_runtime_radio_rx_info(type_runtime_radio_rx_info* pRuntimeRadioRxInfo
    pRuntimeRadioRxInfo->nDataRateBPSMCS = 0; // positive: bps, negative: mcs rate, 0: never
    pRuntimeRadioRxInfo->nRadiotapFlags = 0;
    pRuntimeRadioRxInfo->nAntennaCount = 1;
-   reset_runtime_radio_rx_info_dbminfo(pRuntimeRadioRxInfo);
+   reset_runtime_radio_rx_signal_info(&(pRuntimeRadioRxInfo->signalInfoAll));
+   reset_runtime_radio_rx_signal_info(&(pRuntimeRadioRxInfo->signalInfoVideo));
+   reset_runtime_radio_rx_signal_info(&(pRuntimeRadioRxInfo->signalInfoData));
 }
 
-void reset_runtime_radio_rx_info_dbminfo(type_runtime_radio_rx_info* pRuntimeRadioRxInfo)
+void reset_runtime_radio_rx_signal_info(type_runtime_radio_rx_signal_info* pRuntimeRadioRxSignalInfo)
 {
-   if ( NULL == pRuntimeRadioRxInfo )
+   if ( NULL == pRuntimeRadioRxSignalInfo )
       return;
 
-   for( int i=0; i<MAX_RADIO_ANTENNAS; i++ )
-   {
-      pRuntimeRadioRxInfo->nDbmLast[i] = 1000;
-      pRuntimeRadioRxInfo->nDbmLastChange[i] = 1000;
-      pRuntimeRadioRxInfo->nDbmAvg[i] = 1000;
-      pRuntimeRadioRxInfo->nDbmMin[i] = 1000;
-      pRuntimeRadioRxInfo->nDbmMax[i] = 1000;
-      pRuntimeRadioRxInfo->nDbmNoiseLast[i] = 1000;
-      pRuntimeRadioRxInfo->nDbmNoiseAvg[i] = 1000;
-      pRuntimeRadioRxInfo->nDbmNoiseMin[i] = 1000;
-      pRuntimeRadioRxInfo->nDbmNoiseMax[i] = 1000;
-      pRuntimeRadioRxInfo->uLastTimeCapture[i] = 0;
-   }
+   pRuntimeRadioRxSignalInfo->uLastTimeCapture = 0;
+   pRuntimeRadioRxSignalInfo->iDbmLast = 1000;
+   pRuntimeRadioRxSignalInfo->iDbmMin = 1000;
+   pRuntimeRadioRxSignalInfo->iDbmMax = 1000;
+   pRuntimeRadioRxSignalInfo->iDbmNoiseLast = 1000;
+   pRuntimeRadioRxSignalInfo->iDbmNoiseMin = 1000;
+   pRuntimeRadioRxSignalInfo->iDbmNoiseMax = 1000;
+   pRuntimeRadioRxSignalInfo->iSNRLast = 1000;
+   pRuntimeRadioRxSignalInfo->iSNRMin = 1000;
+   pRuntimeRadioRxSignalInfo->iSNRMax = 1000;
+   pRuntimeRadioRxSignalInfo->iDbmThreshMin = 1000;
+   pRuntimeRadioRxSignalInfo->iDbmThreshMinDatarate = 0;
+   pRuntimeRadioRxSignalInfo->iSNRThreshMin = 1000;
+   pRuntimeRadioRxSignalInfo->iSNRThreshMinDatarate = 0;
+   pRuntimeRadioRxSignalInfo->iSNRThreshMinDBMValue = 1000;
+   pRuntimeRadioRxSignalInfo->iSNRThreshMinSNRValue = 1000;
 }
 
 radio_hw_info_t* hardware_get_radio_info_array()
@@ -774,8 +779,12 @@ int _hardware_enumerate_wifi_radios()
 {
    #ifdef HW_PLATFORM_OPENIPC_CAMERA
    log_line("[HardwareRadio] Enumerating wifi radios for OpenIPC platform...");
+   #elif defined (HW_PLATFORM_RASPBERRY )
+   log_line("[HardwareRadio] Enumerating wifi radios for Raspberry platform...");
+   #elif defined (HW_PLATFORM_RADXA)
+   log_line("[HardwareRadio] Enumerating wifi radios for Radxa platform...");
    #else
-   log_line("[HardwareRadio] Enumerating wifi radios for linux/radxa/raspberry platform...");
+   log_line("[HardwareRadio] Enumerating wifi radios for generic Linux platform...");
    #endif
 
    char szDriver[128];
@@ -1814,13 +1823,6 @@ int _configure_radio_interface_atheros(int iInterfaceIndex, radio_hw_info_t* pRa
    hw_execute_bash_command(szComm, NULL);
    hardware_sleep_ms(uDelayMS);
    int dataRateMb = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS/1000/1000;
-   // To fix
-   //if ( ! s_bIsStation )
-   //if ( giDataRateMbAtheros > 0 )
-   //   dataRateMb = giDataRateMbAtheros;
-   
-   if ( dataRateMb == 0 )
-      dataRateMb = DEFAULT_RADIO_DATARATE_VIDEO/1000/1000;
    if ( dataRateMb > 0 )
       sprintf(szComm, "iw dev %s set bitrates legacy-2.4 %d lgi-2.4", pRadioHWInfo->szName, dataRateMb );
    else

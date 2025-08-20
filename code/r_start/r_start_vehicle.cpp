@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -55,13 +55,15 @@
 #include "../base/models.h"
 #include "../base/hardware.h"
 #include "../base/hardware_audio.h"
+#include "../base/hardware_camera.h"
+#include "../base/hardware_files.h"
 #include "../base/hw_procs.h"
 #include "../base/utils.h"
 #include "../base/ruby_ipc.h"
 #include "../base/tx_powers.h"
 #include "../common/string_utils.h"
 #include "../r_vehicle/launchers_vehicle.h"
-#include "../r_vehicle/video_source_csi.h"
+#include "../r_vehicle/video_sources.h"
 #include "../r_vehicle/shared_vars.h"
 #include "../r_vehicle/timers.h"
 #include "../utils/utils_vehicle.h"
@@ -111,7 +113,7 @@ void _set_default_sik_params_for_vehicle(Model* pModel)
             u32 uFreq = pModel->radioLinksParams.link_frequency_khz[iLinkIndex];
             hardware_radio_sik_set_frequency_txpower_airspeed_lbt_ecc(pRadioHWInfo,
                uFreq, pModel->radioInterfacesParams.interface_raw_power[i],
-               pModel->radioLinksParams.link_datarate_data_bps[iLinkIndex],
+               pModel->radioLinksParams.downlink_datarate_data_bps[iLinkIndex],
                (u32)((pModel->radioLinksParams.link_radio_flags[iLinkIndex] & RADIO_FLAGS_SIK_ECC)?1:0),
                (u32)((pModel->radioLinksParams.link_radio_flags[iLinkIndex] & RADIO_FLAGS_SIK_LBT)?1:0),
                (u32)((pModel->radioLinksParams.link_radio_flags[iLinkIndex] & RADIO_FLAGS_SIK_MCSTR)?1:0),
@@ -162,11 +164,6 @@ bool _check_radio_config_relay(Model* pModel)
          bMustSave = true;
       }
    }
-   
-   // Double check and remove the RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY flag from links and interfaces that are not relay links
-   
-   if ( pModel->validate_relay_links_flags() )
-      bMustSave = true;
 
    return bMustSave;
 }
@@ -298,6 +295,7 @@ bool _check_radio_config(Model* pModel)
 
    bMustSave |= _check_radio_config_relay(pModel);
 
+   bMustSave |= pModel->validateRadioSettings();
    log_line("Checking vehicle radio hardware configuration complete. Was updated and must save? %s", bMustSave?"yes":"no");
    log_line("========================================================================");
 
@@ -455,9 +453,8 @@ int r_start_vehicle(int argc, char *argv[])
          (modelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_LIVE_LOG)?"yes":"no",
          (modelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_RADIO_SILENCE_FAILSAFE)?"yes":"no",
          (modelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS)?"yes":"no",
-          (int)((modelVehicle.uDeveloperFlags >> 8) & 0xFF) );
-   log_line("Start sequence: Model has vehicle developer video link stats flag on: %s", (modelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_LINK_STATS)?"yes":"no");
-   log_line("Start sequence: Model has vehicle developer video link stats graphs on: %s", (modelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_LINK_GRAPHS)?"yes":"no");
+          (int)((modelVehicle.uDeveloperFlags >> DEVELOPER_FLAGS_WIFI_GUARD_DELAY_MASK_SHIFT) & 0xFF) );
+   log_line("Start sequence: Model has vehicle developer mode flag: %s", (modelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
 
    if ( modelVehicle.uModelFlags & MODEL_FLAG_DISABLE_ALL_LOGS )
    {
@@ -585,6 +582,37 @@ int r_start_vehicle(int argc, char *argv[])
 
    // Validate camera/video settings
 
+   #ifdef HW_PLATFORM_OPENIPC_CAMERA
+   log_line("Start sequence: Validate majestic config file...");
+   if ( 0 != hardware_camera_maj_validate_config() )
+      return 0;
+   log_line("Start sequence: Done validating majestic config file.");
+
+   if ( 0 != modelVehicle.camera_params[modelVehicle.iCurrentCamera].szCameraBinProfileName[0] )
+   {
+      modelVehicle.camera_params[modelVehicle.iCurrentCamera].szCameraBinProfileName[MAX_CAMERA_BIN_PROFILE_NAME-1] = 0;
+      log_line("Start sequence: Validate majestic calibration file: [%s]...", modelVehicle.camera_params[modelVehicle.iCurrentCamera].szCameraBinProfileName );
+      char szCalibrationFile[MAX_FILE_PATH_SIZE];
+      strcpy(szCalibrationFile, "/etc/sensors/c_");
+      strcat(szCalibrationFile, modelVehicle.camera_params[modelVehicle.iCurrentCamera].szCameraBinProfileName);
+      if ( NULL == strstr(szCalibrationFile, ".bin") )
+         strcat(szCalibrationFile, ".bin");
+
+      if ( access(szCalibrationFile, R_OK) == -1 )
+      {
+         int iCamType = modelVehicle.getActiveCameraType();
+         log_line("Start sequence: Calibration file is missing. Set default calibration for camera type: %d (%s).", iCamType, str_get_hardware_camera_type_string(iCamType));
+         modelVehicle.camera_params[modelVehicle.iCurrentCamera].iCameraBinProfile = 0;
+         modelVehicle.camera_params[modelVehicle.iCurrentCamera].szCameraBinProfileName[0] = 0;
+         hardware_camera_set_default_oipc_calibration(iCamType);
+         bMustSave = true;
+      }
+      else
+         log_line("Start sequence: Calibration file is ok.");
+   }
+   #endif
+
+   log_line("Start sequence: Validate camera settings...");
    if ( modelVehicle.find_and_validate_camera_settings() )
       bMustSave = true;
 
@@ -718,6 +746,7 @@ int r_start_vehicle(int argc, char *argv[])
    {
       sleep(maxTimeForProcess);
       counter++;
+      g_uLoopCounter++;
       g_TimeNow = get_current_timestamp_ms();
 
       if ( g_TimeNow > uTimeLoopLog + 10000 )
@@ -935,11 +964,7 @@ int r_start_vehicle(int argc, char *argv[])
          iRestartCount++;
 
          vehicle_stop_tx_router();
-         
-         if ( modelVehicle.hasCamera() )
-         if ( modelVehicle.isActiveCameraCSICompatible() || modelVehicle.isActiveCameraVeye() ) 
-            vehicle_stop_video_capture_csi(&modelVehicle);
-         
+         video_sources_stop_capture();         
          vehicle_stop_rx_commands();
          vehicle_stop_tx_telemetry();
          vehicle_stop_rx_rc();

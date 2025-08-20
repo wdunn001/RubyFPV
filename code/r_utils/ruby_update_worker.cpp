@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -52,8 +52,6 @@ bool g_bIsController = true;
 char g_szUpdateZipFileFullPath[MAX_FILE_PATH_SIZE];
 char g_szUpdateZipFileName[MAX_FILE_PATH_SIZE];
 char g_szUpdateUnpackFolder[MAX_FILE_PATH_SIZE];
-
-u32 g_TimeNow = 0;
 
 void handle_sigint(int sig) 
 { 

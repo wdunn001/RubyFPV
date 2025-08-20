@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -35,10 +35,10 @@
 #include "menu_controller.h"
 #include "menu_text.h"
 #include "menu_system_dev_logs.h"
-#include "menu_system_video_profiles.h"
 #include "menu_item_section.h"
 #include "menu_confirmation.h"
 #include "../popup_log.h"
+#include "../link_watch.h"
 #include "../../radio/radiolink.h"
 #include "../../base/utils.h"
 #include "../../base/hardware_files.h"
@@ -217,7 +217,7 @@ void MenuSystemDevLogs::exportAllLogs()
    }
 
    ruby_signal_alive();
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("export all logs");
 
    Popup* p = new Popup("Exporting. Please wait...",0.3,0.4, 0.5, 15);
    popups_add_topmost(p);
@@ -262,7 +262,7 @@ void MenuSystemDevLogs::exportAllLogs()
    ruby_signal_alive();
    sync();
    ruby_signal_alive();
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("finished export all logs");
    popups_remove(p);
    addMessage("Done. All logs have been copied to the USB memory stick on a folder named Ruby. You can now remove the USB memory stick.");
 }
@@ -319,8 +319,20 @@ void MenuSystemDevLogs::onSelectItem()
 
    if ( m_IndexLogServiceVehicle == m_SelectedIndex )
    {
-      if ( NULL == g_pCurrentModel )
+      if ( (NULL == g_pCurrentModel) ||
+           (!pairing_isStarted()) ||
+           (!link_is_vehicle_online_now(g_pCurrentModel->uVehicleId)) )
+      {
+         addMessage("You must be connected to a vehicle.");
+         valuesToUI();
          return;
+      }
+      if ( g_pCurrentModel->is_spectator )
+      {
+         addMessage("Can't change log settings on a spectator vehicle.");
+         valuesToUI();
+         return;
+      }
       int val = m_pItemsSelect[1]->getSelectedIndex();
       u32 uFlags = g_pCurrentModel->uModelFlags;
       if ( 0 == val )
@@ -343,22 +355,50 @@ void MenuSystemDevLogs::onSelectItem()
 
    if ( m_IndexEnableLiveLog == m_SelectedIndex )
    {
-      if ( NULL == g_pCurrentModel )
+      if ( (NULL == g_pCurrentModel) ||
+           (!pairing_isStarted()) ||
+           (!link_is_vehicle_online_now(g_pCurrentModel->uVehicleId)) )
+      {
+         addMessage("You must be connected to a vehicle.");
+         valuesToUI();
          return;
+      }
+      if ( g_pCurrentModel->is_spectator )
+      {
+         addMessage("Can't change log settings on a spectator vehicle.");
+         valuesToUI();
+         return;
+      }
+      u32 uDeveloperFlags = g_pCurrentModel->uDeveloperFlags;
       u32 enable = m_pItemsSelect[2]->getSelectedIndex();
       if ( 0 == enable )
       {
-         g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_LIVE_LOG);
+         uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_LIVE_LOG);
          popup_log_vehicle_remove();
       }
       else
-         g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_LIVE_LOG;
-      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_ENABLE_LIVE_LOG, enable, NULL, 0) )
-         valuesToUI();  
+         uDeveloperFlags |= DEVELOPER_FLAGS_BIT_LIVE_LOG;
+
+      if ( ! handle_commands_send_developer_flags(uDeveloperFlags) )
+         valuesToUI();
    }
 
    if ( m_IndexGetVehicleLogs == m_SelectedIndex )
    {
+      if ( (NULL == g_pCurrentModel) ||
+           (!pairing_isStarted()) ||
+           (!link_is_vehicle_online_now(g_pCurrentModel->uVehicleId)) )
+      {
+         addMessage("You must be connected to a vehicle.");
+         valuesToUI();
+         return;
+      }
+      if ( g_pCurrentModel->is_spectator )
+      {
+         addMessage("Can't change log settings on a spectator vehicle.");
+         valuesToUI();
+         return;
+      }
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_DOWNLOAD_FILE, FILE_ID_VEHICLE_LOGS_ARCHIVE, NULL, 0) )
          valuesToUI();
       else
@@ -367,9 +407,19 @@ void MenuSystemDevLogs::onSelectItem()
 
    if ( m_IndexLogLevelVehicle == m_SelectedIndex )
    {
-      if ( NULL == g_pCurrentModel )
+      if ( (NULL == g_pCurrentModel) ||
+           (!pairing_isStarted()) ||
+           (!link_is_vehicle_online_now(g_pCurrentModel->uVehicleId)) )
+      {
+         addMessage("You must be connected to a vehicle.");
+         valuesToUI();
          return;
-      ControllerSettings* pCS = get_ControllerSettings();
+      }
+      if ( g_pCurrentModel->is_spectator )
+      {
+         addMessage("Can't change log settings on a spectator vehicle.");
+         return;
+      }
       int iLogNow = 0;
       if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS )
          iLogNow = 1;
@@ -379,7 +429,7 @@ void MenuSystemDevLogs::onSelectItem()
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS;
 
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();
       else
       {
@@ -417,9 +467,18 @@ void MenuSystemDevLogs::onSelectItem()
 
    if ( m_IndexClearVehicleLogs == m_SelectedIndex )
    {
-      if ( NULL == g_pCurrentModel )
+      if ( (NULL == g_pCurrentModel) ||
+           (!pairing_isStarted()) ||
+           (!link_is_vehicle_online_now(g_pCurrentModel->uVehicleId)) )
       {
-         addMessage("Connect to a vehicle first.");
+         addMessage("You must be connected to a vehicle.");
+         valuesToUI();
+         return;
+      }
+      if ( g_pCurrentModel->is_spectator )
+      {
+         addMessage("Can't change log settings on a spectator vehicle.");
+         valuesToUI();
          return;
       }
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -174,6 +174,13 @@ float _osd_show_link_bars(float xPos, float yPos, u32 uLastRxTime, float fQualit
    if ( pVRTInfo->bGotRubyTelemetryInfo && (pVRTInfo->headerRubyTelemetryExtended.uExtraRubyFlags & FLAG_RUBY_TELEMETRY_EXTRA_FLAGS_IS_IN_TX_PIT_MODE_HOT) )
       bPITMode = true;
 
+   bool bNegociatedRadio = true;
+   if ( !(pActiveModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS) )
+      bNegociatedRadio = false;
+
+   if ( !(pActiveModel->radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED) )
+      bNegociatedRadio = false;
+
    bool bShowRed = false;
 
    if ( bLinkDisabled )
@@ -224,10 +231,15 @@ float _osd_show_link_bars(float xPos, float yPos, u32 uLastRxTime, float fQualit
       xBar -= iconWidth/4.0;
    }
 
-   if ( bPITMode )
+   if ( ! bNegociatedRadio )
    {
       g_pRenderEngine->setColors(get_Color_IconError());
-      g_pRenderEngine->drawText(xBar,yPos, g_idFontOSD, "PIT");    
+      g_pRenderEngine->drawText(xBar,yPos, g_idFontOSD, "NEG");
+   }
+   else if ( bPITMode )
+   {
+      g_pRenderEngine->setColors(get_Color_IconError());
+      g_pRenderEngine->drawText(xBar,yPos, g_idFontOSD, "PIT");
    }
    else if ( bLinkDisabled )
       g_pRenderEngine->drawText(xBar,yPos, g_idFontOSD, "DIS");
@@ -281,12 +293,20 @@ float _osd_show_radio_bars_info(float xPos, float yPos, u32 uLastRxTime, int iMa
       bShowRed = true;
    if ( s_bShowRadioBarsRedX )
       bShowRed = true;
-
    if ( (bShowRed) && (0 != s_uTimeStartFlashLinkBars) )
    {
       if ( g_TimeNow < s_uTimeStartFlashLinkBars + 2000 )
       if ( (g_TimeNow/150) % 2 )
          bDraw = false;
+   }
+
+   if ( bShowBars )
+   {
+       float fSize = _osd_get_link_bars_width(1.0);
+       if ( bDraw )
+          _osd_show_link_bars(xPos+fSize,yPos, uLastRxTime, fMaxRxQuality, 1.0, bUplink, bDraw);
+       xPos += fSize;
+       fTotalWidth += fSize;
    }
 
    if ( bDraw )
@@ -300,15 +320,6 @@ float _osd_show_radio_bars_info(float xPos, float yPos, u32 uLastRxTime, int iMa
       }
       else
          osd_set_colors();
-   }
-
-   if ( bShowBars )
-   {
-       float fSize = _osd_get_link_bars_width(1.0);
-       if ( bDraw )
-          _osd_show_link_bars(xPos+fSize,yPos, uLastRxTime, fMaxRxQuality, 1.0, bUplink, bDraw);
-       xPos += fSize;
-       fTotalWidth += fSize;
    }
 
    float fIconHeight = fTotalHeight;
@@ -557,14 +568,14 @@ float _osd_show_local_radio_link_new(float xPos, float yPos, int iLocalRadioLink
          
          iDataRateUplinkBPS = g_VehiclesRuntimeInfo[iRuntimeInfoToUse].headerRubyTelemetryExtended.last_recv_datarate_bps[i];
          if ( pModelToUse->radioLinkIsSiKRadio(iVehicleRadioLinkId) )
-            iDataRateUplinkBPS = pModelToUse->radioLinksParams.link_datarate_data_bps[iVehicleRadioLinkId];
+            iDataRateUplinkBPS = pModelToUse->radioLinksParams.downlink_datarate_data_bps[iVehicleRadioLinkId];
 
          if ( ! pModelToUse->radioLinkIsSiKRadio(iVehicleRadioLinkId) )
          if ( (g_VehiclesRuntimeInfo[iRuntimeInfoToUse].headerRubyTelemetryExtended.uplink_rssi_dbm[i]-200) > dbm )
          {
             dbm = g_VehiclesRuntimeInfo[iRuntimeInfoToUse].headerRubyTelemetryExtended.uplink_rssi_dbm[i]-200;
-            if ( g_VehiclesRuntimeInfo[iRuntimeInfoToUse].headerRubyTelemetryExtended.uplink_noise_dbm[i] > 0 )
-               iSNR = dbm + g_VehiclesRuntimeInfo[iRuntimeInfoToUse].headerRubyTelemetryExtended.uplink_noise_dbm[i];
+            if ( g_VehiclesRuntimeInfo[iRuntimeInfoToUse].headerRubyTelemetryExtended.uplink_rssi_snr[i] != 0xFF )
+               iSNR = g_VehiclesRuntimeInfo[iRuntimeInfoToUse].headerRubyTelemetryExtended.uplink_rssi_snr[i];
          }
       }
 
@@ -652,7 +663,7 @@ float _osd_show_local_radio_link_new(float xPos, float yPos, int iLocalRadioLink
 
             if ( pModelToUse->radioLinkIsSiKRadio(iVehicleRadioLinkId) )
             {
-               iDataRateUplinkBPS = g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iVehicleRadioLinkId];
+               iDataRateUplinkBPS = g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iVehicleRadioLinkId];
                dbm = -200;
             }
 
@@ -833,7 +844,7 @@ float _osd_show_local_radio_link_new(float xPos, float yPos, int iLocalRadioLink
 
       if ( pModelToUse->radioLinkIsSiKRadio(iVehicleRadioLinkId) )
       {
-         iRecvDataRateVideo = pModelToUse->radioLinksParams.link_datarate_data_bps[iVehicleRadioLinkId];
+         iRecvDataRateVideo = pModelToUse->radioLinksParams.downlink_datarate_data_bps[iVehicleRadioLinkId];
          iRecvDataRateData = iRecvDataRateVideo;
       }
       
@@ -884,7 +895,7 @@ float _osd_show_local_radio_link_new(float xPos, float yPos, int iLocalRadioLink
                iRecvDataRateVideo = g_SM_RadioStats.radio_interfaces[i].lastRecvDataRateData;
               
             if ( g_pCurrentModel->radioLinkIsSiKRadio(iVehicleRadioLinkId) )
-               iRecvDataRateVideo = g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iVehicleRadioLinkId];
+               iRecvDataRateVideo = g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iVehicleRadioLinkId];
 
             if ( iRecvDataRateVideo != s_iLastOSDRadioLinkInterfacesRecvDatarates[iLocalRadioLinkId][i] )
             {
@@ -916,6 +927,7 @@ float _osd_show_local_radio_link_new(float xPos, float yPos, int iLocalRadioLink
                   fTotalHeightLink += osd_getSpacingV()*0.5;
                }
             }
+
             float fSize = _osd_show_radio_bars_info(xPos, yPos+dySignalBars, uLastRxTime, nRxQuality, g_fOSDDbm[i], g_fOSDSNR[i], iRecvDataRateVideo, bShowBars, bShowNumbers, false, bHorizontal, uRadioLinkNumbersFlags, false, false);
             if ( bHorizontal )
             {

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -102,7 +102,7 @@ static const char* s_szModelFlightModeQRTL2 = "Q-Return To Launch";
 static const char* s_szModelCameraProfile = "Normal";
 static const char* s_szModelCameraProfile1 = "A";
 static const char* s_szModelCameraProfile2 = "B";
-static const char* s_szModelCameraProfile3 = "HDMI";
+static const char* s_szModelCameraProfileHDMI = "HDMI";
 
 const char* model_getShortFlightMode(u8 mode)
 {
@@ -162,7 +162,7 @@ const char* model_getCameraProfileName(int profileIndex)
 {
    if ( profileIndex == 0 ) return s_szModelCameraProfile1;
    if ( profileIndex == 1 ) return s_szModelCameraProfile2;
-   if ( profileIndex == 2 ) return s_szModelCameraProfile3;
+   if ( profileIndex == 2 ) return s_szModelCameraProfileHDMI;
    return s_szModelCameraProfile;
 }
 
@@ -204,7 +204,6 @@ Model::Model(void)
    vehicle_long_name[0] = 0;
    iLoadedFileVersion = 0;
    radioInterfacesParams.interfaces_count = 0;
-   m_iRadioInterfacesGraphRefreshInterval = 3;
    is_spectator = false;
    uVehicleId = 0;
    uControllerId = 0;
@@ -518,7 +517,7 @@ bool Model::loadVersion10(FILE* fd)
 
    for( int i=0; i<radioLinksParams.links_count; i++ )
    {
-      if ( 5 != fscanf(fd, "%u %u %u %d %d", &(radioLinksParams.link_frequency_khz[i]), &(radioLinksParams.link_capabilities_flags[i]), &(radioLinksParams.link_radio_flags[i]), &(radioLinksParams.link_datarate_video_bps[i]), &(radioLinksParams.link_datarate_data_bps[i])) )
+      if ( 5 != fscanf(fd, "%u %u %u %d %d", &(radioLinksParams.link_frequency_khz[i]), &(radioLinksParams.link_capabilities_flags[i]), &(radioLinksParams.link_radio_flags[i]), &(radioLinksParams.downlink_datarate_video_bps[i]), &(radioLinksParams.downlink_datarate_data_bps[i])) )
          { log_softerror_and_alarm("Load model8: Error on line r3"); return false; }
 
       if ( 4 != fscanf(fd, "%d %u %d %d", &tmp1, &(radioLinksParams.uDummy2[i]), &(radioLinksParams.uplink_datarate_video_bps[i]), &(radioLinksParams.uplink_datarate_data_bps[i])) )
@@ -531,11 +530,16 @@ bool Model::loadVersion10(FILE* fd)
       if ( 2 != fscanf(fd, "%d %d", &tmp1, &tmp2) )
       {
          log_softerror_and_alarm("Load model10: Error on line r5");
-         tmp1 = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO;
-         tmp2 = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO;
+         radioLinksParams.uMaxLinkLoadPercent[i] = DEFAULT_RADIO_LINK_LOAD_PERCENT;
+         tmp1 = 0;
+         tmp2 = 0;
       }
-      radioLinksParams.uUplinkDataDataRateType[i] = tmp1;
-      radioLinksParams.uDownlinkDataDataRateType[i] = tmp2;
+      else
+      {
+         if ( (tmp1 < 10) || (tmp1 > 90) )
+            tmp1 = DEFAULT_RADIO_LINK_LOAD_PERCENT;
+         radioLinksParams.uMaxLinkLoadPercent[i] = tmp1;
+      }
    }
 
    if ( 2 != fscanf(fd, "%d %u", &radioLinksParams.iSiKPacketSize, &radioLinksParams.uGlobalRadioLinksFlags) )
@@ -560,13 +564,11 @@ bool Model::loadVersion10(FILE* fd)
    //----------------------------------------
    // Telemetry
 
-   if ( 5 != fscanf(fd, "%*s %d %d %d %d %d", &telemetry_params.fc_telemetry_type, &telemetry_params.controller_telemetry_type, &telemetry_params.update_rate, &tmp1, &tmp2) )
+   if ( 5 != fscanf(fd, "%*s %d %d %d %d %d", &telemetry_params.fc_telemetry_type, &telemetry_params.iDummyTL3, &telemetry_params.update_rate, &tmp1, &tmp2) )
       { log_softerror_and_alarm("Load model8: Error on line 12"); return false; }
 
    if ( telemetry_params.update_rate > 200 )
       telemetry_params.update_rate = 200;
-   telemetry_params.bControllerHasOutputTelemetry = (bool) tmp1;
-   telemetry_params.bControllerHasInputTelemetry = (bool) tmp2;
 
    if ( 4 != fscanf(fd, "%d %u %d %u", &telemetry_params.iVideoBitrateHistoryGraphSampleInterval, &telemetry_params.dummy2, &telemetry_params.dummy3, &telemetry_params.dummy4) )
       { log_softerror_and_alarm("Load model8: Error on line 13"); return false; }
@@ -583,7 +585,7 @@ bool Model::loadVersion10(FILE* fd)
    //----------------------------------------
    // Video
 
-   if ( 4 != fscanf(fd, "%*s %d %d %d %u", &video_params.user_selected_video_link_profile, &video_params.iH264Slices, &tmp2, &video_params.lowestAllowedAdaptiveVideoBitrate) )
+   if ( 4 != fscanf(fd, "%*s %d %d %d %u", &video_params.iCurrentVideoProfile, &video_params.iH264Slices, &video_params.dummyV1, &video_params.lowestAllowedAdaptiveVideoBitrate) )
       { log_softerror_and_alarm("Load model8: Error on line 19"); return false; }
 
    if ( video_params.iH264Slices < 1 || video_params.iH264Slices > 16 )
@@ -592,7 +594,6 @@ bool Model::loadVersion10(FILE* fd)
       if ( hardware_board_is_openipc(hardware_getBoardType()) )
          video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
    }
-   video_params.videoAdjustmentStrength = tmp2;
    if ( video_params.lowestAllowedAdaptiveVideoBitrate < 250000 )
       video_params.lowestAllowedAdaptiveVideoBitrate = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
 
@@ -604,12 +605,8 @@ bool Model::loadVersion10(FILE* fd)
    if ( 1 != fscanf(fd, "%u", &video_params.uVideoExtraFlags) )
       { log_softerror_and_alarm("Load model8: Error on line 20c"); return false; }
    
-   for( unsigned int j=0; j<(sizeof(video_params.dummy)/sizeof(video_params.dummy[0])); j++ )
-   {
-      if ( 1 != fscanf(fd, "%d", &tmp1) )
-         { log_softerror_and_alarm("Load model8: Error on line 27, video params dummy data"); return false; }
-      video_params.dummy[j] = tmp1;
-   }
+   if ( 3 != fscanf(fd, "%d %d %d", &video_params.iVideoWidth, &video_params.iVideoHeight, &video_params.iVideoFPS) )
+      { log_softerror_and_alarm("Load model8: Error on line 20c"); return false; }
 
    if ( bOk && (1 != fscanf(fd, "%*s %d", &tmp7)) )
       { log_softerror_and_alarm("Load model8: Error: missing count of video link profiles"); bOk = false; tmp7=0; }
@@ -625,13 +622,16 @@ bool Model::loadVersion10(FILE* fd)
       if ( ! bOk )
         { log_softerror_and_alarm("Load model8: Error on video link profiles 0"); bOk = false; }
  
-      if ( bOk && (6 != fscanf(fd, "%u %u %u %d %d %u", &(video_link_profiles[i].uProfileFlags), &(video_link_profiles[i].uProfileEncodingFlags), &(video_link_profiles[i].bitrate_fixed_bps), &(video_link_profiles[i].radio_datarate_video_bps), &(video_link_profiles[i].radio_datarate_data_bps), &(video_link_profiles[i].radio_flags))) )
+      if ( bOk && (6 != fscanf(fd, "%u %u %u %d %u %u", &(video_link_profiles[i].uProfileFlags), &(video_link_profiles[i].uProfileEncodingFlags), &(video_link_profiles[i].bitrate_fixed_bps), &(video_link_profiles[i].iAdaptiveAdjustmentStrength), &(video_link_profiles[i].uAdaptiveWeights), &(video_link_profiles[i].dummyVP6))) )
          { log_softerror_and_alarm("Load model8: Error on video link profiles 1"); bOk = false; }
 
-      if ( bOk && (2 != fscanf(fd, "%d %d", &(video_link_profiles[i].width), &(video_link_profiles[i].height))) )
+      if ( (video_link_profiles[i].iAdaptiveAdjustmentStrength < 1) || (video_link_profiles[i].iAdaptiveAdjustmentStrength > 10) )
+         video_link_profiles[i].iAdaptiveAdjustmentStrength = DEFAULT_VIDEO_PARAMS_ADJUSTMENT_STRENGTH;
+
+      if ( bOk && (2 != fscanf(fd, "%d %d", &(video_link_profiles[i].dummyVP1), &(video_link_profiles[i].dummyVP2))) )
          { log_softerror_and_alarm("Load model8: Error on video link profiles 2"); bOk = false; }
 
-      if ( bOk && (5 != fscanf(fd, "%d %d %d %d %d", &(video_link_profiles[i].iBlockPackets), &(video_link_profiles[i].iBlockECs), &(video_link_profiles[i].video_data_length), &(video_link_profiles[i].fps), &(video_link_profiles[i].keyframe_ms))) )
+      if ( bOk && (5 != fscanf(fd, "%d %d %d %d %d", &(video_link_profiles[i].iBlockDataPackets), &(video_link_profiles[i].iBlockECs), &(video_link_profiles[i].video_data_length), &(video_link_profiles[i].dummyVP3), &(video_link_profiles[i].keyframe_ms))) )
          { log_softerror_and_alarm("Load model8: Error on video link profiles 3"); bOk = false; }
       
       if ( bOk && (5 != fscanf(fd, "%d %d %d %d %d", &(video_link_profiles[i].h264profile), &(video_link_profiles[i].h264level), &(video_link_profiles[i].h264refresh), &(video_link_profiles[i].h264quantization), &(video_link_profiles[i].iIPQuantizationDelta))) )
@@ -872,7 +872,7 @@ bool Model::loadVersion10(FILE* fd)
    // Misc
 
    if ( 2 != fscanf(fd, "%*s %u %u", &uModelPersistentStatusFlags, &uDeveloperFlags) )
-      { log_softerror_and_alarm("Load model8: Error on line 39"); uDeveloperFlags = (((u32)DEFAULT_DELAY_WIFI_CHANGE)<<8); }
+      { log_softerror_and_alarm("Load model8: Error on line 39"); uDeveloperFlags = (((u32)DEFAULT_DELAY_WIFI_CHANGE)<<DEVELOPER_FLAGS_WIFI_GUARD_DELAY_MASK_SHIFT); }
   
    if ( 1 != fscanf(fd, "%u", &enc_flags) )
    {
@@ -960,8 +960,8 @@ bool Model::loadVersion10(FILE* fd)
    else
       alarms_params.uAlarmMotorCurrentThreshold = tmp1;
 
-   if ( 1 != fscanf(fd, "%d", &m_iRadioInterfacesGraphRefreshInterval) )
-      m_iRadioInterfacesGraphRefreshInterval = 3;
+   if ( 1 != fscanf(fd, "%d", &osd_params.iRadioInterfacesGraphRefreshIntervalMs) )
+      osd_params.iRadioInterfacesGraphRefreshIntervalMs = DEFAULT_OSD_RADIO_GRAPH_REFRESH_PERIOD_MS;
 
    if ( 3 != fscanf(fd, "%d %d %u", &hwCapabilities.iMaxTxVideoBlocksBuffer, &hwCapabilities.iMaxTxVideoBlockPackets, &hwCapabilities.uHWFlags) )
       resetHWCapabilities();
@@ -1065,6 +1065,59 @@ bool Model::loadVersion10(FILE* fd)
          }
       }
    }
+
+   if ( bOk )
+   {
+      tmp1 = 0;
+      if ( 3 != fscanf(fd, "%d %d %d", &tmp1, &radioRuntimeCapabilities.iMaxSupportedMCSDataRate, &radioRuntimeCapabilities.iMaxSupportedLegacyDataRate) )
+         resetRadioCapabilitiesRuntime(&radioRuntimeCapabilities);
+      else
+      {
+         radioRuntimeCapabilities.uFlagsRuntimeCapab = (u8)tmp1;
+         bool bCapabOk = true;
+         for( int iLink=0; iLink<MODEL_MAX_STORED_QUALITIES_LINKS; iLink++ )
+         {
+            for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+            {
+               if ( 1 != fscanf(fd, "%f", &radioRuntimeCapabilities.fQualitiesLegacy[iLink][i]) )
+                  bCapabOk = false;
+            }
+            for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+            {
+               if ( 1 != fscanf(fd, "%f", &radioRuntimeCapabilities.fQualitiesMCS[iLink][i]) )
+                  bCapabOk = false;
+            }
+         }
+
+         for( int iLink=0; iLink<MODEL_MAX_STORED_QUALITIES_LINKS; iLink++ )
+         {
+            for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+            {
+               if ( 1 != fscanf(fd, "%d", &radioRuntimeCapabilities.iMaxTxPowerMwLegacy[iLink][i]) )
+                  bCapabOk = false;
+            }
+            for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+            {
+               if ( 1 != fscanf(fd, "%d", &radioRuntimeCapabilities.iMaxTxPowerMwMCS[iLink][i]) )
+                  bCapabOk = false;
+            }
+         }
+
+         if ( ! bCapabOk )
+            resetRadioCapabilitiesRuntime(&radioRuntimeCapabilities);
+      }
+   }
+   else
+      resetRadioCapabilitiesRuntime(&radioRuntimeCapabilities);
+
+   if ( bOk )
+   {
+      if ( 1 != fscanf(fd, "%u", &uControllerBoardType) )
+         uControllerBoardType = 0;
+   }
+   else
+      uControllerBoardType = 0;
+
    //--------------------------------------------------
    // End reading file;
    //----------------------------------------
@@ -1083,7 +1136,7 @@ bool Model::loadVersion10(FILE* fd)
    if ( telemetry_params.controller_mavlink_id <= 0 || telemetry_params.controller_mavlink_id > 255 )
       telemetry_params.controller_mavlink_id = DEFAULT_MAVLINK_SYS_ID_CONTROLLER;
    if ( telemetry_params.flags == 0 )
-      telemetry_params.flags = TELEMETRY_FLAGS_RXTX | TELEMETRY_FLAGS_REQUEST_DATA_STREAMS | TELEMETRY_FLAGS_SPECTATOR_ENABLE;
+      telemetry_params.flags = TELEMETRY_FLAGS_REQUEST_DATA_STREAMS | TELEMETRY_FLAGS_SPECTATOR_ENABLE;
    if ( rxtx_sync_type < 0 || rxtx_sync_type >= RXTX_SYNC_TYPE_LAST )
       rxtx_sync_type = RXTX_SYNC_TYPE_BASIC;
 
@@ -1258,11 +1311,11 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
 
    for( int i=0; i<radioLinksParams.links_count; i++ )
    {
-      sprintf( szSetting, "%u %u %u %d %d   ", radioLinksParams.link_frequency_khz[i], radioLinksParams.link_capabilities_flags[i], radioLinksParams.link_radio_flags[i], radioLinksParams.link_datarate_video_bps[i], radioLinksParams.link_datarate_data_bps[i] );
+      sprintf( szSetting, "%u %u %u %d %d   ", radioLinksParams.link_frequency_khz[i], radioLinksParams.link_capabilities_flags[i], radioLinksParams.link_radio_flags[i], radioLinksParams.downlink_datarate_video_bps[i], radioLinksParams.downlink_datarate_data_bps[i] );
       strcat(szModel, szSetting);
       sprintf( szSetting, "%d %u %d %d\n", (int)radioLinksParams.uSerialPacketSize[i], radioLinksParams.uDummy2[i], radioLinksParams.uplink_datarate_video_bps[i], radioLinksParams.uplink_datarate_data_bps[i] );
       strcat(szModel, szSetting);
-      sprintf( szSetting, "%d %d\n", radioLinksParams.uUplinkDataDataRateType[i], radioLinksParams.uDownlinkDataDataRateType[i] );
+      sprintf( szSetting, "%d %d\n", radioLinksParams.uMaxLinkLoadPercent[i], radioLinksParams.uDummyR2[i] );
       strcat(szModel, szSetting);
    }
    sprintf(szSetting, " %d %u\n", radioLinksParams.iSiKPacketSize, radioLinksParams.uGlobalRadioLinksFlags);
@@ -1285,7 +1338,7 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
    //----------------------------------------
    // Telemetry
 
-   sprintf(szSetting, "telem: %d %d %d %d %d\n", telemetry_params.fc_telemetry_type, telemetry_params.controller_telemetry_type, telemetry_params.update_rate, telemetry_params.bControllerHasOutputTelemetry, telemetry_params.bControllerHasInputTelemetry);
+   sprintf(szSetting, "telem: %d %d %d %d %d\n", telemetry_params.fc_telemetry_type, 0, telemetry_params.update_rate, 0, 0);
    strcat(szModel, szSetting);
    sprintf(szSetting, "%d %u %d %u\n", telemetry_params.iVideoBitrateHistoryGraphSampleInterval, telemetry_params.dummy2, telemetry_params.dummy3, telemetry_params.dummy4);
    strcat(szModel, szSetting);
@@ -1299,7 +1352,7 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
    //----------------------------------------
    // Video 
 
-   sprintf(szSetting, "video: %d %d %d %u\n", video_params.user_selected_video_link_profile, video_params.iH264Slices, video_params.videoAdjustmentStrength, video_params.lowestAllowedAdaptiveVideoBitrate);
+   sprintf(szSetting, "video: %d %d %d %u\n", video_params.iCurrentVideoProfile, video_params.iH264Slices, video_params.dummyV1, video_params.lowestAllowedAdaptiveVideoBitrate);
    strcat(szModel, szSetting);
    
    sprintf(szSetting, "%u\n", video_params.uMaxAutoKeyframeIntervalMs);
@@ -1308,12 +1361,7 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
    sprintf(szSetting, "%u\n", video_params.uVideoExtraFlags);
    strcat(szModel, szSetting);
    
-   for( unsigned int i=0; i<(sizeof(video_params.dummy)/sizeof(video_params.dummy[0])); i++ )
-   {
-      sprintf(szSetting, " %u",video_params.dummy[i]);
-      strcat(szModel, szSetting);
-   }
-   sprintf(szSetting, "\n");
+   sprintf(szSetting, "%d %d %d\n", video_params.iVideoWidth, video_params.iVideoHeight, video_params.iVideoFPS);
    strcat(szModel, szSetting);
    
    //----------------------------------------
@@ -1323,11 +1371,11 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
    strcat(szModel, szSetting);
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
    {
-      sprintf(szSetting, "%u %u %u %d %d %u   ", video_link_profiles[i].uProfileFlags, video_link_profiles[i].uProfileEncodingFlags, video_link_profiles[i].bitrate_fixed_bps, video_link_profiles[i].radio_datarate_video_bps, video_link_profiles[i].radio_datarate_data_bps, video_link_profiles[i].radio_flags);
+      sprintf(szSetting, "%u %u %u %d %u %u   ", video_link_profiles[i].uProfileFlags, video_link_profiles[i].uProfileEncodingFlags, video_link_profiles[i].bitrate_fixed_bps, video_link_profiles[i].iAdaptiveAdjustmentStrength, video_link_profiles[i].uAdaptiveWeights, video_link_profiles[i].dummyVP6);
       strcat(szModel, szSetting);
-      sprintf(szSetting, "%d %d\n", video_link_profiles[i].width, video_link_profiles[i].height);
+      sprintf(szSetting, "%d %d\n", video_link_profiles[i].dummyVP1, video_link_profiles[i].dummyVP2);
       strcat(szModel, szSetting);
-      sprintf(szSetting, "   %d %d %d %d %d   ", video_link_profiles[i].iBlockPackets, video_link_profiles[i].iBlockECs, video_link_profiles[i].video_data_length, video_link_profiles[i].fps, video_link_profiles[i].keyframe_ms);
+      sprintf(szSetting, "   %d %d %d %d %d   ", video_link_profiles[i].iBlockDataPackets, video_link_profiles[i].iBlockECs, video_link_profiles[i].video_data_length, video_link_profiles[i].dummyVP3, video_link_profiles[i].keyframe_ms);
       strcat(szModel, szSetting);
       sprintf(szSetting, "%d %d %d %d %d\n", video_link_profiles[i].h264profile, video_link_profiles[i].h264level, video_link_profiles[i].h264refresh, video_link_profiles[i].h264quantization, video_link_profiles[i].iIPQuantizationDelta);
       strcat(szModel, szSetting);
@@ -1525,7 +1573,7 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
    sprintf(szSetting, "%d\n", (int)alarms_params.uAlarmMotorCurrentThreshold);
    strcat(szModel, szSetting);
    
-   sprintf(szSetting, "%d\n", (int)m_iRadioInterfacesGraphRefreshInterval);
+   sprintf(szSetting, "%d\n", osd_params.iRadioInterfacesGraphRefreshIntervalMs);
    strcat(szModel, szSetting);
    
    sprintf(szSetting, "%d %d %u\n", hwCapabilities.iMaxTxVideoBlocksBuffer, hwCapabilities.iMaxTxVideoBlockPackets, hwCapabilities.uHWFlags);
@@ -1593,6 +1641,45 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
    }
    strcat(szModel, "\n");
 
+   // Radio runtime capabilities
+
+   sprintf(szSetting, "%d %d %d\n", radioRuntimeCapabilities.uFlagsRuntimeCapab, radioRuntimeCapabilities.iMaxSupportedMCSDataRate, radioRuntimeCapabilities.iMaxSupportedLegacyDataRate);
+   strcat(szModel, szSetting);
+   for( int iLink=0; iLink<MODEL_MAX_STORED_QUALITIES_LINKS; iLink++ )
+   {
+      for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+      {
+         sprintf(szSetting, "%.3f ", radioRuntimeCapabilities.fQualitiesLegacy[iLink][i]);
+         strcat(szModel, szSetting);
+      }
+      strcat(szModel, "\n");
+      for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+      {
+         sprintf(szSetting, "%.3f ", radioRuntimeCapabilities.fQualitiesMCS[iLink][i]);
+         strcat(szModel, szSetting);
+      }
+      strcat(szModel, "\n");
+   }
+
+   for( int iLink=0; iLink<MODEL_MAX_STORED_QUALITIES_LINKS; iLink++ )
+   {
+      for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+      {
+         sprintf(szSetting, "%d ", radioRuntimeCapabilities.iMaxTxPowerMwLegacy[iLink][i]);
+         strcat(szModel, szSetting);
+      }
+      strcat(szModel, "\n");
+      for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+      {
+         sprintf(szSetting, "%d ", radioRuntimeCapabilities.iMaxTxPowerMwMCS[iLink][i]);
+         strcat(szModel, szSetting);
+      }
+      strcat(szModel, "\n");
+   }
+
+   sprintf(szSetting, "%u\n", uControllerBoardType);
+   strcat(szModel, szSetting);
+
    // End writing values to file
    // ---------------------------------------------------
 
@@ -1605,225 +1692,163 @@ void Model::resetVideoParamsToDefaults()
 {
    memset(&video_params, 0, sizeof(video_params));
 
-   video_params.user_selected_video_link_profile = VIDEO_PROFILE_HIGH_QUALITY;
+   video_params.iCurrentVideoProfile = VIDEO_PROFILE_HIGH_QUALITY;
+
+   video_params.iVideoWidth = DEFAULT_VIDEO_WIDTH;
+   video_params.iVideoHeight = DEFAULT_VIDEO_HEIGHT;
+   video_params.iVideoFPS = DEFAULT_VIDEO_FPS;
+   if ( hardware_board_is_openipc(hardware_getBoardType()) )
+      video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC;
+   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
+      video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
+
+   if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
+   {
+      video_params.iVideoWidth = 1920;
+      video_params.iVideoHeight = 1080;
+      video_params.iVideoFPS = 30;
+   }
+
    video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
    if ( hardware_board_is_openipc(hardware_getBoardType()) )
       video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
    video_params.iRemovePPSVideoFrames = 0;
    video_params.iInsertPPSVideoFrames = 1;
    video_params.iInsertSPTVideoFramesTimings = 0;
-   video_params.videoAdjustmentStrength = DEFAULT_VIDEO_PARAMS_ADJUSTMENT_STRENGTH;
    video_params.lowestAllowedAdaptiveVideoBitrate = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
    video_params.uMaxAutoKeyframeIntervalMs = DEFAULT_VIDEO_MAX_AUTO_KEYFRAME_INTERVAL;
-   video_params.uVideoExtraFlags = 0;
-   resetVideoLinkProfiles(-1);
+   video_params.uVideoExtraFlags = VIDEO_FLAG_RETRANSMISSIONS_FAST;
+   resetVideoLinkProfiles();
 }
 
-void Model::resetVideoLinkProfiles(int iProfile)
+void Model::resetVideoLinkProfiles()
 {
    for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+      resetVideoLinkProfile(i);
+   setDefaultVideoBitrate();
+}
+
+void Model::resetVideoLinkProfile(int iProfile)
+{
+   if ( (iProfile < 0) || (iProfile >= MAX_VIDEO_LINK_PROFILES) )
+      return;
+
+   video_link_profiles[iProfile].uProfileFlags = 1; // 3d noise
+   //video_link_profiles[iProfile].uProfileFlags = 0; // 3d noise
+   video_link_profiles[iProfile].uProfileEncodingFlags = VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS | VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK | VIDEO_PROFILE_ENCODING_FLAG_RETRANSMISSIONS_DUPLICATION_PERCENT_AUTO;
+   //video_link_profiles[iProfile].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO;
+   video_link_profiles[iProfile].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
+   video_link_profiles[iProfile].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT;
+   video_link_profiles[iProfile].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HP<<8);
+   video_link_profiles[iProfile].h264profile = 2; // high
+   video_link_profiles[iProfile].h264level = 2; // 4.2
+   video_link_profiles[iProfile].h264refresh = 2; // both
+   video_link_profiles[iProfile].h264quantization = DEFAULT_VIDEO_H264_QUANTIZATION;
+   video_link_profiles[iProfile].iIPQuantizationDelta = DEFAULT_VIDEO_H264_IPQUANTIZATION_DELTA_HP;
+
+   video_link_profiles[iProfile].iBlockDataPackets = DEFAULT_VIDEO_BLOCK_PACKETS_HP;
+   video_link_profiles[iProfile].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_HP;
+   video_link_profiles[iProfile].video_data_length = DEFAULT_VIDEO_DATA_LENGTH;
+   video_link_profiles[iProfile].iECPercentage = DEFAULT_VIDEO_EC_RATE_HQ;
+   convertECPercentageToData(&(video_link_profiles[iProfile]));
+
+   video_link_profiles[iProfile].keyframe_ms = DEFAULT_VIDEO_KEYFRAME;
+
+   video_link_profiles[iProfile].iAdaptiveAdjustmentStrength = DEFAULT_VIDEO_PARAMS_ADJUSTMENT_STRENGTH;
+   video_link_profiles[iProfile].uAdaptiveWeights = 
+      0x07 | (0x07 << 4) |
+      (0x07 << 8) | (0x05 << 12) |
+      (0x0A << 16) | (0x0A << 20);
+
+   video_link_profiles[iProfile].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE;
+   if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
+        ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
+        hardware_board_is_goke(hardware_getBoardType()) )
+      video_link_profiles[iProfile].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
+   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
+      video_link_profiles[iProfile].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
+
+   if ( iProfile == VIDEO_PROFILE_HIGH_QUALITY )
    {
-      if ( (iProfile != -1) && (iProfile != i) )
-         continue;
-      video_link_profiles[i].uProfileFlags = VIDEO_PROFILE_FLAGS_NOISE_AUTO; // 3d noise: auto (2)
-      video_link_profiles[i].uProfileEncodingFlags = VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS | VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK | VIDEO_PROFILE_ENCODING_FLAG_RETRANSMISSIONS_DUPLICATION_PERCENT_AUTO;
-      video_link_profiles[i].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO;
-      video_link_profiles[i].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
-      video_link_profiles[i].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT;
-      video_link_profiles[i].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HP<<8);
-      video_link_profiles[i].radio_datarate_video_bps = 0; // Auto
-      video_link_profiles[i].radio_datarate_data_bps = 0; // Auto
-      video_link_profiles[i].radio_flags = 0;
-      video_link_profiles[i].h264profile = 2; // high
-      video_link_profiles[i].h264level = 2; // 4.2
-      video_link_profiles[i].h264refresh = 2; // both
-      video_link_profiles[i].h264quantization = DEFAULT_VIDEO_H264_QUANTIZATION;
-      video_link_profiles[i].iIPQuantizationDelta = DEFAULT_VIDEO_H264_IPQUANTIZATION_DELTA_HP;
+      video_link_profiles[iProfile].uProfileFlags &= ~VIDEO_PROFILE_FLAGS_MASK_NOISE;
+      video_link_profiles[iProfile].uProfileFlags |= 1; // 3d noise
+      video_link_profiles[iProfile].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
+      video_link_profiles[iProfile].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HQ<<8);
+      video_link_profiles[iProfile].iBlockDataPackets = DEFAULT_VIDEO_BLOCK_PACKETS_HQ;
+      video_link_profiles[iProfile].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_HQ;
+      video_link_profiles[iProfile].iECPercentage = DEFAULT_VIDEO_EC_RATE_HQ;
+      video_link_profiles[iProfile].iIPQuantizationDelta = DEFAULT_VIDEO_H264_IPQUANTIZATION_DELTA_HQ;
 
-      video_link_profiles[i].iBlockPackets = DEFAULT_VIDEO_BLOCK_PACKETS_HP;
-      video_link_profiles[i].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_HP;
-      video_link_profiles[i].video_data_length = DEFAULT_VIDEO_DATA_LENGTH;
-      video_link_profiles[i].iECPercentage = DEFAULT_VIDEO_EC_RATE_HQ;
-      video_link_profiles[i].fps = DEFAULT_VIDEO_FPS;
-      if ( hardware_board_is_openipc(hardware_getBoardType()) )
-         video_link_profiles[i].fps = DEFAULT_VIDEO_FPS_OIPC;
-      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-         video_link_profiles[i].fps = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
-        
-      video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME;
-      if ( hardware_board_is_goke(hardware_getBoardType()) )
-         video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_GOKE;
-      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-         video_link_profiles[i].keyframe_ms = DEFAULT_VIDEO_KEYFRAME_OIPC_SIGMASTAR;
+      video_link_profiles[iProfile].uProfileFlags |= VIDEO_PROFILE_FLAG_USE_HIGHER_DATARATE;
+      video_link_profiles[iProfile].uProfileFlags |= (((u32)0x01) << VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT);
+   }
 
-      video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE;
+   if ( iProfile == VIDEO_PROFILE_HIGH_PERF )
+   {
+      video_link_profiles[iProfile].uProfileFlags &= ~VIDEO_PROFILE_FLAGS_MASK_NOISE;
+      video_link_profiles[iProfile].uProfileFlags |= 1; // 3d noise
+      video_link_profiles[iProfile].uProfileFlags |= VIDEO_PROFILE_FLAG_USE_HIGHER_DATARATE;
+      video_link_profiles[iProfile].uProfileFlags |= (((u32)0x02) << VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT);
+   }
+
+   if ( (iProfile == VIDEO_PROFILE_HIGH_PERF) || (iProfile == VIDEO_PROFILE_USER) )
+   {
+      video_link_profiles[iProfile].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
+      video_link_profiles[iProfile].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HP<<8);
+      video_link_profiles[iProfile].bitrate_fixed_bps = DEFAULT_HP_VIDEO_BITRATE;
       if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
            ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
            hardware_board_is_goke(hardware_getBoardType()) )
-         video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
-         video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
+         video_link_profiles[iProfile].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
 
-      if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
-      {
-         video_link_profiles[i].width = 1920;
-         video_link_profiles[i].height = 1080;
-      }
-      else
-      {
-         video_link_profiles[i].width = DEFAULT_VIDEO_WIDTH;
-         video_link_profiles[i].height = DEFAULT_VIDEO_HEIGHT;
-      }
+      video_link_profiles[iProfile].iBlockDataPackets = DEFAULT_VIDEO_BLOCK_PACKETS_HP;
+      video_link_profiles[iProfile].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_HP;
+      video_link_profiles[iProfile].iECPercentage = DEFAULT_VIDEO_EC_RATE_HP;
    }
 
-
-   // Best Perf
-   if ( (iProfile == -1) || (iProfile == VIDEO_PROFILE_BEST_PERF) )
+   if ( iProfile == VIDEO_PROFILE_LONG_RANGE )
    {
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].uProfileFlags = 0; // lowest noise
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HP<<8);
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = DEFAULT_HP_VIDEO_BITRATE;
-      if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
-           ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
-           hardware_board_is_goke(hardware_getBoardType()) )
-         video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].iBlockPackets = DEFAULT_VIDEO_BLOCK_PACKETS_HP;
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_HP;
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].iECPercentage = DEFAULT_VIDEO_EC_RATE_HP;
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].radio_datarate_video_bps = DEFAULT_HP_VIDEO_RADIO_DATARATE;
+      video_link_profiles[iProfile].iBlockDataPackets = DEFAULT_VIDEO_BLOCK_PACKETS_LR;
+      video_link_profiles[iProfile].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_LR;
+      video_link_profiles[iProfile].iECPercentage = DEFAULT_VIDEO_EC_RATE_LR;
    }
 
-   // High Quality 
-   if ( (iProfile == -1) || (iProfile == VIDEO_PROFILE_HIGH_QUALITY) )
-   {
-      video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
-      video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HQ<<8);
-      video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].iBlockPackets = DEFAULT_VIDEO_BLOCK_PACKETS_HQ;
-      video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_HQ;
-      video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].iECPercentage = DEFAULT_VIDEO_EC_RATE_HQ;
-      video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].iIPQuantizationDelta = DEFAULT_VIDEO_H264_IPQUANTIZATION_DELTA_HQ;
-   }
-
-   // User
-   if ( (iProfile == -1) || (iProfile == VIDEO_PROFILE_USER) )
-   {
-      video_link_profiles[VIDEO_PROFILE_USER].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
-      video_link_profiles[VIDEO_PROFILE_USER].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HQ<<8);
-      video_link_profiles[VIDEO_PROFILE_USER].iBlockPackets = DEFAULT_VIDEO_BLOCK_PACKETS_HP;
-      video_link_profiles[VIDEO_PROFILE_USER].iBlockECs = DEFAULT_VIDEO_BLOCK_ECS_HP;
-      video_link_profiles[VIDEO_PROFILE_USER].iECPercentage = DEFAULT_VIDEO_EC_RATE_HQ;
-      video_link_profiles[VIDEO_PROFILE_USER].iIPQuantizationDelta = DEFAULT_VIDEO_H264_IPQUANTIZATION_DELTA_HQ;
-   }
-
-   // MQ
-   if ( (iProfile == -1) || (iProfile == VIDEO_PROFILE_MQ) )
-   {
-      video_link_profiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
-      video_link_profiles[VIDEO_PROFILE_MQ].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_MQ<<8);
-      video_link_profiles[VIDEO_PROFILE_MQ].radio_datarate_video_bps = 0;
-      video_link_profiles[VIDEO_PROFILE_MQ].radio_datarate_data_bps = 0;
-      video_link_profiles[VIDEO_PROFILE_MQ].h264profile = 2; // high
-      video_link_profiles[VIDEO_PROFILE_MQ].h264level = 2; // 4.2
-      video_link_profiles[VIDEO_PROFILE_MQ].h264refresh = 2; // both
-      video_link_profiles[VIDEO_PROFILE_MQ].h264quantization = DEFAULT_VIDEO_H264_QUANTIZATION; // auto
-      video_link_profiles[VIDEO_PROFILE_MQ].iBlockPackets = DEFAULT_MQ_VIDEO_BLOCK_PACKETS;
-      video_link_profiles[VIDEO_PROFILE_MQ].iBlockECs = DEFAULT_MQ_VIDEO_BLOCK_ECS;
-      video_link_profiles[VIDEO_PROFILE_MQ].iECPercentage = DEFAULT_VIDEO_EC_RATE_MQ;
-      video_link_profiles[VIDEO_PROFILE_MQ].bitrate_fixed_bps = DEFAULT_MQ_VIDEO_BITRATE;
-   }
-
-   // LQ
-   if ( (iProfile == -1) || (iProfile == VIDEO_PROFILE_LQ) )
-   {
-      video_link_profiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
-      video_link_profiles[VIDEO_PROFILE_LQ].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_LQ<<8);
-      video_link_profiles[VIDEO_PROFILE_LQ].radio_datarate_video_bps = 0;
-      video_link_profiles[VIDEO_PROFILE_LQ].radio_datarate_data_bps = 0;
-      video_link_profiles[VIDEO_PROFILE_LQ].radio_flags = 0;
-      video_link_profiles[VIDEO_PROFILE_LQ].h264profile = 2; // high
-      video_link_profiles[VIDEO_PROFILE_LQ].h264level = 2; // 4.2
-      video_link_profiles[VIDEO_PROFILE_LQ].h264refresh = 2; // both
-      video_link_profiles[VIDEO_PROFILE_LQ].h264quantization = DEFAULT_VIDEO_H264_QUANTIZATION; // auto
-      video_link_profiles[VIDEO_PROFILE_LQ].iBlockPackets = DEFAULT_LQ_VIDEO_BLOCK_PACKETS;
-      video_link_profiles[VIDEO_PROFILE_LQ].iBlockECs = DEFAULT_LQ_VIDEO_BLOCK_ECS;
-      video_link_profiles[VIDEO_PROFILE_LQ].iECPercentage = DEFAULT_VIDEO_EC_RATE_LQ;
-      video_link_profiles[VIDEO_PROFILE_LQ].bitrate_fixed_bps = DEFAULT_LQ_VIDEO_BITRATE;
-   }
-   
-   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-   {
-      if ( i == video_params.user_selected_video_link_profile )
-         continue;
-      if ( (i != VIDEO_PROFILE_MQ) && (i != VIDEO_PROFILE_LQ) )
-         continue;
-      video_link_profiles[i].h264profile = video_link_profiles[video_params.user_selected_video_link_profile].h264profile;
-      video_link_profiles[i].h264level = video_link_profiles[video_params.user_selected_video_link_profile].h264level; 
-      video_link_profiles[i].h264refresh = video_link_profiles[video_params.user_selected_video_link_profile].h264refresh;
-   }
-
+   //-----------------------------------------------------
    // Adaptive video & keyframe in openIPC goke cameras is not supported. (majestic bitrate and keyframe can't be changed)
+   
    bool bDisableAdaptive = false;
    if ( hardware_board_is_goke(hwCapabilities.uBoardType) )
       bDisableAdaptive = true;
 
    if ( bDisableAdaptive )
    {
-      for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-      {
-         if ( (iProfile != -1) && (iProfile != i) )
-            continue;
-
-         video_link_profiles[i].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK;
-         video_link_profiles[i].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION;
-         video_link_profiles[i].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
-      }
+      video_link_profiles[iProfile].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK;
+      video_link_profiles[iProfile].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION;
+      video_link_profiles[iProfile].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
    }
-   
+
+   //--------------------------------------------------------
    // Auto H264 quantization is not implemented in openIPC
+   
    bool bDisableQuantization = false;
    if ( hardware_board_is_openipc(hwCapabilities.uBoardType) )
       bDisableQuantization = true;
 
    if ( bDisableQuantization )
-   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-   {
-      if ( (iProfile != -1) && (iProfile != i) )
-         continue;
+      video_link_profiles[iProfile].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION;
 
-      video_link_profiles[i].uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION;
-   }
+   //------------------------------------------------
+   // Lower video bitrate if running on a single core CPU
+   u32 board_type = hardware_getBoardType();
 
-   if ( -1 == iProfile )
-      setDefaultVideoBitrate();
-}
-
-void Model::resetVideoLinkProfilesToDataRates(int iUsableDataRateHQ, int iUsableDatarateHP)
-{
-   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-      video_link_profiles[i].radio_datarate_video_bps = 0;
-
-   if ( 0 == iUsableDataRateHQ )
-      iUsableDataRateHQ = DEFAULT_RADIO_DATARATE_VIDEO;
-   if ( 0 == iUsableDatarateHP )
-      iUsableDatarateHP = DEFAULT_RADIO_DATARATE_VIDEO;
-
-   for( int i=0; i<radioLinksParams.links_count; i++ )
-      radioLinksParams.link_datarate_video_bps[i] = iUsableDataRateHQ;
-
-   if ( iUsableDataRateHQ == DEFAULT_RADIO_DATARATE_VIDEO )
-   {
-      for( int i=0; i<radioInterfacesParams.interfaces_count; i++ )
-      {
-         if ( (radioInterfacesParams.interface_radiotype_and_driver[i] & 0xFF) == RADIO_TYPE_ATHEROS )
-         if ( radioInterfacesParams.interface_link_id[i] >= 0 )
-         if ( radioInterfacesParams.interface_link_id[i] < radioLinksParams.links_count )
-         {
-            int iRadioLink = radioInterfacesParams.interface_link_id[i];
-            radioLinksParams.link_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS;
-         }
-      }
+   if ( ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE200) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE210) ||
+        ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_NONE) )
+   {    
+      if ( video_link_profiles[iProfile].bitrate_fixed_bps > 4500000 )
+         video_link_profiles[iProfile].bitrate_fixed_bps -= 1000000;
+      else if ( video_link_profiles[iProfile].bitrate_fixed_bps > 3000000 )
+         video_link_profiles[iProfile].bitrate_fixed_bps -= 500000;
+      log_line("Model: Lowered video bitrate for video profile %d (single core CPU) to %u", iProfile, video_link_profiles[iProfile].bitrate_fixed_bps);
    }
 }
 
@@ -1947,19 +1972,19 @@ void Model::resetRadioLinkDataRatesAndFlags(int iRadioLink)
    radioLinksParams.link_radio_flags[iRadioLink] = DEFAULT_RADIO_FRAMES_FLAGS;
    radioLinksParams.link_capabilities_flags[iRadioLink] = RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA;
    radioLinksParams.link_capabilities_flags[iRadioLink] |= RADIO_HW_CAPABILITY_FLAG_CAN_RX | RADIO_HW_CAPABILITY_FLAG_CAN_TX;
-   radioLinksParams.link_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_VIDEO;
-   radioLinksParams.link_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_DATA;
+   radioLinksParams.downlink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_VIDEO;
+   radioLinksParams.downlink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_DATA;
 
-   radioLinksParams.uplink_datarate_video_bps[iRadioLink] = radioLinksParams.link_datarate_video_bps[iRadioLink];
-   radioLinksParams.uplink_datarate_data_bps[iRadioLink] = radioLinksParams.link_datarate_data_bps[iRadioLink];
+   radioLinksParams.uplink_datarate_video_bps[iRadioLink] = radioLinksParams.downlink_datarate_video_bps[iRadioLink];
+   radioLinksParams.uplink_datarate_data_bps[iRadioLink] = radioLinksParams.downlink_datarate_data_bps[iRadioLink];
 
-   radioLinksParams.uUplinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO;
-   radioLinksParams.uDownlinkDataDataRateType[iRadioLink] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO;
+   radioLinksParams.uMaxLinkLoadPercent[iRadioLink] = DEFAULT_RADIO_LINK_LOAD_PERCENT;
+   radioLinksParams.uDummyR2[iRadioLink] = 0;
 
    radioLinksParams.uSerialPacketSize[iRadioLink] = DEFAULT_RADIO_SERIAL_AIR_PACKET_SIZE;
    radioLinksParams.uDummy2[iRadioLink] = 0;
 
-   updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+   validateRadioSettings();
 }
 
 
@@ -2040,8 +2065,8 @@ void Model::addNewRadioLinkForRadioInterface(int iRadioInterfaceIndex, bool* pbD
       radioLinksParams.link_capabilities_flags[radioLinksParams.links_count] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
       radioLinksParams.link_capabilities_flags[radioLinksParams.links_count] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK_SIK;
 
-      radioLinksParams.link_datarate_video_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SIK_AIR;
-      radioLinksParams.link_datarate_data_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+      radioLinksParams.downlink_datarate_video_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+      radioLinksParams.downlink_datarate_data_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SIK_AIR;
       radioLinksParams.uplink_datarate_video_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SIK_AIR;
       radioLinksParams.uplink_datarate_data_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SIK_AIR;
    }
@@ -2059,8 +2084,8 @@ void Model::addNewRadioLinkForRadioInterface(int iRadioInterfaceIndex, bool* pbD
       if ( pRadioHWInfo->iCardModel == CARD_MODEL_SERIAL_RADIO_ELRS )
          radioLinksParams.link_capabilities_flags[radioLinksParams.links_count] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK_ELRS;
 
-      radioLinksParams.link_datarate_video_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
-      radioLinksParams.link_datarate_data_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+      radioLinksParams.downlink_datarate_video_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+      radioLinksParams.downlink_datarate_data_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
       radioLinksParams.uplink_datarate_video_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
       radioLinksParams.uplink_datarate_data_bps[radioLinksParams.links_count] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;       
    
@@ -2072,10 +2097,10 @@ void Model::addNewRadioLinkForRadioInterface(int iRadioInterfaceIndex, bool* pbD
    }
    radioInterfacesParams.interface_current_frequency_khz[iRadioInterfaceIndex] = radioLinksParams.link_frequency_khz[radioLinksParams.links_count];
 
-   radioLinksParams.uplink_datarate_video_bps[radioLinksParams.links_count] = radioLinksParams.link_datarate_video_bps[radioLinksParams.links_count];
-   radioLinksParams.uplink_datarate_data_bps[radioLinksParams.links_count] = radioLinksParams.link_datarate_data_bps[radioLinksParams.links_count];
+   radioLinksParams.uplink_datarate_video_bps[radioLinksParams.links_count] = radioLinksParams.downlink_datarate_video_bps[radioLinksParams.links_count];
+   radioLinksParams.uplink_datarate_data_bps[radioLinksParams.links_count] = radioLinksParams.downlink_datarate_data_bps[radioLinksParams.links_count];
    
-   updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+   validateRadioSettings();
 
    log_line("Model: Added a new radio link (link %d) on %s for radio interface %d (%s)",
       radioLinksParams.links_count+1, str_format_frequency(radioLinksParams.link_frequency_khz[radioLinksParams.links_count]), iRadioInterfaceIndex+1, pRadioHWInfo->szName);
@@ -2230,27 +2255,10 @@ void Model::populateDefaultRadioLinksInfoFromRadioInterfaces()
       }
 
 
-   // Populate radio interfaces radio flags and rates from radio links radio flags and rates
-   updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
-
+   validateRadioSettings();
    if ( true )
       logVehicleRadioInfo();
 
-}
-
-void Model::updateRadioInterfacesRadioFlagsFromRadioLinksFlags()
-{
-   for( int iLink=0; iLink<radioLinksParams.links_count; iLink++ )
-   {
-      for( int i=0; i<radioInterfacesParams.interfaces_count; i++ )
-      {
-         radioInterfacesParams.interface_dummy2[i] = 0;
-         if ( radioInterfacesParams.interface_link_id[i] == iLink )
-         {
-            radioInterfacesParams.interface_current_radio_flags[i] = radioLinksParams.link_radio_flags[iLink];
-         }
-      }
-   }
 }
 
 bool Model::check_update_radio_links()
@@ -2385,10 +2393,14 @@ void Model::logVehicleRadioInfo()
    for( int i=0; i<radioLinksParams.links_count; i++ )
    {
          char szBuff2[256];
+         char szBuff3[256];
          szBuff[0] = 0;
          szBuff2[0] = 0;
+         szBuff3[0] = 0;
          str_get_radio_frame_flags_description(radioLinksParams.link_radio_flags[i], szBuff);
+         str_get_radio_capabilities_description(radioLinksParams.link_capabilities_flags[i], szBuff3);
          for( int k=0; k<radioInterfacesParams.interfaces_count; k++ )
+         {
             if ( radioInterfacesParams.interface_link_id[k] == i )
             {
                char szInfo[256];
@@ -2398,6 +2410,7 @@ void Model::logVehicleRadioInfo()
                   sprintf(szInfo, "%d", k+1);
                strcat(szBuff2, szInfo);
             }
+         }
          char szPrefix[32];
          char szRelayFreq[32];
          szPrefix[0] = 0;
@@ -2407,11 +2420,13 @@ void Model::logVehicleRadioInfo()
             strcpy(szPrefix, "Relay ");
             sprintf(szRelayFreq, " (Relay on %s)", str_format_frequency(relay_params.uRelayFrequencyKhz));
          }
-         log_line("* %sRadio Link %d: %s%s, Radio frame flags: %s, used on radio interfaces: [%s]",
-                  szPrefix,i+1, str_format_frequency(radioLinksParams.link_frequency_khz[i]), szRelayFreq, szBuff, szBuff2);
-         str_get_radio_capabilities_description(radioLinksParams.link_capabilities_flags[i], szBuff);
-         log_line("  %sRadio Link %d capabilities flags: %s", szPrefix, i+1, szBuff);
-         log_line("  %sRadio Link %d datarates (video/data downlink/data uplink): %d/[%d-%d]/[%d-%d]", szPrefix, i+1, radioLinksParams.link_datarate_video_bps[i], radioLinksParams.uDownlinkDataDataRateType[i], radioLinksParams.link_datarate_data_bps[i], radioLinksParams.uUplinkDataDataRateType[i], radioLinksParams.uplink_datarate_data_bps[i]);
+         log_line("* %sRadio Link %d: %s%s, used on radio interfaces: [%s]",
+                  szPrefix, i+1, str_format_frequency(radioLinksParams.link_frequency_khz[i]), szRelayFreq, szBuff2);
+         log_line("* %sRadio Link %d radio frame flags: %s",
+                  szPrefix,i+1, szBuff);
+         log_line("  %sRadio Link %d capabilities flags: %s", szPrefix, i+1, szBuff3);
+         log_line("  %sRadio Link %d datarates (video/data downlink/data uplink): %d/%d/%d, max load: %d%%",
+            szPrefix, i+1, radioLinksParams.downlink_datarate_video_bps[i], radioLinksParams.downlink_datarate_data_bps[i], radioLinksParams.uplink_datarate_data_bps[i], radioLinksParams.uMaxLinkLoadPercent[i]);
    }
 
    log_line("------------------------------------------------------");
@@ -2438,11 +2453,22 @@ void Model::logVehicleRadioInfo()
             strcpy(szPrefix, "Relay ");
          radio_hw_info_t* pRadioInfo = hardware_get_radio_info(i);
          if ( (NULL != pRadioInfo) && (0 == strcmp(pRadioInfo->szMAC, radioInterfacesParams.interface_szMAC[i]) ) )
+         {
+            char szCardModel[128];
+            strcpy(szCardModel, "HW card type: ");
+            strcat(szCardModel, str_get_radio_card_model_string(pRadioInfo->iCardModel));
+            strcat(szCardModel, ", ");
+            if ( radioInterfacesParams.interface_card_model[i] >= 0 )
+               strcat(szCardModel, "auto set as: ");
+            else
+               strcat(szCardModel, "user set as: ");
+            strcat(szCardModel, str_get_radio_card_model_string(radioInterfacesParams.interface_card_model[i]));
             log_line("* %sRadio Interface %d: %s, %s, %s on port %s, drv: %s, supported bands: %s, current frequency: %s, assigned to radio link %d, current capabilities: %s, current radio flags: %s, raw_tx_power: %d",
-                szPrefix, i+1, pRadioInfo->szName, radioInterfacesParams.interface_szMAC[i], str_get_radio_card_model_string(radioInterfacesParams.interface_card_model[i]), radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description(radioInterfacesParams.interface_radiotype_and_driver[i]), szBands, str_format_frequency(pRadioInfo->uCurrentFrequencyKhz), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
+                szPrefix, i+1, pRadioInfo->szName, radioInterfacesParams.interface_szMAC[i], szCardModel, radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description(radioInterfacesParams.interface_radiotype_and_driver[i]), szBands, str_format_frequency(pRadioInfo->uCurrentFrequencyKhz), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
                 radioInterfacesParams.interface_raw_power[i]);
+         }
          else
-            log_line("* %sRadio Interface %d: %s on port %s, drv: %s, supported bands: %s, current frequency: %s, assigned to radio link %d, current capabilities: %s, current radio flags: %s, raw_tx_power: %d",
+            log_line("* %sRadio Interface %d: (no HW match) %s on port %s, drv: %s, supported bands: %s, current frequency: %s, assigned to radio link %d, current capabilities: %s, current radio flags: %s, raw_tx_power: %d",
                szPrefix, i+1, str_get_radio_card_model_string(radioInterfacesParams.interface_card_model[i]), radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description(radioInterfacesParams.interface_radiotype_and_driver[i]), szBands, str_format_frequency(radioInterfacesParams.interface_current_frequency_khz[i]), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
                radioInterfacesParams.interface_raw_power[i]);
       }
@@ -2456,11 +2482,18 @@ void Model::logVehicleRadioInfo()
 }
 
 // Returns the number of differences
-int Model::logVehicleRadioLinkDifferences(type_radio_links_parameters* pData1, type_radio_links_parameters* pData2)
+int Model::logVehicleRadioLinkDifferences(const char* szPrefix, type_radio_links_parameters* pData1, type_radio_links_parameters* pData2)
 {
+   char szPrefixToAdd[64];
+   szPrefixToAdd[0] = 0;
+   if ( (NULL != szPrefix) && (0 != szPrefix[0]) )
+   {
+      strcpy(szPrefixToAdd, szPrefix);
+      strcat(szPrefixToAdd, " ");
+   }
    if ( (NULL == pData1) || (NULL == pData2) )
    {
-      log_softerror_and_alarm("Invalid params in detecting radio links params differences.");
+      log_softerror_and_alarm("%sInvalid params in detecting radio links params differences.", szPrefixToAdd);
       return 0;
    }
 
@@ -2471,7 +2504,7 @@ int Model::logVehicleRadioLinkDifferences(type_radio_links_parameters* pData1, t
 
    if ( pData1->links_count != pData2->links_count )
    {
-      log_line("Radio Links count changed from %d to %d", pData1->links_count, pData2->links_count);
+      log_line("%sModel: * Radio Links count changed from %d to %d", szPrefixToAdd, pData1->links_count, pData2->links_count);
       iDifferences++;
    }
 
@@ -2480,7 +2513,7 @@ int Model::logVehicleRadioLinkDifferences(type_radio_links_parameters* pData1, t
       if ( pData1->link_frequency_khz[i] != pData2->link_frequency_khz[i] )
       {
          strcpy(szTmp, str_format_frequency(pData1->link_frequency_khz[i]));
-         log_line("* Radio Link %d freq changed from %s to %s", i+1, szTmp, str_format_frequency(pData2->link_frequency_khz[i]));
+         log_line("%sModel: * Radio Link %d freq changed from %s to %s", szPrefixToAdd, i+1, szTmp, str_format_frequency(pData2->link_frequency_khz[i]));
          iDifferences++;
       }
 
@@ -2488,7 +2521,7 @@ int Model::logVehicleRadioLinkDifferences(type_radio_links_parameters* pData1, t
       {
          str_get_radio_capabilities_description(pData1->link_capabilities_flags[i], szBuff1);
          str_get_radio_capabilities_description(pData2->link_capabilities_flags[i], szBuff2);
-         log_line("* Radio Link %d capabilities changed from %s to %s", i+1, szBuff1, szBuff2);
+         log_line("%sModel: * Radio Link %d capabilities changed from %s to %s", szPrefixToAdd, i+1, szBuff1, szBuff2);
          iDifferences++;
       }
 
@@ -2496,22 +2529,22 @@ int Model::logVehicleRadioLinkDifferences(type_radio_links_parameters* pData1, t
       {
          str_get_radio_frame_flags_description(pData1->link_radio_flags[i], szBuff1);
          str_get_radio_frame_flags_description(pData2->link_radio_flags[i], szBuff2);
-         log_line("* Radio Link %d radio flags changed from %s to %s", i+1, szBuff1, szBuff2);
+         log_line("%sModel: * Radio Link %d radio flags changed from %s to %s", szPrefixToAdd, i+1, szBuff1, szBuff2);
          iDifferences++;
       }
 
-      if ( pData1->link_datarate_video_bps[i] != pData2->link_datarate_video_bps[i] )
+      if ( pData1->downlink_datarate_video_bps[i] != pData2->downlink_datarate_video_bps[i] )
       {
-         str_format_bitrate(pData1->link_datarate_video_bps[i], szBuff1);
-         str_format_bitrate(pData2->link_datarate_video_bps[i], szBuff2);
-         log_line("* Radio Link %d video data rate changed from %s to %s", i+1, szBuff1, szBuff2);
+         str_format_bitrate(pData1->downlink_datarate_video_bps[i], szBuff1);
+         str_format_bitrate(pData2->downlink_datarate_video_bps[i], szBuff2);
+         log_line("%sModel: * Radio Link %d video data rate changed from %s to %s", szPrefixToAdd, i+1, szBuff1, szBuff2);
          iDifferences++;
       }
-      if ( pData1->link_datarate_data_bps[i] != pData2->link_datarate_data_bps[i] )
+      if ( pData1->downlink_datarate_data_bps[i] != pData2->downlink_datarate_data_bps[i] )
       {
-         str_format_bitrate(pData1->link_datarate_data_bps[i], szBuff1);
-         str_format_bitrate(pData2->link_datarate_data_bps[i], szBuff2);
-         log_line("* Radio Link %d data data rate changed from %s to %s", i+1, szBuff1, szBuff2);
+         str_format_bitrate(pData1->downlink_datarate_data_bps[i], szBuff1);
+         str_format_bitrate(pData2->downlink_datarate_data_bps[i], szBuff2);
+         log_line("%sModel: * Radio Link %d data data rate changed from %s to %s", szPrefixToAdd, i+1, szBuff1, szBuff2);
          iDifferences++;
       }
 
@@ -2519,49 +2552,50 @@ int Model::logVehicleRadioLinkDifferences(type_radio_links_parameters* pData1, t
       {
          str_format_bitrate(pData1->uplink_datarate_video_bps[i], szBuff1);
          str_format_bitrate(pData2->uplink_datarate_video_bps[i], szBuff2);
-         log_line("* Radio Link %d uplink video data rate changed from %s to %s", i+1, szBuff1, szBuff2);
+         log_line("%sModel: * Radio Link %d uplink video data rate changed from %s to %s", szPrefixToAdd, i+1, szBuff1, szBuff2);
          iDifferences++;
       }
       if ( pData1->uplink_datarate_data_bps[i] != pData2->uplink_datarate_data_bps[i] )
       {
          str_format_bitrate(pData1->uplink_datarate_data_bps[i], szBuff1);
          str_format_bitrate(pData2->uplink_datarate_data_bps[i], szBuff2);
-         log_line("* Radio Link %d uplink data data rate changed from %s to %s", i+1, szBuff1, szBuff2);
+         log_line("%sModel: * Radio Link %d uplink data data rate changed from %s to %s", szPrefixToAdd, i+1, szBuff1, szBuff2);
          iDifferences++;
       }
 
-      if ( pData1->uDownlinkDataDataRateType[i] != pData2->uDownlinkDataDataRateType[i] )
+      if ( pData1->downlink_datarate_data_bps[i] != pData2->downlink_datarate_data_bps[i] )
       {
-         log_line("* Radio Link %d downlink data rate type changed from %d to %d", i+1, pData1->uDownlinkDataDataRateType[i], pData2->uDownlinkDataDataRateType[i]);
+         log_line("%sModel: * Radio Link %d downlink data rate type changed from %d to %d", szPrefixToAdd, i+1, pData1->downlink_datarate_data_bps[i], pData2->downlink_datarate_data_bps[i]);
          iDifferences++;
       }
-      if ( pData1->uUplinkDataDataRateType[i] != pData2->uUplinkDataDataRateType[i] )
+
+      if ( pData1->uMaxLinkLoadPercent[i] != pData2->uMaxLinkLoadPercent[i] )
       {
-         log_line("* Radio Link %d uplink data rate type changed from %d to %d", i+1, pData1->uUplinkDataDataRateType[i], pData2->uUplinkDataDataRateType[i]);
+         log_line("%sModel: * Radio Link %d max load percentage changed from %d%% to %d%%", szPrefixToAdd, i+1, pData1->uMaxLinkLoadPercent[i], pData2->uMaxLinkLoadPercent[i]);
          iDifferences++;
       }
 
       if ( pData1->uSerialPacketSize[i] != pData2->uSerialPacketSize[i] )
       {
-         log_line("* Radio Link %d serial packet size changed from %d to %d", i+1, pData1->uSerialPacketSize[i], pData2->uSerialPacketSize[i]);
+         log_line("%sModel: * Radio Link %d serial packet size changed from %d to %d", szPrefixToAdd, i+1, pData1->uSerialPacketSize[i], pData2->uSerialPacketSize[i]);
          iDifferences++;
-      }
+      }      
    }
 
    if ( pData1->iSiKPacketSize != pData2->iSiKPacketSize )
    {
-      log_line("* Radio Links SiK packet size changed from %d to %d", pData1->iSiKPacketSize, pData2->iSiKPacketSize);
+      log_line("%sModel: * Radio Links SiK packet size changed from %d to %d", szPrefixToAdd, pData1->iSiKPacketSize, pData2->iSiKPacketSize);
       iDifferences++;
    }
 
    if ( (pData1->uGlobalRadioLinksFlags & (~MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS)) != (pData2->uGlobalRadioLinksFlags & (~MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS)) )
    {
-      log_line("* Radio Links global radio links flags changed from %u to %u", pData1->uGlobalRadioLinksFlags, pData2->uGlobalRadioLinksFlags);
+      log_line("%sModel: * Radio Links global radio links flags changed from %u to %u", szPrefixToAdd, pData1->uGlobalRadioLinksFlags, pData2->uGlobalRadioLinksFlags);
       iDifferences++;
    }
 
    if ( 0 == iDifferences )
-      log_line("* There are no differences in the radio links params.");
+      log_line("%sModel: * There are no differences in the radio links params.", szPrefixToAdd);
    return iDifferences;
 }
 
@@ -2642,12 +2676,9 @@ bool Model::find_and_validate_camera_settings()
 
       if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
       {
-         for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-         {
-            video_link_profiles[i].width = 1920;
-            video_link_profiles[i].height = 1080;
-            video_link_profiles[i].fps = 30;
-         }
+         video_params.iVideoWidth = 1920;
+         video_params.iVideoHeight = 1080;
+         video_params.iVideoFPS = 30;
       }
       if ( hardware_isCameraVeye() )
       {
@@ -2669,33 +2700,23 @@ bool Model::find_and_validate_camera_settings()
    // * when a HDMI camera is first plugged in
 
    if ( (bUpdated && hardware_isCameraHDMI()) || hardware_isCameraVeye() )
-   {
-      for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+   {     
+      if ( (video_params.iVideoWidth == 1280) && (video_params.iVideoHeight == 720) )
       {
-         int fps = video_link_profiles[i].fps;
-         int width = video_link_profiles[i].width;
-         int height = video_link_profiles[i].height;
-
-         if ( width == 1280 && height == 720 )
-         {
-            if ( fps > 60 )
-               { fps = 60; bUpdated = true; }
-         }
-         else if ( width == 1920 && height == 1080 )
-         {
-            if ( fps > 30 )
-               { fps = 30; bUpdated = true; }
-         }
-         else
-         {
-            width = 1280;
-            height = 720;
-            fps = 30;
-            bUpdated = true;
-         }
-         video_link_profiles[i].width = width;
-         video_link_profiles[i].height = height;
-         video_link_profiles[i].fps = fps;
+         if ( video_params.iVideoFPS > 60 )
+            { video_params.iVideoFPS = 60; bUpdated = true; }
+      }
+      else if ( (video_params.iVideoWidth == 1920) && (video_params.iVideoHeight == 1080) )
+      {
+         if ( video_params.iVideoFPS > 30 )
+            { video_params.iVideoFPS = 30; bUpdated = true; }
+      }
+      else
+      {
+         video_params.iVideoWidth = 1280;
+         video_params.iVideoHeight = 720;
+         video_params.iVideoFPS = 30;
+         bUpdated = true;
       }
    }
    log_line("Validating camera info: camera was updated: %s", bUpdated?"yes":"no");
@@ -2703,15 +2724,15 @@ bool Model::find_and_validate_camera_settings()
 }
 
 // Returns true if changes where made
-bool Model::validate_fps_and_exposure_settings(type_video_link_profile* pVideoLinkProfile, camera_profile_parameters_t* pCameraProfile)
+bool Model::validate_fps_and_exposure_settings(camera_profile_parameters_t* pCameraProfile)
 {
    if ( isRunningOnOpenIPCHardware() )
    if ( hardware_board_is_sigmastar(hwCapabilities.uBoardType) )
    {
-      if ( pVideoLinkProfile->fps > 0 )
-      if ( pCameraProfile->shutterspeed >= 1000/pVideoLinkProfile->fps )
+      if ( video_params.iVideoFPS > 0 )
+      if ( pCameraProfile->shutterspeed >= 1000/video_params.iVideoFPS )
       {
-         pCameraProfile->shutterspeed = 1000/pVideoLinkProfile->fps - 1;
+         pCameraProfile->shutterspeed = 1000/video_params.iVideoFPS - 1;
          return true;
       }
    }
@@ -2721,6 +2742,18 @@ bool Model::validate_fps_and_exposure_settings(type_video_link_profile* pVideoLi
 bool Model::validate_settings()
 {
    log_line("Model: Validating model settings...");
+
+   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+   {
+      video_link_profiles[i].dummyVP1 = 0;
+      video_link_profiles[i].dummyVP2 = 0;
+      video_link_profiles[i].dummyVP3 = 0;
+      video_link_profiles[i].dummyVP6 = 0;
+      if ( (video_link_profiles[i].iAdaptiveAdjustmentStrength < 1) || (video_link_profiles[i].iAdaptiveAdjustmentStrength > 10) )
+         video_link_profiles[i].iAdaptiveAdjustmentStrength = DEFAULT_VIDEO_PARAMS_ADJUSTMENT_STRENGTH;
+   }
+   video_params.dummyV1 = 0;
+
    for( unsigned int i=0; i<(sizeof(hwCapabilities.dummyhwc)/sizeof(hwCapabilities.dummyhwc[0])); i++ )
       hwCapabilities.dummyhwc[i] = 0;
    for( unsigned int i=0; i<(sizeof(hwCapabilities.dummyhwc2)/sizeof(hwCapabilities.dummyhwc2[0])); i++ )
@@ -2734,11 +2767,6 @@ bool Model::validate_settings()
 
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
    {
-      if ( (radioLinksParams.uUplinkDataDataRateType[i] <= 0) || (radioLinksParams.uUplinkDataDataRateType[i] > 3) )
-         radioLinksParams.uUplinkDataDataRateType[i] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO;
-      if ( (radioLinksParams.uDownlinkDataDataRateType[i] <= 0) || (radioLinksParams.uDownlinkDataDataRateType[i] > 3) )
-         radioLinksParams.uDownlinkDataDataRateType[i] = FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO;
-
       if ( (radioInterfacesParams.interface_raw_power[i] < 1) || (radioInterfacesParams.interface_raw_power[i] > 71) )
          radioInterfacesParams.interface_raw_power[i] = DEFAULT_RADIO_TX_POWER;
    }
@@ -2802,7 +2830,7 @@ bool Model::validate_settings()
          radioLinksParams.link_capabilities_flags[iLinkId] &= ~RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO;
    }
 
-   validate_radio_flags();
+   validateRadioSettings();
 
    for( int i=0; i<radioInterfacesParams.interfaces_count; i++ )
    {
@@ -2821,24 +2849,15 @@ bool Model::validate_settings()
 
    for( int i=0; i<radioLinksParams.links_count; i++ )
    {
-      if ( getRealDataRateFromRadioDataRate(radioLinksParams.link_datarate_video_bps[i], 0) < 500000 )
-      if ( radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO )
-      {
-         if ( ! radioLinkIsSiKRadio(i) )
-         {
-            log_softerror_and_alarm("Invalid radio video data rates (%d). Reseting to default (%d).", radioLinksParams.link_datarate_video_bps[i], DEFAULT_RADIO_DATARATE_VIDEO);
-            radioLinksParams.link_datarate_video_bps[i] = DEFAULT_RADIO_DATARATE_VIDEO;
-         }
-      }
-      if ( getRealDataRateFromRadioDataRate(radioLinksParams.link_datarate_data_bps[i], 0) < 500 )
+      if ( getRealDataRateFromRadioDataRate(radioLinksParams.downlink_datarate_data_bps[i], radioLinksParams.link_radio_flags[i], 1) < 500 )
       if ( radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA )
       {
-         int iTmp = radioLinksParams.link_datarate_data_bps[i];
+         int iTmp = radioLinksParams.downlink_datarate_data_bps[i];
          if ( radioLinkIsSiKRadio(i) )
-            radioLinksParams.link_datarate_data_bps[i] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+            radioLinksParams.downlink_datarate_data_bps[i] = DEFAULT_RADIO_DATARATE_SIK_AIR;
          else
-            radioLinksParams.link_datarate_data_bps[i] = DEFAULT_RADIO_DATARATE_DATA;
-         log_softerror_and_alarm("Invalid radio data data rates (%d). Reseting to default (%d).", iTmp, radioLinksParams.link_datarate_data_bps[i]);
+            radioLinksParams.downlink_datarate_data_bps[i] = DEFAULT_RADIO_DATARATE_DATA;
+         log_softerror_and_alarm("Invalid radio data data rates (%d). Reseting to default (%d).", iTmp, radioLinksParams.downlink_datarate_data_bps[i]);
       }
    }
 
@@ -2866,7 +2885,7 @@ bool Model::validate_settings()
    if ( telemetry_params.controller_mavlink_id <= 0 || telemetry_params.controller_mavlink_id > 255 )
       telemetry_params.controller_mavlink_id = DEFAULT_MAVLINK_SYS_ID_CONTROLLER;
    if ( telemetry_params.flags == 0 )
-      telemetry_params.flags = TELEMETRY_FLAGS_RXTX | TELEMETRY_FLAGS_REQUEST_DATA_STREAMS | TELEMETRY_FLAGS_SPECTATOR_ENABLE;
+      telemetry_params.flags = TELEMETRY_FLAGS_REQUEST_DATA_STREAMS | TELEMETRY_FLAGS_SPECTATOR_ENABLE;
 
    if ( rxtx_sync_type < 0 || rxtx_sync_type >= RXTX_SYNC_TYPE_LAST )
       rxtx_sync_type = RXTX_SYNC_TYPE_BASIC;
@@ -2909,10 +2928,26 @@ bool Model::validate_settings()
       convertECPercentageToData(&(video_link_profiles[i]));
    }
 
-   if ( video_params.videoAdjustmentStrength < 1 || video_params.videoAdjustmentStrength > 10 )
-      video_params.videoAdjustmentStrength = DEFAULT_VIDEO_PARAMS_ADJUSTMENT_STRENGTH;
 
-   validate_relay_links_flags();
+   if ( (video_params.iVideoWidth < 320) || (video_params.iVideoWidth > 8200) ||
+        (video_params.iVideoHeight < 200) || (video_params.iVideoWidth > 4200) ||
+        (video_params.iVideoFPS < 5) || (video_params.iVideoFPS > 120) )
+   {
+      video_params.iVideoWidth = DEFAULT_VIDEO_WIDTH;
+      video_params.iVideoHeight = DEFAULT_VIDEO_HEIGHT;
+      video_params.iVideoFPS = DEFAULT_VIDEO_FPS;
+      if ( hardware_board_is_openipc(hardware_getBoardType()) )
+         video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC;
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
+         video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
+
+      if ( hardware_isCameraVeye() || hardware_isCameraHDMI() )
+      {
+         video_params.iVideoWidth = 1920;
+         video_params.iVideoHeight = 1080;
+         video_params.iVideoFPS = 30;
+      }
+   }
 
    if ( (hwCapabilities.iMaxTxVideoBlocksBuffer < 2) || (hwCapabilities.iMaxTxVideoBlocksBuffer > MAX_RXTX_BLOCKS_BUFFER) )
       hwCapabilities.iMaxTxVideoBlocksBuffer = MAX_RXTX_BLOCKS_BUFFER;
@@ -2923,9 +2958,114 @@ bool Model::validate_settings()
    return true;
 }
 
-bool Model::validate_relay_links_flags()
+bool Model::validateRadioSettings()
 {
-   bool bAnyChange = false;
+   log_line("Model VID %u: Validating radio settings...", uVehicleId);
+   bool bAnyUpdate = false;
+
+   // Check radio links flags
+   for( int i=0; i<radioLinksParams.links_count; i++ )
+   {
+      u32 uNewRadioFlags = radioLinksParams.link_radio_flags[i];
+      if ( ! (uNewRadioFlags & RADIO_FLAGS_FRAME_TYPE_DATA) )
+      {
+         uNewRadioFlags |= RADIO_FLAGS_FRAME_TYPE_DATA;
+         bAnyUpdate = true;
+         log_line("Model VID %u: Validate radio settings: Add missing frame type to radio link %d", uVehicleId, i+1);
+      }
+
+      if ( 0 == (radioLinksParams.link_radio_flags[i] & (RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES)) )
+      {
+         uNewRadioFlags |= RADIO_FLAGS_USE_LEGACY_DATARATES;
+         if ( (radioLinksParams.downlink_datarate_video_bps[i] < 0) && (radioLinksParams.downlink_datarate_video_bps[i] != -100) )
+         {
+            uNewRadioFlags &= ~RADIO_FLAGS_USE_LEGACY_DATARATES;
+            uNewRadioFlags |= RADIO_FLAGS_USE_MCS_DATARATES;
+         }
+         bAnyUpdate = true;
+         log_line("Model VID %u: Validate radio settings: Add missing modulation type to radio link %d", uVehicleId, i+1);
+      }
+      if ( radioLinksParams.downlink_datarate_video_bps[i] > 0 )
+      {
+         uNewRadioFlags &= ~RADIO_FLAGS_USE_MCS_DATARATES;
+         uNewRadioFlags |= RADIO_FLAGS_USE_LEGACY_DATARATES;
+      }
+      if ( (radioLinksParams.downlink_datarate_video_bps[i] < 0) && (radioLinksParams.downlink_datarate_video_bps[i] != -100) )
+      {
+         uNewRadioFlags &= ~RADIO_FLAGS_USE_LEGACY_DATARATES;
+         uNewRadioFlags |= RADIO_FLAGS_USE_MCS_DATARATES;
+      }
+      if ( uNewRadioFlags != radioLinksParams.link_radio_flags[i] )
+      {
+         char szOldFlags[128];
+         char szNewFlags[128];
+         str_get_radio_frame_flags_description(radioLinksParams.link_radio_flags[i], szOldFlags);
+         str_get_radio_frame_flags_description(uNewRadioFlags, szNewFlags);
+         log_line("Model VID %u: Validate radio settings: Updated radio link %d radio frame flags to match current data rates. (old flags: %s, new flags: %s)",
+            uVehicleId, i+1, szOldFlags, szNewFlags);
+         radioLinksParams.link_radio_flags[i] = uNewRadioFlags;
+         bAnyUpdate = true;
+      }
+      for( int k=0; k<radioInterfacesParams.interfaces_count; k++ )
+      {
+         if ( radioInterfacesParams.interface_link_id[k] == i )
+         {
+            uNewRadioFlags = radioInterfacesParams.interface_current_radio_flags[k];
+            radioInterfacesParams.interface_current_radio_flags[k] &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES);
+            radioInterfacesParams.interface_current_radio_flags[k] |= (radioLinksParams.link_radio_flags[i] & (RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES));
+            if ( uNewRadioFlags != radioInterfacesParams.interface_current_radio_flags[k] )
+            {
+               char szOldFlags[128];
+               char szNewFlags[128];
+               str_get_radio_frame_flags_description(radioInterfacesParams.interface_current_radio_flags[k], szOldFlags);
+               str_get_radio_frame_flags_description(uNewRadioFlags, szNewFlags);
+               log_line("Model VID %u: Validate radio settings: Updated radio interface %d radio flags to match radio link %d radio flags. (old flags: %s, new flags: %s)",
+                 uVehicleId, k+1, i+1, szOldFlags, szNewFlags);
+               bAnyUpdate = true;
+               radioInterfacesParams.interface_current_radio_flags[k] = uNewRadioFlags;
+            }
+         }
+      }
+   }
+
+   // Check high capacity flags flags
+
+   for( int iLink=0; iLink<radioLinksParams.links_count; iLink++ )
+   {
+      if ( (radioLinksParams.uMaxLinkLoadPercent[iLink] < 10) || (radioLinksParams.uMaxLinkLoadPercent[iLink] > 90) )
+         radioLinksParams.uMaxLinkLoadPercent[iLink] = DEFAULT_RADIO_LINK_LOAD_PERCENT;
+
+      for( int i=0; i<radioInterfacesParams.interfaces_count; i++ )
+      {
+         if ( radioInterfacesParams.interface_link_id[i] == iLink )
+         {
+            if ( radioInterfacesParams.interface_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY )
+            if ( ! (radioLinksParams.link_capabilities_flags[iLink] & RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY) )
+            {
+               radioLinksParams.link_capabilities_flags[iLink] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY;
+               bAnyUpdate = true;
+               log_line("Model VID %u: Validate radio settings: Add missing high capacity flag to radio link %d", uVehicleId, i+1);
+            }
+         }
+      }
+   }
+
+   // Populate radio interfaces radio flags from radio links radio flags
+
+   for( int iLink=0; iLink<radioLinksParams.links_count; iLink++ )
+   {
+      for( int i=0; i<radioInterfacesParams.interfaces_count; i++ )
+      {
+         radioInterfacesParams.interface_dummy2[i] = 0;
+         if ( radioInterfacesParams.interface_link_id[i] == iLink )
+         {
+            radioInterfacesParams.interface_current_radio_flags[i] = radioLinksParams.link_radio_flags[iLink];
+         }
+      }
+   }
+
+   // Validate relay links
+   // Double check and remove the RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY flag from links and interfaces that are not relay links
 
    if ( relay_params.isRelayEnabledOnRadioLinkId < 0 )
    {
@@ -2933,127 +3073,104 @@ bool Model::validate_relay_links_flags()
       {
          if ( radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
          {
-            log_line("Validate relay params: removed relay flag from radio link %d as relayed is not enabled on any radio links.", i+1);
+            log_line("Model VID %u: Validate radio settings: Removed relay flag from radio link %d as relayed is not enabled on any radio links.", uVehicleId, i+1);
             radioLinksParams.link_capabilities_flags[i] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
-            bAnyChange = true;
+            bAnyUpdate = true;
          }
          if ( radioInterfacesParams.interface_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
          {
-            log_line("Validate relay params: removed relay flag from radio interface %d as relayed is not enabled on any radio links.", i+1);
+            log_line("Model VID %u: Validate radio settings: Removed relay flag from radio interface %d as relayed is not enabled on any radio links.", uVehicleId, i+1);
             radioInterfacesParams.interface_capabilities_flags[i] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
-            bAnyChange = true;
-         }
-      }
-      if ( bAnyChange )
-         log_line("Validated model relay settings: removed invalid relay flags as relaying is not enabled on any link.");
-      return bAnyChange;
-   }
-
-   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
-   {
-      if ( (relay_params.isRelayEnabledOnRadioLinkId == i) && (i<radioLinksParams.links_count) )
-      {
-         if ( !(radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY) )
-         {
-            log_line("Validate relay params: added relay flag to radio link %d as relayed is enabled on radio link %d.", i+1, relay_params.isRelayEnabledOnRadioLinkId+1);
-            radioLinksParams.link_capabilities_flags[i] |= RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY;
-            //bAnyChange = true;
-         }
-      }
-      else
-      {
-         if ( radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
-         {
-            log_line("Validate relay params: removed relay flag from radio link %d as relayed is enabled on radio link %d.", i+1, relay_params.isRelayEnabledOnRadioLinkId+1);
-            radioLinksParams.link_capabilities_flags[i] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);       
-            bAnyChange = true;
+            bAnyUpdate = true;
          }
       }
    }
-
-   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+   else
    {
-      int iRadioLinkId = radioInterfacesParams.interface_link_id[i];
-      
-      if ( (iRadioLinkId) < 0 || (iRadioLinkId >= MAX_RADIO_INTERFACES) || (i >= radioInterfacesParams.interfaces_count) )
-      if ( radioInterfacesParams.interface_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+      for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
       {
-         log_line("Validate relay params: removed radio interface %d relay flag as it's not assigned to any radio link.", i+1);
-         radioInterfacesParams.interface_capabilities_flags[i] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
-         bAnyChange = true;
-      }
-
-      if ( (iRadioLinkId >= 0) && (iRadioLinkId < MAX_RADIO_INTERFACES) && (i < radioInterfacesParams.interfaces_count) )
-      {
-         if ( iRadioLinkId == relay_params.isRelayEnabledOnRadioLinkId )
+         if ( (relay_params.isRelayEnabledOnRadioLinkId == i) && (i<radioLinksParams.links_count) )
          {
-            if ( !(radioInterfacesParams.interface_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY) )
+            if ( !(radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY) )
             {
-               log_line("Validate relay params: added radio interface %d relay flag as it's assigned to relay radio link %d.", i+1, relay_params.isRelayEnabledOnRadioLinkId+1);
-               radioInterfacesParams.interface_capabilities_flags[i] |= RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY;
-               //bAnyChange = true;
+               log_line("Model VID %u: Validate radio settings: Added relay flag to radio link %d as relayed is enabled on radio link %d.", uVehicleId, i+1, relay_params.isRelayEnabledOnRadioLinkId+1);
+               radioLinksParams.link_capabilities_flags[i] |= RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY;
+               bAnyUpdate = true;
             }
          }
          else
          {
-            if ( radioInterfacesParams.interface_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+            if ( radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
             {
-               log_line("Validate relay params: removed radio interface %d relay flag as it's not assigned to relay radio link %d.", i+1, relay_params.isRelayEnabledOnRadioLinkId+1);
-               radioInterfacesParams.interface_capabilities_flags[i] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);       
-               bAnyChange = true;
+               log_line("Model VID %u: Validate radio settings: Removed relay flag from radio link %d as relayed is enabled on radio link %d.", uVehicleId, i+1, relay_params.isRelayEnabledOnRadioLinkId+1);
+               radioLinksParams.link_capabilities_flags[i] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);       
+               bAnyUpdate = true;
             }
          }
       }
-   }
 
-   if ( 1 == radioLinksParams.links_count )
-   if ( radioLinksParams.link_capabilities_flags[0] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
-   {
-      log_line("Validate relay flags: Removed relay flag from radio link 1 as it's the only link present.");
-      radioLinksParams.link_capabilities_flags[0] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
-      radioInterfacesParams.interface_capabilities_flags[0] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
-      bAnyChange = true;
-   }
-
-   if ( 1 == radioLinksParams.links_count )
-   if ( radioInterfacesParams.interface_capabilities_flags[0] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
-   {
-      log_line("Validate relay flags: Removed relay flag from radio interface 1 as it's the only interface present.");
-      radioLinksParams.link_capabilities_flags[0] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
-      radioInterfacesParams.interface_capabilities_flags[0] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
-      bAnyChange = true;
-   }
-
-   if ( bAnyChange )
-      log_line("Validated model relay settings: removed invalid relay flags.");
-   return bAnyChange;
-}
-
-void Model::validate_radio_flags()
-{
-   for( int i=0; i<radioLinksParams.links_count; i++ )
-   {
-      // Clear and set datarate type
-      u32 uCurrentRadioFlags = radioLinksParams.link_radio_flags[i];
-      radioLinksParams.link_radio_flags[i] &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES);
-      if ( radioLinksParams.link_datarate_video_bps[i] < 0 )
-         radioLinksParams.link_radio_flags[i] |= RADIO_FLAGS_USE_MCS_DATARATES;
-      else
-         radioLinksParams.link_radio_flags[i] |= RADIO_FLAGS_USE_LEGACY_DATARATES;
-      if ( uCurrentRadioFlags != radioLinksParams.link_radio_flags[i] )
-         log_line("Model: Updated radio link %d radio flags to match data rates.", i+1);
-      for( int k=0; k<radioInterfacesParams.interfaces_count; k++ )
+      for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
       {
-         if ( radioInterfacesParams.interface_link_id[k] == i )
+         int iRadioLinkId = radioInterfacesParams.interface_link_id[i];
+         
+         if ( (iRadioLinkId) < 0 || (iRadioLinkId >= MAX_RADIO_INTERFACES) || (i >= radioInterfacesParams.interfaces_count) )
+         if ( radioInterfacesParams.interface_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
          {
-            uCurrentRadioFlags = radioInterfacesParams.interface_current_radio_flags[k];
-            radioInterfacesParams.interface_current_radio_flags[k] &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES);
-            radioInterfacesParams.interface_current_radio_flags[k] |= (radioLinksParams.link_radio_flags[i] & (RADIO_FLAGS_USE_LEGACY_DATARATES | RADIO_FLAGS_USE_MCS_DATARATES));
-            if ( uCurrentRadioFlags != radioInterfacesParams.interface_current_radio_flags[k] )
-               log_line("Model: Updated radio interface %d on radio link %d radio flags to match data rates.", k+1, i+1);
+            log_line("Model VID %u: Validate radio settings: Removed radio interface %d relay flag as it's not assigned to any radio link.", uVehicleId, i+1);
+            radioInterfacesParams.interface_capabilities_flags[i] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
+            bAnyUpdate = true;
+         }
+
+         if ( (iRadioLinkId >= 0) && (iRadioLinkId < MAX_RADIO_INTERFACES) && (i < radioInterfacesParams.interfaces_count) )
+         {
+            if ( iRadioLinkId == relay_params.isRelayEnabledOnRadioLinkId )
+            {
+               if ( !(radioInterfacesParams.interface_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY) )
+               {
+                  log_line("Model VID %u: Validate radio settings: Added radio interface %d relay flag as it's assigned to relay radio link %d.", uVehicleId, i+1, relay_params.isRelayEnabledOnRadioLinkId+1);
+                  radioInterfacesParams.interface_capabilities_flags[i] |= RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY;
+                  bAnyUpdate = true;
+               }
+            }
+            else
+            {
+               if ( radioInterfacesParams.interface_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+               {
+                  log_line("Model VID %u: Validate radio settings: Removed radio interface %d relay flag as it's not assigned to relay radio link %d.", uVehicleId, i+1, relay_params.isRelayEnabledOnRadioLinkId+1);
+                  radioInterfacesParams.interface_capabilities_flags[i] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);       
+                  bAnyUpdate = true;
+               }
+            }
          }
       }
+
+      if ( 1 == radioLinksParams.links_count )
+      if ( radioLinksParams.link_capabilities_flags[0] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+      {
+         log_line("Model VID %u: Validate radio settings: Removed relay flag from radio link 1 as it's the only link present.", uVehicleId);
+         radioLinksParams.link_capabilities_flags[0] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
+         radioInterfacesParams.interface_capabilities_flags[0] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
+         bAnyUpdate = true;
+      }
+
+      if ( 1 == radioLinksParams.links_count )
+      if ( radioInterfacesParams.interface_capabilities_flags[0] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
+      {
+         log_line("Model VID %u: Validate radio settings: Removed relay flag from radio interface 1 as it's the only interface present.", uVehicleId);
+         radioLinksParams.link_capabilities_flags[0] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
+         radioInterfacesParams.interface_capabilities_flags[0] &= (~RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY);
+         bAnyUpdate = true;
+      }
    }
+
+   if ( bAnyUpdate )
+   {
+      log_line("Model VID %u: Finished validating radio settings and did updates:", uVehicleId);
+      logVehicleRadioInfo();
+   }
+   else
+      log_line("Model VID %u: Finished validating radio settings. No updates done.", uVehicleId);
+   return bAnyUpdate;
 }
 
 
@@ -3085,6 +3202,7 @@ void Model::resetToDefaults(bool generateId)
    }
    
    uControllerId = 0;
+   uControllerBoardType = 0;
    sw_version = (SYSTEM_SW_VERSION_MAJOR * 256 + SYSTEM_SW_VERSION_MINOR) | (SYSTEM_SW_BUILD_NUMBER<<16);
    log_line("SW Version: %d.%d (b%d)", (sw_version >> 8) & 0xFF, sw_version & 0xFF, sw_version >> 16);
    vehicle_type = (MODEL_TYPE_DRONE & MODEL_TYPE_MASK) | ((MODEL_FIRMWARE_TYPE_RUBY << 5) & MODEL_FIRMWARE_MASK);
@@ -3099,7 +3217,7 @@ void Model::resetToDefaults(bool generateId)
    uModelPersistentStatusFlags = 0;
    uModelRuntimeStatusFlags = 0;
 
-   uDeveloperFlags = (((u32)DEFAULT_DELAY_WIFI_CHANGE)<<8);
+   uDeveloperFlags = (((u32)DEFAULT_DELAY_WIFI_CHANGE)<<DEVELOPER_FLAGS_WIFI_GUARD_DELAY_MASK_SHIFT);
    uDeveloperFlags |= DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS;
    uDeveloperFlags |= DEVELOPER_FLAGS_USE_PCAP_RADIO_TX;
 
@@ -3107,9 +3225,6 @@ void Model::resetToDefaults(bool generateId)
       uDeveloperFlags |= DEVELOPER_FLAGS_USE_PCAP_RADIO_TX;
    else
       uDeveloperFlags &= (~DEVELOPER_FLAGS_USE_PCAP_RADIO_TX);
-
-
-   m_iRadioInterfacesGraphRefreshInterval = 3;
 
    radioInterfacesParams.interfaces_count = 0;
    resetRadioLinksParams();
@@ -3131,6 +3246,7 @@ void Model::resetToDefaults(bool generateId)
    }
    iGPSCount = 1;
 
+   resetRadioCapabilitiesRuntime(&radioRuntimeCapabilities);
    resetRelayParamsToDefaults(&relay_params);
 
    rxtx_sync_type = RXTX_SYNC_TYPE_BASIC;
@@ -3261,6 +3377,24 @@ void Model::resetRadioLinksParams()
    log_line("Model: Did reset radio links params.");
 }
 
+void Model::resetRadioCapabilitiesRuntime(type_radio_runtime_capabilities_parameters* pRTInfo)
+{
+   if ( NULL == pRTInfo )
+      return;
+
+   pRTInfo->uFlagsRuntimeCapab = 0;
+   pRTInfo->iMaxSupportedMCSDataRate = 0;
+   pRTInfo->iMaxSupportedLegacyDataRate = 0;
+   for( int iLink=0; iLink<MODEL_MAX_STORED_QUALITIES_LINKS; iLink++ )
+   for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
+   {
+      pRTInfo->fQualitiesLegacy[iLink][i] = 0.0;
+      pRTInfo->fQualitiesMCS[iLink][i] = 0.0;
+      pRTInfo->iMaxTxPowerMwLegacy[iLink][i] = 0;
+      pRTInfo->iMaxTxPowerMwMCS[iLink][i] = 0;
+   }
+}
+
 void Model::resetRelayParamsToDefaults(type_relay_parameters* pRelayParams)
 {
    if ( NULL == pRelayParams )
@@ -3296,104 +3430,36 @@ void Model::resetOSDFlags(int iScreen)
       osd_params.show_instruments = false;
       osd_params.ahi_warning_angle = 45;
       osd_params.show_gps_position = false;
+      osd_params.iRadioInterfacesGraphRefreshIntervalMs = DEFAULT_OSD_RADIO_GRAPH_REFRESH_PERIOD_MS;
       
-      osd_params.uFlags = OSD_BIT_FLAGS_SHOW_FLIGHT_END_STATS | OSD_BIT_FLAGS_MUST_CHOOSE_PRESET;
+      osd_params.uFlags = OSD_BIT_FLAGS_SHOW_FLIGHT_END_STATS;
    }
 
    for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
    {
       if ( (iScreen != -1) && (iScreen != i) )
          continue;
+
       osd_params.osd_layout_preset[i] = OSD_PRESET_DEFAULT;
       osd_params.osd_flags[i] = 0;
       osd_params.osd_flags2[i] = 0;
       osd_params.osd_flags3[i] = 0;
       osd_params.instruments_flags[i] = 0;
-      osd_params.osd_preferences[i] = 0;
+      // OSD and stats font sizes:
+      osd_params.osd_preferences[i] = (((u32)2)<<16) | ((u32)2);
+      // OSD stats transparency:
+      osd_params.osd_preferences[i] |= ((u32)1)<<20;
+      // OSD transparency:
+      osd_params.osd_preferences[i] |= ((u32)2)<<OSD_PREFERENCES_OSD_TRANSPARENCY_SHIFT;
+
+      resetOSDScreenToLayout(i, osd_params.osd_layout_preset[i]);
    }
 
-   if ( (iScreen = -1) || (iScreen == 0) )
-   {
-      osd_params.osd_flags[0] = 0; // horizontal layout for stats panels;
-      osd_params.osd_flags[0] |= OSD_FLAG_SHOW_CPU_INFO;
-      osd_params.osd_flags2[0] = OSD_FLAG2_LAYOUT_ENABLED | OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY | OSD_FLAG2_SHOW_RC_RSSI;
-   }
-   if ( (iScreen = -1) || (iScreen == 1) )
-   {
-      osd_params.osd_flags[1] = OSD_FLAG_SHOW_DISTANCE | OSD_FLAG_SHOW_ALTITUDE | OSD_FLAG_SHOW_BATTERY;
-      osd_params.osd_flags2[1] = OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY | OSD_FLAG2_RELATIVE_ALTITUDE | OSD_FLAG2_SHOW_RC_RSSI;
-   }
-   if ( (iScreen = -1) || (iScreen == 2) )
-   {
-      osd_params.osd_flags[2] = OSD_FLAG_SHOW_DISTANCE | OSD_FLAG_SHOW_ALTITUDE | OSD_FLAG_SHOW_BATTERY | OSD_FLAG_SHOW_HOME | OSD_FLAG_SHOW_VIDEO_MODE | OSD_FLAG_SHOW_FLIGHT_MODE | OSD_FLAG_SHOW_FLIGHT_MODE_CHANGE | OSD_FLAG_SHOW_RADIO_INTERFACES_INFO;
-      osd_params.osd_flags2[2] = OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY | OSD_FLAG2_RELATIVE_ALTITUDE | OSD_FLAG2_SHOW_RC_RSSI;
-   }
-   if ( (iScreen = -1) || (iScreen == 3) )
-   {
-      osd_params.osd_flags[3] = 0;
-      osd_params.osd_flags2[3] = OSD_FLAG2_LAYOUT_ENABLED | OSD_FLAG2_SHOW_BGBARS | OSD_FLAG2_SHOW_RC_RSSI;
-   }
-   if ( (iScreen = -1) || (iScreen == 4) )
-   {
-      osd_params.osd_flags[4] = 0;
-      osd_params.osd_flags2[4] = OSD_FLAG2_SHOW_BGBARS | OSD_FLAG2_SHOW_RC_RSSI;
-   }
-
-   for( int i=0; i<MODEL_MAX_OSD_SCREENS; i++ )
-   {
-      if ( (iScreen != -1) && (iScreen != i) )
-         continue;
-      osd_params.osd_flags[i] |= OSD_FLAG_SHOW_BATTERY | OSD_FLAG_SHOW_DISTANCE | OSD_FLAG_SHOW_ALTITUDE | OSD_FLAG_SHOW_HOME;
-      osd_params.osd_flags[i] |= OSD_FLAG_SHOW_GPS_INFO | OSD_FLAG_SHOW_FLIGHT_MODE | OSD_FLAG_SHOW_FLIGHT_MODE_CHANGE;
-      if ( i < 3 )
-      {
-         osd_params.osd_flags[i] |= OSD_FLAG_SHOW_VIDEO_MODE | OSD_FLAG_SHOW_VIDEO_MBPS | OSD_FLAG_SHOW_VIDEO_MODE_EXTENDED;
-      }
-      osd_params.osd_flags[i] |= OSD_FLAG_SHOW_RADIO_LINKS | OSD_FLAG_SHOW_VEHICLE_RADIO_LINKS;
-      osd_params.osd_flags[i] |= OSD_FLAG_SHOW_RADIO_INTERFACES_INFO;
-      osd_params.osd_flags2[i] |= OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_NUMBERS | OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_BARS;
-      osd_params.osd_flags2[i] |= OSD_FLAG2_SHOW_GROUND_SPEED;
-      osd_params.osd_flags2[i] |= OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY;
-      if ( i >= 3 )
-         osd_params.osd_flags2[i] |= OSD_FLAG2_SHOW_BGBARS;
-      //osd_params.osd_flags2[i] |= OSD_FLAG2_FLASH_OSD_ON_TELEMETRY_DATA_LOST;
-
-      //osd_params.osd_flags3[i] = OSD_FLAG3_SHOW_GRID_DIAGONAL | OSD_FLAG3_SHOW_GRID_SQUARES;
-      if ( i >= 3 )
-         osd_params.osd_flags3[i] = OSD_FLAG3_SHOW_GRID_THIRDS_SMALL;
-      osd_params.osd_flags3[i] |= OSD_FLAG3_HIGHLIGHT_CHANGING_ELEMENTS;
-      osd_params.osd_flags3[i] |= OSD_FLAG3_RENDER_MSP_OSD;
-      osd_params.osd_flags3[i] |= OSD_FLAG3_SHOW_RADIO_LINK_QUALITY_NUMBERS_DBM | OSD_FLAG3_SHOW_RADIO_LINK_QUALITY_NUMBERS_SNR;
-      osd_params.osd_preferences[i] = ((u32)2) | (((u32)2)<<8) | (((u32)2)<<16) | (((u32)1)<<20) | OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM;
-   }
-
-   //osd_params.instruments_flags[0] = INSTRUMENTS_FLAG_SHOW_ALL_OSD_PLUGINS_MASK;
-
-   if ( (iScreen = -1) || (iScreen == 1) )
-   {
-      osd_params.osd_flags[1] = OSD_FLAG_SHOW_ALTITUDE | OSD_FLAG_SHOW_BATTERY;
-      osd_params.osd_flags[1] |= OSD_FLAG_SHOW_DISTANCE | OSD_FLAG_SHOW_ALTITUDE;
-      osd_params.osd_flags[1] |= OSD_FLAG_SHOW_FLIGHT_MODE | OSD_FLAG_SHOW_FLIGHT_MODE_CHANGE;
-      osd_params.osd_flags[1] |= OSD_FLAG_SHOW_RADIO_LINKS | OSD_FLAG_SHOW_VEHICLE_RADIO_LINKS;
-      osd_params.osd_flags2[1] = OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY | OSD_FLAG2_RELATIVE_ALTITUDE;
-      osd_params.osd_flags2[1] |= OSD_FLAG2_SHOW_GROUND_SPEED;
-      //osd_params.osd_flags2[1] |= OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY;
-   }
-
-   if ( (iScreen = -1) || (iScreen == 2) )
-   {
-      osd_params.osd_flags[2] |= OSD_FLAG_SHOW_BATTERY | OSD_FLAG_SHOW_DISTANCE | OSD_FLAG_SHOW_ALTITUDE | OSD_FLAG_SHOW_HOME;
-      osd_params.osd_flags[2] |= OSD_FLAG_SHOW_GPS_INFO | OSD_FLAG_SHOW_FLIGHT_MODE | OSD_FLAG_SHOW_FLIGHT_MODE_CHANGE;
-      osd_params.osd_flags[2] |= OSD_FLAG_SHOW_VIDEO_MODE | OSD_FLAG_SHOW_VIDEO_MBPS;
-      osd_params.osd_flags[2] |= OSD_FLAG_SHOW_RADIO_LINKS | OSD_FLAG_SHOW_VEHICLE_RADIO_LINKS;
-      osd_params.osd_flags2[2] = OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY | OSD_FLAG2_RELATIVE_ALTITUDE | OSD_FLAG2_SHOW_RC_RSSI;
-      osd_params.osd_flags2[2] |= OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_NUMBERS;
-      osd_params.osd_flags2[2] |= OSD_FLAG2_SHOW_GROUND_SPEED;
-      //osd_params.osd_flags2[2] |= OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY;
-
-      osd_params.osd_flags3[2] |= OSD_FLAG3_SHOW_RADIO_LINK_QUALITY_NUMBERS_DBM | OSD_FLAG3_SHOW_RADIO_LINK_QUALITY_NUMBERS_SNR;
-   }
    resetOSDStatsFlags();
+
+   if ( iScreen == -1 )
+      osd_params.uFlags |= OSD_BIT_FLAGS_MUST_CHOOSE_PRESET;
+   
    checkUpdateOSDRadioLinksFlags(&osd_params);
 }
 
@@ -3422,11 +3488,13 @@ void Model::resetOSDScreenToLayout(int iScreen, int iLayout)
    osd_params.osd_flags[iScreen] = 0;
    osd_params.osd_flags2[iScreen] = OSD_FLAG2_LAYOUT_ENABLED;
    osd_params.osd_flags2[iScreen] |= OSD_FLAG2_RELATIVE_ALTITUDE | OSD_FLAG2_SHOW_BACKGROUND_ON_TEXTS_ONLY;
+
    osd_params.osd_flags3[iScreen] = 0;
    osd_params.osd_preferences[iScreen] |= OSD_PREFERENCES_BIT_FLAG_ARANGE_STATS_WINDOWS_RIGHT;
 
    osd_params.osd_flags3[iScreen] |= OSD_FLAG3_HIGHLIGHT_CHANGING_ELEMENTS;
    osd_params.osd_flags3[iScreen] |= OSD_FLAG3_RENDER_MSP_OSD;
+
 
    if ( iLayout <= OSD_PRESET_NONE )
      return;
@@ -3437,6 +3505,7 @@ void Model::resetOSDScreenToLayout(int iScreen, int iLayout)
    if ( iLayout >= OSD_PRESET_MINIMAL )
    {
       osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_BATTERY | OSD_FLAG_SHOW_RADIO_LINKS;
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_TX_POWER;
       osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_BARS;
    }
 
@@ -3444,6 +3513,7 @@ void Model::resetOSDScreenToLayout(int iScreen, int iLayout)
    {
       osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_ALTITUDE;
       osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_FLIGHT_MODE | OSD_FLAG_SHOW_FLIGHT_MODE_CHANGE;      
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_TX_POWER;
       osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_NUMBERS;
       osd_params.osd_flags3[iScreen] |= OSD_FLAG3_SHOW_RADIO_LINK_QUALITY_NUMBERS_DBM | OSD_FLAG3_SHOW_RADIO_LINK_QUALITY_NUMBERS_SNR;
 
@@ -3454,9 +3524,12 @@ void Model::resetOSDScreenToLayout(int iScreen, int iLayout)
    if ( iLayout >= OSD_PRESET_DEFAULT )
    {
       osd_params.osd_flags[iScreen] |= OSD_FLAG_SHOW_VEHICLE_RADIO_LINKS | OSD_FLAG_SHOW_RADIO_INTERFACES_INFO;
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_TX_POWER;
       osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_NUMBERS | OSD_FLAG2_SHOW_RADIO_LINK_QUALITY_BARS;
       osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_GROUND_SPEED;
       osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_RC_RSSI;
+
+      osd_params.osd_flags2[iScreen] |= OSD_FLAG2_SHOW_STATS_RADIO_INTERFACES | OSD_FLAG2_SHOW_MINIMAL_RADIO_INTERFACES_STATS | OSD_FLAG2_SHOW_VEHICLE_RADIO_INTERFACES_STATS;
 
       osd_params.osd_flags3[iScreen] |= OSD_FLAG3_SHOW_RADIO_LINK_QUALITY_NUMBERS_DBM | OSD_FLAG3_SHOW_RADIO_LINK_QUALITY_NUMBERS_SNR;
 
@@ -3506,15 +3579,15 @@ void Model::resetTelemetryParams()
    telemetry_params.iVideoBitrateHistoryGraphSampleInterval = 200;
    telemetry_params.dummy5 = 0;
    telemetry_params.dummy6 = 0;
-   telemetry_params.bControllerHasInputTelemetry = false;
-   telemetry_params.bControllerHasOutputTelemetry = false;
-   telemetry_params.controller_telemetry_type = 0;
+   telemetry_params.bDummyTL1 = false;
+   telemetry_params.bDummyTL2 = false;
+   telemetry_params.iDummyTL3 = 0;
 
    telemetry_params.update_rate = DEFAULT_TELEMETRY_SEND_RATE;
    telemetry_params.vehicle_mavlink_id = DEFAULT_MAVLINK_SYS_ID_VEHICLE;
    telemetry_params.controller_mavlink_id = DEFAULT_MAVLINK_SYS_ID_CONTROLLER;
 
-   telemetry_params.flags = TELEMETRY_FLAGS_RXTX | TELEMETRY_FLAGS_REQUEST_DATA_STREAMS | TELEMETRY_FLAGS_SPECTATOR_ENABLE;
+   telemetry_params.flags = TELEMETRY_FLAGS_REQUEST_DATA_STREAMS | TELEMETRY_FLAGS_SPECTATOR_ENABLE;
    telemetry_params.flags |= TELEMETRY_FLAGS_ALLOW_ANY_VEHICLE_SYSID;
    
    if ( 0 < hardwareInterfacesInfo.serial_port_count )
@@ -3629,7 +3702,7 @@ void Model::resetCameraToDefaults(int iCameraIndex)
 
 void Model::resetCameraProfileToDefaults(camera_profile_parameters_t* pCamParams)
 {
-   pCamParams->uFlags = CAMERA_FLAG_OPENIPC_3A_SIGMASTAR;
+   pCamParams->uFlags = CAMERA_FLAG_OPENIPC_3A_FPV;
    pCamParams->flip_image = 0;
    pCamParams->brightness = 47;
    pCamParams->contrast = 50;
@@ -3683,88 +3756,6 @@ void Model::resetFunctionsParamsToDefaults()
    for( unsigned int j=0; j<(sizeof(functions_params.dummy)/sizeof(functions_params.dummy[0])); j++ )
       functions_params.dummy[j] = 0;
 }
-
-
-u32 Model::getRadioLinkVideoDataRateBSP(int iLinkId)
-{
-   if ( (iLinkId < 0) || (iLinkId >= radioLinksParams.links_count) )
-      return 0;
-   bool bUsesHT40 = false;
-   if ( radioLinksParams.link_radio_flags[iLinkId] & RADIO_FLAG_HT40_VEHICLE )
-      bUsesHT40 = true;
-
-   return getRealDataRateFromRadioDataRate(radioLinksParams.link_datarate_video_bps[iLinkId], bUsesHT40);
-}
-
-int Model::getRadioLinkDownlinkDataRate(int iLinkId)
-{
-   if ( (iLinkId < 0) || (iLinkId >= radioLinksParams.links_count) )
-      return 0;
-
-   bool bIsAtheros = false;
-   for( int i=0; i<radioInterfacesParams.interfaces_count; i++ )
-   {
-      if ( radioInterfacesParams.interface_link_id[i] != iLinkId )
-         continue;
-      if ( hardware_radio_driver_is_atheros_card((radioInterfacesParams.interface_radiotype_and_driver[i] >> 8) & 0xFF) )
-      {
-         bIsAtheros = true;
-         break;
-      }
-   }
-
-   if ( bIsAtheros )
-      return radioLinksParams.link_datarate_video_bps[iLinkId];
-
-   switch ( radioLinksParams.uDownlinkDataDataRateType[iLinkId] )
-   {
-      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED:
-         return radioLinksParams.link_datarate_data_bps[iLinkId];
-         break;
-
-      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO:
-      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO:
-         return radioLinksParams.link_datarate_video_bps[iLinkId];
-         break;
-
-      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST:
-      default:
-         if ( radioLinksParams.link_datarate_video_bps[iLinkId] > 0 )
-            return DEFAULT_RADIO_DATARATE_LOWEST;
-         else
-            return -1;
-         break;
-   }
-   return 0;
-}
-
-int Model::getRadioLinkUplinkDataRate(int iLinkId)
-{
-   if ( (iLinkId < 0) || (iLinkId >= radioLinksParams.links_count) )
-      return 0;
-
-   switch ( radioLinksParams.uUplinkDataDataRateType[iLinkId] )
-   {
-      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_FIXED:
-         return radioLinksParams.uplink_datarate_data_bps[iLinkId];
-         break;
-
-      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_SAME_AS_ADAPTIVE_VIDEO:
-         return radioLinksParams.link_datarate_video_bps[iLinkId];
-         break;
-
-      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_LOWEST:
-      case FLAG_RADIO_LINK_DATARATE_DATA_TYPE_AUTO:
-      default:
-         if ( radioLinksParams.link_datarate_video_bps[iLinkId] > 0 )
-            return DEFAULT_RADIO_DATARATE_LOWEST;
-         else
-            return -1;
-         break;
-   }
-   return 0;
-}
-
 
 int Model::getRadioInterfaceIndexForRadioLink(int iRadioLink)
 {
@@ -4072,15 +4063,14 @@ bool Model::rotateRadioLinksOrder()
       radioLinksParams.link_frequency_khz[iDestIndex] = oldRadioLinksParams.link_frequency_khz[iSourceIndex];
       radioLinksParams.link_capabilities_flags[iDestIndex] = oldRadioLinksParams.link_capabilities_flags[iSourceIndex];
       radioLinksParams.link_radio_flags[iDestIndex] = oldRadioLinksParams.link_radio_flags[iSourceIndex];
-      radioLinksParams.link_datarate_video_bps[iDestIndex] = oldRadioLinksParams.link_datarate_video_bps[iSourceIndex];
-      radioLinksParams.link_datarate_data_bps[iDestIndex] = oldRadioLinksParams.link_datarate_data_bps[iSourceIndex];
+      radioLinksParams.downlink_datarate_video_bps[iDestIndex] = oldRadioLinksParams.downlink_datarate_video_bps[iSourceIndex];
+      radioLinksParams.downlink_datarate_data_bps[iDestIndex] = oldRadioLinksParams.downlink_datarate_data_bps[iSourceIndex];
+      radioLinksParams.uMaxLinkLoadPercent[iDestIndex] = oldRadioLinksParams.uMaxLinkLoadPercent[iSourceIndex];
 
       radioLinksParams.uSerialPacketSize[iDestIndex] = oldRadioLinksParams.uSerialPacketSize[iSourceIndex];
       radioLinksParams.uDummy2[iDestIndex] = oldRadioLinksParams.uDummy2[iSourceIndex];
       radioLinksParams.uplink_datarate_video_bps[iDestIndex] = oldRadioLinksParams.uplink_datarate_video_bps[iSourceIndex];
       radioLinksParams.uplink_datarate_data_bps[iDestIndex] = oldRadioLinksParams.uplink_datarate_data_bps[iSourceIndex];
-      radioLinksParams.uUplinkDataDataRateType[iDestIndex] = oldRadioLinksParams.uUplinkDataDataRateType[iSourceIndex];
-      radioLinksParams.uDownlinkDataDataRateType[iDestIndex] = oldRadioLinksParams.uDownlinkDataDataRateType[iSourceIndex];
    }
 
    log_line("Model: Rotated %d radio links.", radioLinksParams.links_count);
@@ -4185,6 +4175,59 @@ int Model::hasRadioCardsAtheros()
    return iCount;
 }
 
+bool Model::isRadioDataRateSupportedByRadioLink(int iRadioLinkId, int iDataRate)
+{
+   if ( (iRadioLinkId < 0) || (iRadioLinkId >= radioLinksParams.links_count) || (iDataRate < -20) )
+      return false;
+
+   if ( ! (radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED) )
+      return true;
+   if ( ! (radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS) )
+      return true;
+
+   if ( iDataRate < 0 )
+   {
+      if ( 0 != radioRuntimeCapabilities.iMaxSupportedMCSDataRate )
+      {
+         if ( iDataRate >= radioRuntimeCapabilities.iMaxSupportedMCSDataRate )
+            return true;
+         return false;
+      }
+      for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+      {
+         if ( getTestDataRatesMCS()[i] == iDataRate )
+         if ( i < MODEL_MAX_STORED_QUALITIES_VALUES )
+         {
+            if ( radioRuntimeCapabilities.fQualitiesMCS[iRadioLinkId][i] > 0.2 )
+            if ( radioRuntimeCapabilities.iMaxTxPowerMwMCS[iRadioLinkId][i] > 0 )
+               return true;
+            return false;
+         }
+      }
+   }
+   else
+   {
+      if ( 0 != radioRuntimeCapabilities.iMaxSupportedLegacyDataRate )
+      {
+         if ( iDataRate <= radioRuntimeCapabilities.iMaxSupportedLegacyDataRate )
+            return true;
+         return false;
+      }
+
+      for( int i=0; i<getTestDataRatesCountLegacy(); i++ )
+      {
+         if ( getTestDataRatesLegacy()[i] == iDataRate )
+         if ( i < MODEL_MAX_STORED_QUALITIES_VALUES )
+         {
+            if ( radioRuntimeCapabilities.fQualitiesLegacy[iRadioLinkId][i] > 0.2 )
+            if ( radioRuntimeCapabilities.iMaxTxPowerMwLegacy[iRadioLinkId][i] > 0 )
+               return true;
+            return false;
+         }
+      }
+   }
+   return true;
+}
 
 bool Model::hasCamera()
 {
@@ -4233,7 +4276,7 @@ bool Model::setCameraName(int iCameraIndex, const char* szCamName)
       }
    }
 
-   log_line("Did set camera index %d name to: [%s]", iCameraIndex, szCamName);
+   log_line("Did set camera-%d name to: [%s]", iCameraIndex+1, szCamName);
    return bReturn;
 }
 
@@ -4383,19 +4426,19 @@ bool Model::isActiveCameraSensorOpenIPCIMX415()
 }
 
 
-void Model::log_camera_profiles_differences(camera_profile_parameters_t* pCamProfile1, camera_profile_parameters_t* pCamProfile2, int iIndex1, int iIndex2)
+void Model::log_camera_profiles_differences(camera_profile_parameters_t* pCamProfile1, camera_profile_parameters_t* pCamProfile2, int iProfileIndex1, int iProfileIndex2)
 {
    if ( (NULL == pCamProfile1) || (NULL == pCamProfile2) )
       return;
 
-   log_line("* Camera Profile %d and Camera Profile %d differences:", iIndex1, iIndex2);
+   log_line("* Camera Profile %d and Camera Profile %d differences:", iProfileIndex1, iProfileIndex2);
    if ( pCamProfile1 == pCamProfile2 )
    {
       log_line("* The two camera profiles are the same object.");
       return;
    }
-   if ( iIndex1 == iIndex2 )
-      log_line("* Cam profile index 1 is the same as cam profile index 2");
+   if ( iProfileIndex1 == iProfileIndex2 )
+      log_line("* Cam profile index %d is the same as cam profile index %d", iProfileIndex1, iProfileIndex2);
 
    if ( pCamProfile1->uFlags != pCamProfile2->uFlags )
       log_line(" * Cam flags is different: %u - %u", pCamProfile1->uFlags, pCamProfile2->uFlags);
@@ -4448,13 +4491,54 @@ void Model::log_camera_profiles_differences(camera_profile_parameters_t* pCamPro
 
 bool Model::isVideoLinkFixedOneWay()
 {
-   if ( video_link_profiles[video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO )
+   if ( video_link_profiles[video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO )
       return true;
 
    if ( radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_DOWNLINK_ONLY )
       return true;
 
    return false;
+}
+
+bool Model::isRadioLinkAdaptiveUsable(int iRadioLink)
+{
+   if ( radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
+      return false;
+   if ( ! (radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO) )
+      return false;
+   if ( radioLinksParams.downlink_datarate_video_bps[iRadioLink] != 0 )
+      return false;
+      
+   bool bIsHighCapacityLink = false;
+   for( int k=0; k<radioInterfacesParams.interfaces_count; k++ )
+   {
+      if ( radioInterfacesParams.interface_link_id[k] == iRadioLink )
+      if ( radioInterfacesParams.interface_capabilities_flags[k] & RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY )
+      if ( ! (radioInterfacesParams.interface_capabilities_flags[k] & RADIO_HW_CAPABILITY_FLAG_DISABLED) )
+      if ( ! (radioLinksParams.link_capabilities_flags[iRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED) )
+      {
+         bIsHighCapacityLink = true;
+         break;
+      }
+   }
+
+   if ( ! bIsHighCapacityLink )
+      return false;
+   return true;
+}
+
+bool Model::isAllVideoLinksFixedRate()
+{
+   bool bHasVariableLinks = false;
+   for( int i=0; i<radioLinksParams.links_count; i++ )
+   {
+      if ( isRadioLinkAdaptiveUsable(i) )
+      {
+         bHasVariableLinks = true;
+         break;
+      }
+   }
+   return ! bHasVariableLinks;
 }
 
 int Model::getInitialKeyframeIntervalMs(int iVideoProfile)
@@ -4464,13 +4548,380 @@ int Model::getInitialKeyframeIntervalMs(int iVideoProfile)
    //if ( ! isVideoLinkFixedOneWay() )
    //if ( video_link_profiles[iVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME )
    //   iKeyframeMs = DEFAULT_VIDEO_AUTO_INITIAL_KEYFRAME_INTERVAL;
-   
-   if ( hardware_board_is_goke(hardware_getBoardType()) )
-       iKeyframeMs = DEFAULT_VIDEO_KEYFRAME_OIPC_GOKE;
 
    if ( iKeyframeMs < 0 )
       iKeyframeMs = -iKeyframeMs;
    return iKeyframeMs;
+}
+
+int Model::isVideoSettingsMatchingBuiltinVideoProfile(video_parameters_t* pVideoParams, type_video_link_profile* pVideoProfile)
+{
+   if ( (NULL == pVideoParams) || (NULL == pVideoProfile) )
+      return -1;
+   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+   {
+      type_video_link_profile tempProfile;
+      memcpy(&tempProfile, pVideoProfile, sizeof(type_video_link_profile));
+      tempProfile.bitrate_fixed_bps = video_link_profiles[i].bitrate_fixed_bps;
+      tempProfile.iAdaptiveAdjustmentStrength = video_link_profiles[i].iAdaptiveAdjustmentStrength;
+      tempProfile.uAdaptiveWeights = video_link_profiles[i].uAdaptiveWeights;
+
+      if ( 0 == memcmp((u8*)&tempProfile, (u8*)&(video_link_profiles[i]), sizeof(type_video_link_profile)) )
+         return i;
+   }
+   return -1;
+}
+
+void Model::logVideoSettingsDifferences(video_parameters_t* pNewVideoParams, type_video_link_profile* pNewVideoProfile, bool bReverseOrder)
+{
+   if ( NULL == pNewVideoParams )
+   {
+      log_line("Model video settings differences: NULL video params.");
+      return;
+   }
+   if ( NULL == pNewVideoProfile )
+   {
+      log_line("Model video settings differences: NULL video profile.");
+      return;
+   }
+
+   video_parameters_t* pCurrentVideoParams = &video_params;
+   type_video_link_profile* pCurrentProfile = &video_link_profiles[video_params.iCurrentVideoProfile];
+
+   if ( bReverseOrder )
+   {
+      video_parameters_t* pTmpVid = pCurrentVideoParams;
+      pCurrentVideoParams = pNewVideoParams;
+      pNewVideoParams = pTmpVid;
+
+      type_video_link_profile* pTmpProf = pCurrentProfile;
+      pCurrentProfile = pNewVideoProfile;
+      pNewVideoProfile = pTmpProf;
+   }
+   int iCountDifferencesVideo = 0;
+   int iCountDifferencesProfile = 0;
+   char szProfile1[64];
+   char szProfile2[64];
+
+   strcpy(szProfile1, str_get_video_profile_name(pCurrentVideoParams->iCurrentVideoProfile));
+   strcpy(szProfile2, str_get_video_profile_name(pNewVideoParams->iCurrentVideoProfile));
+
+   log_line("Model video settings differences (user selected profile: %s -> %s):", szProfile1, szProfile2);
+   if ( pCurrentVideoParams->iCurrentVideoProfile != pNewVideoParams->iCurrentVideoProfile )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Vid: User selected video profile: (%s) -> (%s)", szProfile1, szProfile2);
+   }
+   if ( (pCurrentVideoParams->iVideoWidth != pNewVideoParams->iVideoWidth) || (pCurrentVideoParams->iVideoHeight != pNewVideoParams->iVideoHeight) )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Vid: Resolution: (%d x %d) -> (%d x %d)", pCurrentVideoParams->iVideoWidth, pCurrentVideoParams->iVideoHeight, pNewVideoParams->iVideoWidth, pNewVideoParams->iVideoHeight);
+   }
+   if ( pCurrentVideoParams->iVideoFPS != pNewVideoParams->iVideoFPS )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Vid: FPS: %d -> %d", pCurrentVideoParams->iVideoFPS, pNewVideoParams->iVideoFPS);
+   }
+   if ( pCurrentVideoParams->iH264Slices != pNewVideoParams->iH264Slices )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Vid: H264 slices: %d -> %d", pCurrentVideoParams->iH264Slices, pNewVideoParams->iH264Slices);
+   }
+   if ( (pCurrentVideoParams->iRemovePPSVideoFrames != pNewVideoParams->iRemovePPSVideoFrames) ||
+        (pCurrentVideoParams->iInsertPPSVideoFrames != pNewVideoParams->iInsertPPSVideoFrames) ||
+        (pCurrentVideoParams->iInsertSPTVideoFramesTimings != pNewVideoParams->iInsertSPTVideoFramesTimings) )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Vid: remove/insert PPS/SPT timings: (%d/%d/%d) -> (%d/%d/%d)",
+         pCurrentVideoParams->iRemovePPSVideoFrames, pCurrentVideoParams->iInsertPPSVideoFrames, pCurrentVideoParams->iInsertSPTVideoFramesTimings,
+         pNewVideoParams->iRemovePPSVideoFrames, pNewVideoParams->iInsertPPSVideoFrames, pNewVideoParams->iInsertSPTVideoFramesTimings);
+   }
+
+   if ( pCurrentVideoParams->lowestAllowedAdaptiveVideoBitrate != pNewVideoParams->lowestAllowedAdaptiveVideoBitrate )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Vid: Lowest allowed bitrate: %u -> %u", pCurrentVideoParams->lowestAllowedAdaptiveVideoBitrate, pNewVideoParams->lowestAllowedAdaptiveVideoBitrate);
+   }
+   if ( pCurrentVideoParams->uMaxAutoKeyframeIntervalMs != pNewVideoParams->uMaxAutoKeyframeIntervalMs )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Vid: Max auto KF interval: %u -> %u", pCurrentVideoParams->uMaxAutoKeyframeIntervalMs, pNewVideoParams->uMaxAutoKeyframeIntervalMs);
+   }
+   if ( pCurrentVideoParams->uVideoExtraFlags != pNewVideoParams->uVideoExtraFlags )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Vid: Video extra flags: %u -> %u", pCurrentVideoParams->uVideoExtraFlags, pNewVideoParams->uVideoExtraFlags);
+   }
+
+   if ( pCurrentProfile->uProfileFlags != pNewVideoProfile->uProfileFlags )
+   {
+      iCountDifferencesProfile++;
+      char szTmpFlags[256];
+      strcpy(szTmpFlags, str_format_video_profile_flags(pCurrentProfile->uProfileFlags));
+      log_line("Diff Prof: Profile flags: %u -> %u (%s) -> (%s)", pCurrentProfile->uProfileFlags, pNewVideoProfile->uProfileFlags, szTmpFlags, str_format_video_profile_flags(pNewVideoProfile->uProfileFlags));
+   }
+
+   if ( pCurrentProfile->iAdaptiveAdjustmentStrength != pNewVideoProfile->iAdaptiveAdjustmentStrength )
+   {
+      iCountDifferencesVideo++;
+      log_line("Diff Prof: Adaptive adjustment strength: %d -> %d", pCurrentProfile->iAdaptiveAdjustmentStrength, pNewVideoProfile->iAdaptiveAdjustmentStrength);
+   }
+
+   if ( pCurrentProfile->uProfileEncodingFlags != pNewVideoProfile->uProfileEncodingFlags )
+   {
+      iCountDifferencesProfile++;
+      char szTmpFlags[256];
+      strcpy(szTmpFlags, str_format_video_encoding_flags(pCurrentProfile->uProfileEncodingFlags));
+      log_line("Diff Prof: Profile encoding flags: %u -> %u (%s) -> (%s)", pCurrentProfile->uProfileEncodingFlags, pNewVideoProfile->uProfileEncodingFlags, szTmpFlags, str_format_video_encoding_flags(pNewVideoProfile->uProfileEncodingFlags));
+   }
+   if ( pCurrentProfile->h264profile != pNewVideoProfile->h264profile )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: H264 profile: %d -> %d", pCurrentProfile->h264profile, pNewVideoProfile->h264profile);
+   }
+   if ( pCurrentProfile->h264level != pNewVideoProfile->h264level )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: H264 level: %d -> %d", pCurrentProfile->h264level, pNewVideoProfile->h264level);
+   }
+   if ( pCurrentProfile->h264refresh != pNewVideoProfile->h264refresh )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: H264 refresh: %d -> %d", pCurrentProfile->h264refresh, pNewVideoProfile->h264refresh);
+   }
+   if ( pCurrentProfile->h264quantization != pNewVideoProfile->h264quantization )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: H264 quantization: %d -> %d", pCurrentProfile->h264quantization, pNewVideoProfile->h264quantization);
+   }
+   if ( pCurrentProfile->iIPQuantizationDelta != pNewVideoProfile->iIPQuantizationDelta )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: H264 IQ quant delta: %d -> %d", pCurrentProfile->iIPQuantizationDelta, pNewVideoProfile->iIPQuantizationDelta);
+   }
+   if ( (pCurrentProfile->iBlockDataPackets != pNewVideoProfile->iBlockDataPackets) ||
+        (pCurrentProfile->iBlockECs != pNewVideoProfile->iBlockECs) ||
+        (pCurrentProfile->iECPercentage != pNewVideoProfile->iECPercentage) )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: EC scheme: (%d/%d %d%%) -> (%d/%d %d%%)",
+          pCurrentProfile->iBlockDataPackets, pCurrentProfile->iBlockECs, pCurrentProfile->iECPercentage,
+          pNewVideoProfile->iBlockDataPackets, pNewVideoProfile->iBlockECs, pNewVideoProfile->iECPercentage);
+   }
+   if ( pCurrentProfile->video_data_length != pNewVideoProfile->video_data_length )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: Video data length: %d -> %d", pCurrentProfile->video_data_length, pNewVideoProfile->video_data_length);
+   }
+   if ( pCurrentProfile->keyframe_ms != pNewVideoProfile->keyframe_ms )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: Keyframe ms: %d -> %d", pCurrentProfile->keyframe_ms, pNewVideoProfile->keyframe_ms);
+   }
+   if ( pCurrentProfile->bitrate_fixed_bps != pNewVideoProfile->bitrate_fixed_bps )
+   {
+      iCountDifferencesProfile++;
+      log_line("Diff Prof: Fixed bitrate: %u -> %u", pCurrentProfile->bitrate_fixed_bps, pNewVideoProfile->bitrate_fixed_bps);
+   }
+
+   if ( (0 == iCountDifferencesVideo) && (0 == iCountDifferencesProfile) )
+      log_line("Model video settings: no differences between current video profile (%s) and the other video profile (%s)",
+         szProfile1, szProfile2);
+   else
+      log_line("Diff Total: %d video and %d profile total differences.", iCountDifferencesVideo, iCountDifferencesProfile);
+}
+
+u32 Model::getMaxVideoBitrateSupportedForCurrentRadioLinks()
+{
+   return getMaxVideoBitrateSupportedForRadioLinks(&radioLinksParams, &video_params, &(video_link_profiles[0]));
+}
+
+u32 Model::getMaxVideoBitrateSupportedForRadioLinks(type_radio_links_parameters* pRadioLinksParams, video_parameters_t* pVideoParams, type_video_link_profile* pVideoProfiles)
+{
+   u32 uMaxRawVideoBitrate = 50000000;
+   if ( (NULL == pRadioLinksParams) || (NULL == pVideoParams) || (NULL == pVideoProfiles) )
+   {
+      //tot = vid*(170/100) ->  vid = tot*100/170
+      uMaxRawVideoBitrate = (uMaxRawVideoBitrate / (100 + MAX_VIDEO_EC_PERCENTAGE)) * 100;
+      uMaxRawVideoBitrate = (uMaxRawVideoBitrate / 100 ) * DEFAULT_RADIO_LINK_LOAD_PERCENT;
+      return uMaxRawVideoBitrate;
+   }
+
+   type_video_link_profile* pVideoProfile = &(pVideoProfiles[pVideoParams->iCurrentVideoProfile]);
+
+   for( int iLink=0; iLink<pRadioLinksParams->links_count; iLink++ )
+   {
+      if ( (pRadioLinksParams->link_capabilities_flags[iLink] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY) ||
+           (relay_params.isRelayEnabledOnRadioLinkId == iLink) )
+         continue;
+      if ( pRadioLinksParams->link_capabilities_flags[iLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
+         continue;
+      if ( ! (pRadioLinksParams->link_capabilities_flags[iLink] & RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY) )
+         continue;
+
+      u32 uMaxVideoBitrateForLink = 0;
+      
+      // Fixed bitrate link
+      if ( pRadioLinksParams->downlink_datarate_video_bps[iLink] != 0 )
+      {
+         uMaxVideoBitrateForLink = getRealDataRateFromRadioDataRate(pRadioLinksParams->downlink_datarate_video_bps[iLink], pRadioLinksParams->link_radio_flags[iLink], 1);
+         uMaxVideoBitrateForLink = (uMaxVideoBitrateForLink / 100 ) * pRadioLinksParams->uMaxLinkLoadPercent[iLink];
+         if ( uMaxVideoBitrateForLink < uMaxRawVideoBitrate )
+            uMaxRawVideoBitrate = uMaxVideoBitrateForLink;
+         continue;
+      }
+
+      // Auto bitrate link
+      if ( pRadioLinksParams->link_radio_flags[iLink] & RADIO_FLAGS_USE_MCS_DATARATES )
+      {
+         uMaxVideoBitrateForLink = getRealDataRateFromMCSRate(0, 0);
+         if ( (radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED) &&
+              (0 != radioRuntimeCapabilities.iMaxSupportedMCSDataRate) )
+         {
+            int iMaxMCSRate = radioRuntimeCapabilities.iMaxSupportedMCSDataRate;
+            int iDRBoost = 0;
+            if ( pVideoProfile->uProfileFlags & VIDEO_PROFILE_FLAG_USE_HIGHER_DATARATE )
+               iDRBoost = (pVideoProfile->uProfileFlags & VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK) >> VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT;
+
+            for( int k=0; k<iDRBoost; k++ )
+               iMaxMCSRate = getLowerLevelDataRate(iMaxMCSRate);
+            uMaxVideoBitrateForLink = getRealDataRateFromRadioDataRate(iMaxMCSRate, pRadioLinksParams->link_radio_flags[iLink], 1);
+         }
+         else
+         {
+            for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+            {
+               if ( i >= MODEL_MAX_STORED_QUALITIES_VALUES )
+                  break;
+               if ( i > 2 )
+               if ( (radioRuntimeCapabilities.fQualitiesMCS[iLink][i] < 0.6) || (radioRuntimeCapabilities.iMaxTxPowerMwMCS[iLink][i] <= 0) )
+                  break;
+
+               uMaxVideoBitrateForLink = getRealDataRateFromRadioDataRate(getTestDataRatesMCS()[i], pRadioLinksParams->link_radio_flags[iLink], 1);
+            }
+         }
+      }
+      else
+      {
+         uMaxVideoBitrateForLink = DEFAULT_RADIO_DATARATE_LOWEST;
+         if ( (radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED) &&
+              (0 != radioRuntimeCapabilities.iMaxSupportedLegacyDataRate) )
+         {
+            int iMaxDataRate = radioRuntimeCapabilities.iMaxSupportedLegacyDataRate;
+            int iDRBoost = 0;
+            if ( pVideoProfile->uProfileFlags & VIDEO_PROFILE_FLAG_USE_HIGHER_DATARATE )
+               iDRBoost = (pVideoProfile->uProfileFlags & VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK) >> VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT;
+
+            for( int k=0; k<iDRBoost; k++ )
+               iMaxDataRate = getLowerLevelDataRate(iMaxDataRate);
+            uMaxVideoBitrateForLink = getRealDataRateFromRadioDataRate(iMaxDataRate, pRadioLinksParams->link_radio_flags[iLink], 1);
+         }
+         else
+         {
+            for( int i=0; i<getTestDataRatesCountLegacy(); i++ )
+            {
+               if ( i >= MODEL_MAX_STORED_QUALITIES_VALUES )
+                  break;
+               if ( i > 2 )
+               if ( (radioRuntimeCapabilities.fQualitiesLegacy[iLink][i] < 0.6) || (radioRuntimeCapabilities.iMaxTxPowerMwLegacy[iLink][i] <= 0) )
+                  break;
+               uMaxVideoBitrateForLink = getRealDataRateFromRadioDataRate(getTestDataRatesLegacy()[i], pRadioLinksParams->link_radio_flags[iLink], 1);
+            }
+         }
+      }
+
+      uMaxVideoBitrateForLink = (uMaxVideoBitrateForLink / 100 ) * pRadioLinksParams->uMaxLinkLoadPercent[iLink];
+
+      if ( uMaxVideoBitrateForLink < uMaxRawVideoBitrate )
+         uMaxRawVideoBitrate = uMaxVideoBitrateForLink;
+   }
+
+   uMaxRawVideoBitrate = (uMaxRawVideoBitrate / (100 + pVideoProfile->iECPercentage)) * 100;
+   uMaxRawVideoBitrate = (uMaxRawVideoBitrate / 105) * 100; // room for radio headers
+   return uMaxRawVideoBitrate;
+}
+
+u32 Model::getMaxVideoBitrateForRadioDatarate(int iRadioDatarateBPS, int iRadioLinkIndex)
+{
+   u32 uRealDatarateBPS = getRealDataRateFromRadioDataRate(iRadioDatarateBPS, radioLinksParams.link_radio_flags[iRadioLinkIndex], 1);
+   
+   // usable-bandwidth = total-bandwidth * percentage% / 100;
+   u32 uMaxRawVideoBitrate = (uRealDatarateBPS / 100 ) * radioLinksParams.uMaxLinkLoadPercent[iRadioLinkIndex];
+
+   // video-total = video * (100 + ec%) / 100    ->  video = video-total * 100 / (100 + ec%)
+   uMaxRawVideoBitrate = (uMaxRawVideoBitrate / (100 + video_link_profiles[video_params.iCurrentVideoProfile].iECPercentage)) * 100;
+
+   uMaxRawVideoBitrate = (uMaxRawVideoBitrate / 105) * 100; // room for radio headers
+
+   return uMaxRawVideoBitrate;
+}
+
+int Model::getRadioDataRateForVideoBitrate(u32 uVideoBitrateBPS, int iRadioLinkIndex)
+{
+   static u32 s_uLastTotalBitrateChecked = 0;
+   static u32 s_uLastVideoBitrateChecked = 0;
+   static u32 s_uLastRadioFlagsChecked = 0;
+   static u8 s_uLastRadioLoadChecked = 0;
+   static int s_iLastECChecked = 0;
+   static int s_iLastRadioDatarateChecked = 0;
+
+   u32 uBitrateTotalDesired = uVideoBitrateBPS;
+
+   // video = total * maxload% / 100   ->   total = video * 100 / maxload%
+   if ( 0 == radioLinksParams.uMaxLinkLoadPercent[iRadioLinkIndex] )
+      radioLinksParams.uMaxLinkLoadPercent[iRadioLinkIndex] = DEFAULT_RADIO_LINK_LOAD_PERCENT;
+   uBitrateTotalDesired = (uBitrateTotalDesired / radioLinksParams.uMaxLinkLoadPercent[iRadioLinkIndex]) * 100;
+
+   // videototal = video * (100 + ecpercent) / 100
+   uBitrateTotalDesired = (uBitrateTotalDesired / 100) * (100 + video_link_profiles[video_params.iCurrentVideoProfile].iECPercentage);
+
+   uBitrateTotalDesired = (uBitrateTotalDesired / 100) * 105; // room for radio headers
+
+   if ( (uVideoBitrateBPS == s_uLastVideoBitrateChecked) &&
+        (uBitrateTotalDesired == s_uLastTotalBitrateChecked) &&
+        (video_link_profiles[video_params.iCurrentVideoProfile].iECPercentage == s_iLastECChecked) &&
+        (radioLinksParams.uMaxLinkLoadPercent[iRadioLinkIndex] == s_uLastRadioLoadChecked) &&
+        (radioLinksParams.link_radio_flags[iRadioLinkIndex] == s_uLastRadioFlagsChecked) )
+      return s_iLastRadioDatarateChecked;
+
+   int iRadioDataRate = DEFAULT_RADIO_DATARATE_LOWEST;
+
+   if ( radioLinksParams.downlink_datarate_video_bps[iRadioLinkIndex] != 0 )
+      iRadioDataRate = radioLinksParams.downlink_datarate_video_bps[iRadioLinkIndex];
+   else if ( radioLinksParams.link_radio_flags[iRadioLinkIndex] & RADIO_FLAGS_USE_MCS_DATARATES )
+   {
+      for( int i=0; i<=MAX_MCS_INDEX; i++ )
+      {
+         u32 uMaxBitRate = getRealDataRateFromMCSRate(i, (radioLinksParams.link_radio_flags[iRadioLinkIndex] & RADIO_FLAG_HT40_VEHICLE)?1:0);
+         if ( uMaxBitRate >= uBitrateTotalDesired )
+         {
+            iRadioDataRate = -i - 1;
+            break;
+         }
+      }
+   }
+   else
+   {
+      for( int i=0; i<getDataRatesCount(); i++ )
+      {
+         if ( (u32)(getDataRatesBPS()[i]) >= uBitrateTotalDesired )
+         {
+            iRadioDataRate = getDataRatesBPS()[i];
+            break;
+         }
+      }
+   }
+
+   s_uLastVideoBitrateChecked = uVideoBitrateBPS;
+   s_uLastTotalBitrateChecked = uBitrateTotalDesired;
+   s_uLastRadioFlagsChecked = radioLinksParams.link_radio_flags[iRadioLinkIndex];
+   s_uLastRadioLoadChecked = radioLinksParams.uMaxLinkLoadPercent[iRadioLinkIndex];
+   s_iLastECChecked = video_link_profiles[video_params.iCurrentVideoProfile].iECPercentage;
+   s_iLastRadioDatarateChecked = iRadioDataRate;
+   log_line("Model: Checked: radio datarate for radio link %d for video bitrate %.2f Mbps (total desired bitrate: %.2f Mbps, for %d%% radio load and %d%% EC) is: %s",
+      iRadioLinkIndex+1, uVideoBitrateBPS/1000.0/1000.0, uBitrateTotalDesired/1000.0/1000.0,
+      s_uLastRadioLoadChecked, s_iLastECChecked, str_format_bitrate_inline(iRadioDataRate));
+   return iRadioDataRate;
 }
 
 void Model::setDefaultVideoBitrate()
@@ -4478,7 +4929,8 @@ void Model::setDefaultVideoBitrate()
    u32 board_type = hardware_getBoardType();
 
    video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE;
-   video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = DEFAULT_HP_VIDEO_BITRATE;
+   video_link_profiles[VIDEO_PROFILE_HIGH_PERF].bitrate_fixed_bps = DEFAULT_HP_VIDEO_BITRATE;
+   video_link_profiles[VIDEO_PROFILE_LONG_RANGE].bitrate_fixed_bps = DEFAULT_HP_VIDEO_BITRATE;
    video_link_profiles[VIDEO_PROFILE_USER].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE;
 
    if ( ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
@@ -4486,7 +4938,8 @@ void Model::setDefaultVideoBitrate()
         hardware_board_is_goke(board_type) )
    {
       video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
-      video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
+      video_link_profiles[VIDEO_PROFILE_HIGH_PERF].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
+      video_link_profiles[VIDEO_PROFILE_LONG_RANGE].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
       video_link_profiles[VIDEO_PROFILE_USER].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
    }
    if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
@@ -4496,16 +4949,18 @@ void Model::setDefaultVideoBitrate()
    }
 
    // Lower video bitrate on all video profiles if running on a single core CPU
-   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+   if ( ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE200) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE210) ||
+        ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_NONE) )
    {
-      if ( ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE200) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_OPENIPC_GOKE210) ||
-           ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) || ((board_type & BOARD_TYPE_MASK) == BOARD_TYPE_NONE) )
+      for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
       {
-         if ( video_link_profiles[i].bitrate_fixed_bps > 4500000 )
-            video_link_profiles[i].bitrate_fixed_bps -= 1000000;
-         else if ( video_link_profiles[i].bitrate_fixed_bps > 3000000 )
-            video_link_profiles[i].bitrate_fixed_bps -= 500000;
-         log_line("Model: Lowered video bitrate for video profile %d (single core CPU) to %u", i, video_link_profiles[i].bitrate_fixed_bps);
+         {
+            if ( video_link_profiles[i].bitrate_fixed_bps > 4500000 )
+               video_link_profiles[i].bitrate_fixed_bps -= 1000000;
+            else if ( video_link_profiles[i].bitrate_fixed_bps > 3000000 )
+               video_link_profiles[i].bitrate_fixed_bps -= 500000;
+            log_line("Model: Lowered video bitrate for video profile %d (single core CPU) to %u", i, video_link_profiles[i].bitrate_fixed_bps);
+         }
       }
    }
 }
@@ -4604,8 +5059,7 @@ void Model::getCameraFlags(char* szCameraFlags)
    }
 }
 
-// To fix: overwrites checks
-void Model::getVideoFlags(char* szVideoFlags, int iVideoProfile)
+void Model::getVideoFlags(char* szVideoFlags, int iVideoProfile, u32 uOverwriteVideoBPS, int iOverwriteKeyframeMS)
 {
    if ( NULL == szVideoFlags )
       return;
@@ -4622,52 +5076,51 @@ void Model::getVideoFlags(char* szVideoFlags, int iVideoProfile)
 
    char szBuff[128];
    u32 uBitrate = DEFAULT_VIDEO_BITRATE;
-   // To fix
-   //if ( NULL == pVideoOverwrites )
+   if ( uOverwriteVideoBPS > 0 )
+      uBitrate = uOverwriteVideoBPS;
+   else if ( video_link_profiles[iVideoProfile].bitrate_fixed_bps > 0 )
       uBitrate = video_link_profiles[iVideoProfile].bitrate_fixed_bps;
-   //else
-   //   uBitrate = video_link_profiles[pVideoOverwrites->currentVideoLinkProfile].bitrate_fixed_bps;
 
    if ( uBitrate > 6000000 )
-      uBitrate = uBitrate*4/5;
+      uBitrate = (uBitrate*9)/10;
 
    sprintf(szBuff, "-b %u", uBitrate);
 
    char szKeyFrame[64];
 
    int iKeyframeMs = getInitialKeyframeIntervalMs(iVideoProfile);
-   int iKeyframeFramesCount = (video_link_profiles[iVideoProfile].fps * iKeyframeMs) / 1000;
+   if ( iOverwriteKeyframeMS > 0 )
+      iKeyframeMs = iOverwriteKeyframeMS;
+   else if ( iOverwriteKeyframeMS < 0 )
+      iKeyframeMs = -iOverwriteKeyframeMS;
+   int iKeyframeFramesCount = (video_params.iVideoFPS * iKeyframeMs) / 1000;
    sprintf(szKeyFrame, "%d", iKeyframeFramesCount);
 
 
    if ( isActiveCameraVeye() )
    {
-      int fps = video_link_profiles[iVideoProfile].fps;
-      int width = video_link_profiles[iVideoProfile].width;
-      int height = video_link_profiles[iVideoProfile].height;
-
       if ( isActiveCameraVeye307() )
       {
          // To fix: check if for IMX307 this is how to set resolution
-         if ( video_link_profiles[iVideoProfile].width > 1280 )
-            sprintf(szVideoFlags, "-cd H264 -fl -md 0 -fps %d -g %s %s", fps, szKeyFrame, szBuff);
+         if ( video_params.iVideoWidth > 1280 )
+            sprintf(szVideoFlags, "-cd H264 -fl -md 0 -fps %d -g %s %s", video_params.iVideoFPS, szKeyFrame, szBuff);
          else
-            sprintf(szVideoFlags, "-cd H264 -fl -md 1 -fps %d -g %s %s", fps, szKeyFrame, szBuff);
+            sprintf(szVideoFlags, "-cd H264 -fl -md 1 -fps %d -g %s %s", video_params.iVideoFPS, szKeyFrame, szBuff);
 
-         //sprintf(szVideoFlags, "-cd H264 -fl -w %d -h %d -fps %d -g %s %s", video_link_profiles[iVideoProfile].width, video_link_profiles[iVideoProfile].height, video_link_profiles[iVideoProfile].fps, szKeyFrame, szBuff);
+         //sprintf(szVideoFlags, "-cd H264 -fl -w %d -h %d -fps %d -g %s %s", video_params.iVideoWidth, video_params.iVideoHeight, video_params.iVideoFPS, szKeyFrame, szBuff);
       }
       else
       {
-         if ( video_link_profiles[iVideoProfile].width > 1280 )
-            sprintf(szVideoFlags, "-cd H264 -fl -w %d -h %d -fps %d -g %s %s", width, height, fps, szKeyFrame, szBuff);
+         if ( video_params.iVideoWidth > 1280 )
+            sprintf(szVideoFlags, "-cd H264 -fl -w %d -h %d -fps %d -g %s %s", video_params.iVideoWidth, video_params.iVideoHeight, video_params.iVideoFPS, szKeyFrame, szBuff);
          else
-            sprintf(szVideoFlags, "-cd H264 -fl -w %d -h %d -fps %d -g %s %s", width, height, fps, szKeyFrame, szBuff);
+            sprintf(szVideoFlags, "-cd H264 -fl -w %d -h %d -fps %d -g %s %s", video_params.iVideoWidth, video_params.iVideoHeight, video_params.iVideoFPS, szKeyFrame, szBuff);
       }
    }
    else
    {
-      sprintf(szVideoFlags, "-cd H264 -fl -w %d -h %d -fps %d -g %s %s", video_link_profiles[iVideoProfile].width, video_link_profiles[iVideoProfile].height, video_link_profiles[iVideoProfile].fps, szKeyFrame, szBuff);
-      //sprintf(szVideoFlags, "-cd MJPEG -fl -w %d -h %d -fps %d -g %s %s", video_params.width, video_params.height, video_params.fps, szKeyFrame, szBuff);
+      sprintf(szVideoFlags, "-cd H264 -fl -w %d -h %d -fps %d -g %s %s", video_params.iVideoWidth, video_params.iVideoHeight, video_params.iVideoFPS, szKeyFrame, szBuff);
+      //sprintf(szVideoFlags, "-cd MJPEG -fl -w %d -h %d -fps %d -g %s %s", video_params.iVideoWidth, video_params.iVideoHeight, video_params.iVideoFPS, szKeyFrame, szBuff);
    }
 
    if ( ! (video_params.uVideoExtraFlags & VIDEO_FLAG_ENABLE_LOCAL_HDMI_OUTPUT) )
@@ -4723,7 +5176,7 @@ void Model::getVideoFlags(char* szVideoFlags, int iVideoProfile)
       strcat(szVideoFlags, " -md 1");
 }
 
-void Model::populateVehicleTelemetryData_v4(t_packet_header_ruby_telemetry_extended_v4* pPHRTE)
+void Model::populateVehicleTelemetryData_v5(t_packet_header_ruby_telemetry_extended_v5* pPHRTE)
 {
    if ( NULL == pPHRTE )
       return;
@@ -4754,6 +5207,9 @@ void Model::populateVehicleTelemetryData_v4(t_packet_header_ruby_telemetry_exten
       pPHRTE->uRubyFlags |= FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY;
    else
       pPHRTE->uRubyFlags &= ~FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY;
+
+   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+      pPHRTE->iTxPowers[i] = 0;
 }
 
 void Model::populateFromVehicleTelemetryData_v3(t_packet_header_ruby_telemetry_extended_v3* pPHRTE)
@@ -4863,7 +5319,7 @@ void Model::populateFromVehicleTelemetryData_v3(t_packet_header_ruby_telemetry_e
       iInterfaceIndex++;
    }
 
-   updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+   validateRadioSettings();
 
    constructLongName();
 
@@ -4988,7 +5444,7 @@ void Model::populateFromVehicleTelemetryData_v4(t_packet_header_ruby_telemetry_e
       iInterfaceIndex++;
    }
 
-   updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+   validateRadioSettings();
 
    constructLongName();
 
@@ -5005,15 +5461,140 @@ void Model::populateFromVehicleTelemetryData_v4(t_packet_header_ruby_telemetry_e
    logVehicleRadioInfo();
 }
 
+
+
+void Model::populateFromVehicleTelemetryData_v5(t_packet_header_ruby_telemetry_extended_v5* pPHRTE)
+{
+   uVehicleId = pPHRTE->uVehicleId;
+   strncpy(vehicle_name, (char*)pPHRTE->vehicle_name, MAX_VEHICLE_NAME_LENGTH-1);
+   vehicle_name[MAX_VEHICLE_NAME_LENGTH-1] = 0;
+   vehicle_type = pPHRTE->vehicle_type;
+
+   if ( pPHRTE->uRubyFlags & FLAG_RUBY_TELEMETRY_ALLOW_SPECTATOR_TELEMETRY )
+      telemetry_params.flags |= TELEMETRY_FLAGS_SPECTATOR_ENABLE;
+   else
+      telemetry_params.flags &= ~TELEMETRY_FLAGS_SPECTATOR_ENABLE;
+
+   u32 ver = pPHRTE->rubyVersion;
+   log_line("populateFromVehicleTelemetryData (version 4): firmware type: %s, sw version from telemetry stream: %d.%d", str_format_firmware_type(getVehicleFirmwareType()), ver>>4, ver & 0x0F);
+   log_line("populateFromVehicleTelemetryData (version 4): radio links: %d", pPHRTE->radio_links_count);
+   for( int i=0; i<pPHRTE->radio_links_count; i++ )
+   {
+      log_line("populateFromVehicleTelemetryData (version 4): radio link %d: %u kHz", i+1, pPHRTE->uRadioFrequenciesKhz[i]);
+   }
+   if ( ver > 0 )
+   {
+      u32 uBuild = sw_version >> 16;
+      if ( (ver>>4) < 7 )
+         uBuild = 50;
+      if ( (ver>>4) == 7 )
+      if ( (ver & 0x0F) < 7 )
+         uBuild = 50;
+
+      sw_version = ((ver>>4)) * 256 + ((ver & 0x0F)*10);
+      sw_version |= (uBuild<<16);
+      log_line("populateFromVehicleTelemetryData (version 4): set sw version to: %d.%d (b %d)", (sw_version>>8) & 0xFF, (sw_version & 0xFF)/10, sw_version >> 16);
+   }
+
+   resetRadioLinksParams();
+   radioLinksParams.links_count = pPHRTE->radio_links_count;
+   relay_params.isRelayEnabledOnRadioLinkId = -1;
+
+   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+   {
+      radioLinksParams.link_frequency_khz[i] = pPHRTE->uRadioFrequenciesKhz[i];
+      if ( pPHRTE->uRelayLinks & (1<<i) )
+      {
+         radioLinksParams.link_capabilities_flags[i] |= RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY;
+         relay_params.isRelayEnabledOnRadioLinkId = i;
+         relay_params.uRelayFrequencyKhz = pPHRTE->uRadioFrequenciesKhz[i];
+      } 
+   }
+
+   radioInterfacesParams.interfaces_count = 1;
+   radioInterfacesParams.interface_capabilities_flags[0] = RADIO_HW_CAPABILITY_FLAG_CAN_RX | RADIO_HW_CAPABILITY_FLAG_CAN_TX | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA;
+   radioInterfacesParams.interface_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO | RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY;
+   if ( radioLinksParams.link_frequency_khz[0] > 1000000 )
+      radioInterfacesParams.interface_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY;
+   radioInterfacesParams.interface_link_id[0] = 0;
+   radioInterfacesParams.interface_current_frequency_khz[0] = radioLinksParams.link_frequency_khz[0];
+   strcpy(radioInterfacesParams.interface_szMAC[0], "XXXXXX");
+   strcpy(radioInterfacesParams.interface_szPort[0], "X");
+   radioInterfacesParams.interface_raw_power[0] = DEFAULT_RADIO_TX_POWER;
+   if ( radioLinksParams.link_frequency_khz[0] < 1000000 )
+      radioInterfacesParams.interface_raw_power[0] = DEFAULT_RADIO_SIK_TX_POWER;
+   radioInterfacesParams.interface_dummy2[0] = 0;
+   radioInterfacesParams.interface_supported_bands[0] = getBand(radioLinksParams.link_frequency_khz[0]);
+   radioInterfacesParams.interface_card_model[0] = 0;
+
+   if ( getBand(radioLinksParams.link_frequency_khz[0]) == RADIO_HW_SUPPORTED_BAND_58 )
+      radioInterfacesParams.interface_radiotype_and_driver[0] = RADIO_TYPE_REALTEK | (RADIO_HW_DRIVER_REALTEK_8812AU<<8);
+   else if ( (getBand(radioLinksParams.link_frequency_khz[0]) == RADIO_HW_SUPPORTED_BAND_23) || 
+       (getBand(radioLinksParams.link_frequency_khz[0]) == RADIO_HW_SUPPORTED_BAND_24) ||
+       (getBand(radioLinksParams.link_frequency_khz[0]) == RADIO_HW_SUPPORTED_BAND_25) )
+      radioInterfacesParams.interface_radiotype_and_driver[0] = RADIO_TYPE_ATHEROS | (RADIO_HW_DRIVER_ATHEROS<<8);
+   else
+      radioInterfacesParams.interface_radiotype_and_driver[0] = RADIO_TYPE_SIK | (RADIO_HW_DRIVER_SERIAL_SIK<<8);
+
+   // Assign radio interfaces to all radio links
+
+   int iInterfaceIndex = radioInterfacesParams.interfaces_count;
+   for( int i=1; i<radioLinksParams.links_count; i++ )
+   {
+      if ( radioLinksParams.link_frequency_khz[i] == 0 )
+         continue;
+
+      radioInterfacesParams.interface_capabilities_flags[iInterfaceIndex] = RADIO_HW_CAPABILITY_FLAG_CAN_RX | RADIO_HW_CAPABILITY_FLAG_CAN_TX | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA;
+      if ( radioLinksParams.link_frequency_khz[i] > 1000000 )
+         radioInterfacesParams.interface_capabilities_flags[iInterfaceIndex] |= RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY;
+      radioInterfacesParams.interface_link_id[iInterfaceIndex] = i;
+      radioInterfacesParams.interface_current_frequency_khz[iInterfaceIndex] = radioLinksParams.link_frequency_khz[i];
+      strcpy(radioInterfacesParams.interface_szMAC[iInterfaceIndex], "XXXXXX");
+      strcpy(radioInterfacesParams.interface_szPort[iInterfaceIndex], "X");
+      radioInterfacesParams.interface_raw_power[iInterfaceIndex] = DEFAULT_RADIO_TX_POWER;
+      if ( radioLinksParams.link_frequency_khz[i] < 1000000 )
+         radioInterfacesParams.interface_raw_power[iInterfaceIndex] = DEFAULT_RADIO_SIK_TX_POWER;
+      radioInterfacesParams.interface_dummy2[iInterfaceIndex] = 0;
+      radioInterfacesParams.interface_supported_bands[iInterfaceIndex] = getBand(radioLinksParams.link_frequency_khz[i]);
+      if ( getBand(radioLinksParams.link_frequency_khz[i]) == RADIO_HW_SUPPORTED_BAND_58 )
+         radioInterfacesParams.interface_radiotype_and_driver[iInterfaceIndex] = RADIO_TYPE_REALTEK | (RADIO_HW_DRIVER_REALTEK_8812AU<<8);
+      else if ( (getBand(radioLinksParams.link_frequency_khz[i]) == RADIO_HW_SUPPORTED_BAND_23) || 
+              (getBand(radioLinksParams.link_frequency_khz[i]) == RADIO_HW_SUPPORTED_BAND_24) ||
+              (getBand(radioLinksParams.link_frequency_khz[i]) == RADIO_HW_SUPPORTED_BAND_25) )
+         radioInterfacesParams.interface_radiotype_and_driver[iInterfaceIndex] = RADIO_TYPE_ATHEROS | (RADIO_HW_DRIVER_ATHEROS<<8);
+      else
+         radioInterfacesParams.interface_radiotype_and_driver[iInterfaceIndex] = RADIO_TYPE_SIK | (RADIO_HW_DRIVER_SERIAL_SIK<<8);
+      
+      radioInterfacesParams.interface_card_model[iInterfaceIndex] = 0;
+      radioInterfacesParams.interfaces_count++;
+      iInterfaceIndex++;
+   }
+
+   validateRadioSettings();
+
+   constructLongName();
+
+   char szFreq1[64];
+   char szFreq2[64];
+   char szFreq3[64];
+   strcpy(szFreq1, str_format_frequency(radioLinksParams.link_frequency_khz[0]));
+   strcpy(szFreq2, str_format_frequency(radioLinksParams.link_frequency_khz[1]));
+   strcpy(szFreq3, str_format_frequency(radioLinksParams.link_frequency_khz[2]));
+
+   log_line("populateFromVehicleTelemetryData (version 4): %d radio links: freq1: %s, freq2: %s, freq3: %s; %d radio interfaces.",
+       radioLinksParams.links_count, szFreq1, szFreq2, szFreq3, radioInterfacesParams.interfaces_count);
+   log_line("populateFromVehicleTelemetryData (v4) radio info after update:");
+   logVehicleRadioInfo();
+}
+
+
 void Model::setTelemetryTypeAndPort(int iTelemetryType, int iSerialPort, int iSerialSpeed)
 {
    // Remove serial port used for telemetry
    for( int i=0; i<hardwareInterfacesInfo.serial_port_count; i++ )
    {
       u32 uPortTelemetryType = hardwareInterfacesInfo.serial_port_supported_and_usage[i] & 0xFF;
-      if ( (uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) ||
-           (uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY_LTM) ||
-           (uPortTelemetryType == SERIAL_PORT_USAGE_MSP_OSD) )
+      if ( uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY )
       {
          // Remove serial port usage (set it to none)
          hardwareInterfacesInfo.serial_port_supported_and_usage[i] &= 0xFFFFFF00;
@@ -5036,12 +5617,8 @@ void Model::setTelemetryTypeAndPort(int iTelemetryType, int iSerialPort, int iSe
 
    hardwareInterfacesInfo.serial_port_speed[iSerialPort] = iSerialSpeed;
    hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] &= 0xFFFFFF00;
-   if ( telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MAVLINK )
-      hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] |= SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
-   if ( telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_LTM )
-      hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] |= SERIAL_PORT_USAGE_TELEMETRY_LTM;
-   if ( telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MSP )
-      hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] |= SERIAL_PORT_USAGE_MSP_OSD;
+   if ( (telemetry_params.fc_telemetry_type > 0) && (telemetry_params.fc_telemetry_type != TELEMETRY_TYPE_NONE) )
+      hardwareInterfacesInfo.serial_port_supported_and_usage[iSerialPort] |= SERIAL_PORT_USAGE_TELEMETRY;
 }
 
 void Model::syncModelSerialPortsToHardwareSerialPorts()
@@ -5064,131 +5641,6 @@ void Model::syncModelSerialPortsToHardwareSerialPorts()
    log_line("Model: Synced model serial ports config to hardware serial ports config.");
 }
 
-int Model::get_video_profile_total_levels(int iProfile)
-{
-   if ( iProfile < 0 || iProfile >= MAX_VIDEO_LINK_PROFILES )
-      return 0;
-
-   int iDataCount = video_link_profiles[iProfile].iBlockPackets;
-   int iECCount = video_link_profiles[iProfile].iBlockECs;
-
-   if ( video_link_profiles[iProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_AUTO_EC_SCHEME )
-   if ( iProfile != video_params.user_selected_video_link_profile )
-   if ( iDataCount < video_link_profiles[video_params.user_selected_video_link_profile].iBlockPackets )
-   {
-      iDataCount = video_link_profiles[video_params.user_selected_video_link_profile].iBlockPackets;
-      iECCount = iDataCount/4;
-   }
-
-   if ( (iProfile == VIDEO_PROFILE_LQ) && (iECCount >= (iDataCount*3)/4 + 1 ) )
-      return 1;
-   else if ( iECCount >= iDataCount/2 + 1 )
-      return 1;
-
-   int iOneLevelShift = iDataCount/4;
-   if ( iOneLevelShift < 1 )
-      iOneLevelShift = 1;
-
-   int nLevels = ((iDataCount/2+1) - iECCount)/iOneLevelShift;
-   if ( iProfile == VIDEO_PROFILE_LQ )
-      nLevels = 1 + (((iDataCount*3)/4+1) - iECCount)/iOneLevelShift;
-
-   if ( nLevels == 0 )
-      nLevels = 1;
-   return nLevels+1;
-}
-
-int Model::get_video_profile_from_total_levels_shift(int iLevelShift)
-{
-   int iLevelsHQ = get_video_profile_total_levels(video_params.user_selected_video_link_profile);
-   int iLevelsMQ = get_video_profile_total_levels(VIDEO_PROFILE_MQ);
-   if ( iLevelShift < iLevelsHQ )
-      return video_params.user_selected_video_link_profile;
-   else if ( iLevelShift < iLevelsHQ + iLevelsMQ )
-      return VIDEO_PROFILE_MQ;
-   else
-      return VIDEO_PROFILE_LQ;
-}
-
-int Model::get_video_profile_level_shift_from_total_levels_shift(int iTotalLevelsShift)
-{
-   int iLevelsHQ = get_video_profile_total_levels(video_params.user_selected_video_link_profile);
-   int iLevelsMQ = get_video_profile_total_levels(VIDEO_PROFILE_MQ);
-   int iLevelsLQ = get_video_profile_total_levels(VIDEO_PROFILE_LQ);
-   if ( iTotalLevelsShift < iLevelsHQ )
-      return iTotalLevelsShift;
-   if ( iTotalLevelsShift < iLevelsHQ + iLevelsMQ )
-      return iTotalLevelsShift - iLevelsHQ;
-   
-   int iLevel = iTotalLevelsShift - iLevelsHQ - iLevelsMQ;
-   if ( iLevel > iLevelsLQ )
-      iLevel = iLevelsLQ;
-
-   return iLevel;
-}
-
-int Model::get_video_profile_ec_scheme(int iVideoProfile, int* piData, int* piEC)
-{
-   if ( iVideoProfile == video_params.user_selected_video_link_profile )
-      return get_level_shift_ec_scheme(0, piData, piEC);
-   if ( iVideoProfile == VIDEO_PROFILE_MQ )
-      return get_level_shift_ec_scheme(get_video_profile_total_levels(video_params.user_selected_video_link_profile), piData, piEC);
-   if ( iVideoProfile == VIDEO_PROFILE_LQ )
-      return get_level_shift_ec_scheme(get_video_profile_total_levels(video_params.user_selected_video_link_profile) + get_video_profile_total_levels(VIDEO_PROFILE_MQ), piData, piEC);
-
-   return get_level_shift_ec_scheme(0, piData, piEC);
-}
-
-int Model::get_level_shift_ec_scheme(int iTotalLevelsShift, int* piData, int* piEC)
-{
-   int iVideoProfile = get_video_profile_from_total_levels_shift(iTotalLevelsShift);
-   int iProfileLevelShift = get_video_profile_level_shift_from_total_levels_shift(iTotalLevelsShift);
-
-   int iDataCount = video_link_profiles[iVideoProfile].iBlockPackets;
-   int iECCount = video_link_profiles[iVideoProfile].iBlockECs;
-
-   if ( video_link_profiles[iVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_AUTO_EC_SCHEME )
-   if ( iVideoProfile != video_params.user_selected_video_link_profile )
-   if ( iDataCount < video_link_profiles[video_params.user_selected_video_link_profile].iBlockPackets )
-   {
-      iDataCount = video_link_profiles[video_params.user_selected_video_link_profile].iBlockPackets;
-      iECCount = iDataCount/4;
-
-      float fECRateUser = (float)video_link_profiles[video_params.user_selected_video_link_profile].iBlockECs/(float)video_link_profiles[video_params.user_selected_video_link_profile].iBlockPackets;
-      float fECRateNew = (float)iECCount/(float)iDataCount;
-      if ( fECRateNew < fECRateUser )
-         iECCount = fECRateUser * (float)iDataCount;
-   }
-
-   int iOneLevelShift = iDataCount/4;
-   if ( iOneLevelShift < 1 )
-      iOneLevelShift = 1;
-
-   iECCount += iOneLevelShift * iProfileLevelShift;
-   if ( iECCount > iDataCount )
-      iECCount = iDataCount;
-
-   if ( NULL != piData )
-      *piData = iDataCount;
-   if ( NULL != piEC )
-      *piEC = iECCount;
-
-   return iVideoProfile;
-}
-
-int Model::get_current_max_video_packets_for_all_profiles()
-{
-   int iMax = 0;
-   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-   {
-      if ( video_link_profiles[i].iBlockPackets + video_link_profiles[i].iBlockECs > iMax )
-         iMax = video_link_profiles[i].iBlockPackets + video_link_profiles[i].iBlockECs;
-      if ( 2*video_link_profiles[i].iBlockPackets > iMax )
-         iMax = 2*video_link_profiles[i].iBlockPackets;
-   }
-   return iMax;
-}
-
 void Model::convertECPercentageToData(type_video_link_profile* pVideoProfile)
 {
    if ( NULL == pVideoProfile )
@@ -5198,7 +5650,7 @@ void Model::convertECPercentageToData(type_video_link_profile* pVideoProfile)
       pVideoProfile->iECPercentage = 100;
    if ( pVideoProfile->iECPercentage < 0 )
       pVideoProfile->iECPercentage = 0;
-   float fECPackets =((float)pVideoProfile->iBlockPackets * (float)pVideoProfile->iECPercentage) / 100.0;
+   float fECPackets =((float)pVideoProfile->iBlockDataPackets * (float)pVideoProfile->iECPercentage) / 100.0;
    pVideoProfile->iBlockECs = (int)fECPackets;
    if ( 0 != pVideoProfile->iECPercentage )
       pVideoProfile->iBlockECs = rintf(fECPackets);
@@ -5393,14 +5845,13 @@ void Model::copy_radio_link_params(int iFrom, int iTo)
    radioLinksParams.link_frequency_khz[iTo] = radioLinksParams.link_frequency_khz[iFrom];
    radioLinksParams.link_capabilities_flags[iTo] = radioLinksParams.link_capabilities_flags[iFrom];
    radioLinksParams.link_radio_flags[iTo] = radioLinksParams.link_radio_flags[iFrom];
-   radioLinksParams.link_datarate_video_bps[iTo] = radioLinksParams.link_datarate_video_bps[iFrom];
-   radioLinksParams.link_datarate_data_bps[iTo] = radioLinksParams.link_datarate_data_bps[iFrom];
+   radioLinksParams.downlink_datarate_video_bps[iTo] = radioLinksParams.downlink_datarate_video_bps[iFrom];
+   radioLinksParams.downlink_datarate_data_bps[iTo] = radioLinksParams.downlink_datarate_data_bps[iFrom];
    radioLinksParams.uSerialPacketSize[iTo] = radioLinksParams.uSerialPacketSize[iFrom];
+   radioLinksParams.uMaxLinkLoadPercent[iTo] = radioLinksParams.uMaxLinkLoadPercent[iFrom];
    radioLinksParams.uDummy2[iTo] = radioLinksParams.uDummy2[iFrom];
    radioLinksParams.uplink_datarate_video_bps[iTo] = radioLinksParams.uplink_datarate_video_bps[iFrom];
    radioLinksParams.uplink_datarate_data_bps[iTo] = radioLinksParams.uplink_datarate_data_bps[iFrom];
-   radioLinksParams.uUplinkDataDataRateType[iTo] = radioLinksParams.uUplinkDataDataRateType[iFrom];
-   radioLinksParams.uDownlinkDataDataRateType[iTo] = radioLinksParams.uDownlinkDataDataRateType[iFrom];
 }
 
 void Model::copy_radio_interface_params(int iFrom, int iTo)
@@ -5445,7 +5896,7 @@ bool IsModelRadioConfigChanged(type_radio_links_parameters* pRadioLinks1, type_r
          return true;
       if ( pRadioLinks1->link_radio_flags[i] != pRadioLinks2->link_radio_flags[i] )
          return true;
-      if ( pRadioLinks1->link_datarate_data_bps[i] != pRadioLinks2->link_datarate_data_bps[i] )
+      if ( pRadioLinks1->downlink_datarate_data_bps[i] != pRadioLinks2->downlink_datarate_data_bps[i] )
          return true;
    }
    return false;     

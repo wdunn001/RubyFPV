@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -99,17 +99,14 @@ void MenuControllerDev::addItems()
 
 
    m_pItemsSlider[7] = new MenuItemSlider("Ping/Clock Sync Frequency", "How often is the clock sync done with the vehicle.", 1,50,10, fSliderWidth);
-   m_pItemsSlider[7]->setStep(1);
    m_pItemsSlider[7]->setCurrentValue(pCS->nPingClockSyncFrequency);
    m_IndexPingClockSpeed = addMenuItem(m_pItemsSlider[7]);
 
    m_pItemsSlider[8] = new MenuItemSlider("Radio Reconfiguration Delay (ms)", "When 2.4/5.8Ghz radio interfaces need to be reconfigured, allow a delay for reconfiguration. Important for Atheros chipset cards mostly (in miliseconds).", 1,100,10, fSliderWidth);
-   m_pItemsSlider[8]->setStep(1);
    m_pItemsSlider[8]->setCurrentValue(pP->iDebugWiFiChangeDelay);
    m_IndexWiFiChangeDelay = addMenuItem(m_pItemsSlider[8]);
 
    m_pItemsSlider[9] = new MenuItemSlider("Radio Rx Loop Check Max Time (ms)", "The threshold for generating an alarm when radio Rx loop takes too much time (in miliseconds).", 1,100,10, fSliderWidth);
-   m_pItemsSlider[9]->setStep(1);
    m_pItemsSlider[9]->setCurrentValue(pCS->iDevRxLoopTimeout);
    m_IndexRxLoopTimeout = addMenuItem(m_pItemsSlider[9]);
 
@@ -158,7 +155,6 @@ void MenuControllerDev::addItems()
    if ( hardware_board_is_radxa(hardware_getBoardType()) )
    {
       m_pItemsSlider[0] = new MenuItemSlider("Video Buffers Size", "Sets a relative size for the video buffers used by live video stream player.", 5,100,30, fSliderWidth);
-      m_pItemsSlider[0]->setStep(1);
       m_pItemsSlider[0]->setCurrentValue(pCS->iVideoMPPBuffersSize);
       m_IndexMPPBuffers = addMenuItem(m_pItemsSlider[0]);
    }
@@ -274,7 +270,7 @@ void MenuControllerDev::onSelectItem()
       if ( NULL != g_pCurrentModel )
       if ( ! g_pCurrentModel->is_spectator )
       if ( pairing_isStarted() && link_is_vehicle_online_now(g_pCurrentModel->uVehicleId) )
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI(); 
    }
 
@@ -298,7 +294,9 @@ void MenuControllerDev::onSelectItem()
    {
       pCS->iVideoMPPBuffersSize = m_pItemsSlider[0]->getCurrentValue();
       save_ControllerSettings();
+
       // Force a restart of video streamer
+
       if ( pairing_isStarted() )
       if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->hasCamera()) )
          send_model_changed_message_to_router(MODEL_CHANGED_VIDEO_CODEC, 0);

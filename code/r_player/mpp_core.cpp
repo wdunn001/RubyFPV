@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -366,8 +366,10 @@ void* _mpp_thread_frame_decode(void *param)
 
 int mpp_start_decoding_thread()
 {
-   pthread_create(&g_MPPUpdateDisplayThread, NULL, _mpp_thread_update_display, NULL);
-   pthread_create(&g_MPPDecodeThread, NULL, _mpp_thread_frame_decode, NULL);
+   if ( 0 == pthread_create(&g_MPPUpdateDisplayThread, NULL, _mpp_thread_update_display, NULL) )
+      pthread_detach(g_MPPUpdateDisplayThread);
+   if ( 0 == pthread_create(&g_MPPDecodeThread, NULL, _mpp_thread_frame_decode, NULL) )
+      pthread_detach(g_MPPDecodeThread);
    return 0;
 }
 
@@ -543,14 +545,14 @@ void mpp_enable_vsync(bool bEnableVSync)
 
 int mpp_mark_end_of_stream()
 {
+   g_bMPPFrameEOS = true;
    mpp_packet_set_eos(g_MPPInputPacket);
    mpp_packet_set_length(g_MPPInputPacket, 0);
    while ( MPP_OK != g_pMPPApi->decode_put_packet(g_MPPCtx, g_MPPInputPacket) )
    {
       hardware_sleep_micros(10000);
    }
-   pthread_join(g_MPPDecodeThread, NULL );
-   pthread_join(g_MPPUpdateDisplayThread, NULL );
+   g_bMPPFrameEOS = true;
    return 0;
 }
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -43,6 +43,7 @@
 #include "menu_tx_raw_power.h"
 #include "menu_negociate_radio.h"
 #include "menu_vehicle_radio_pit.h"
+#include "menu_vehicle_radio_rt_capab.h"
 #include "../../base/tx_powers.h"
 #include "../../utils/utils_controller.h"
 #include "../link_watch.h"
@@ -64,6 +65,8 @@ MenuVehicleRadioConfig::MenuVehicleRadioConfig(void)
       m_IndexConfigureLinks[i] = -1;
       m_IndexTxPowers[i] = -1;
    }
+   m_IndexDevRuntimeInfo = -1;
+   m_IndexShowTxPower = -1;
 }
 
 MenuVehicleRadioConfig::~MenuVehicleRadioConfig()
@@ -105,6 +108,8 @@ void MenuVehicleRadioConfig::populate()
 {
    int iTmp = getSelectedMenuItemIndex();
    removeAllItems();
+   m_IndexDevRuntimeInfo = -1;
+   m_IndexShowTxPower = -1;
 
    char szBuff[256];
    int len = 64;
@@ -121,7 +126,6 @@ void MenuVehicleRadioConfig::populate()
    }
 
    populateFrequencies();
-   populateRadioRates();
    populateTxPowers();
 
    m_IndexPitMode = addMenuItem(new MenuItem(L("Pit Mode / Auto Power"), L("Enable auto adjustment to radio tx powers based on various conditions.")));
@@ -193,6 +197,15 @@ void MenuVehicleRadioConfig::populate()
 
    m_IndexRadioConfig = addMenuItem(new MenuItem(L("Full Radio Config"), L("Full radio configuration")));
    m_pMenuItems[m_IndexRadioConfig]->showArrow();
+
+   ControllerSettings* pCS = get_ControllerSettings();
+   m_IndexDevRuntimeInfo = -1;
+   if ( (NULL != pCS) && pCS->iDeveloperMode )
+   {
+      m_IndexDevRuntimeInfo = addMenuItem( new MenuItem("Radio Runtime Capabilities") );
+      m_pMenuItems[m_IndexDevRuntimeInfo]->showArrow();
+      m_pMenuItems[m_IndexDevRuntimeInfo]->setTextColor(get_Color_Dev());
+   }
 
    m_SelectedIndex = iTmp;
    if ( m_SelectedIndex >= m_ItemsCount )
@@ -345,39 +358,6 @@ void MenuVehicleRadioConfig::populateFrequencies()
    }
 }
 
-void MenuVehicleRadioConfig::populateRadioRates()
-{
-   for( int iLink=0; iLink<g_pCurrentModel->radioLinksParams.links_count; iLink++ )
-   {
-      if ( ! g_pCurrentModel->radioLinkIsWiFiRadio(iLink) )
-         continue;
-    
-      char szBuff[256];
-      if ( 1 == g_pCurrentModel->radioLinksParams.links_count )
-        strcpy(szBuff, L("Radio Link Data Rate"));
-      else
-         sprintf(szBuff, L("Radio Link %d Data Rate"), iLink+1);
-      m_pItemsSelect[30+iLink] = new MenuItemSelect(szBuff, L("Sets the physical radio data rate to use on this radio link. If adaptive radio links is enabled, this will get lowered automatically by Ruby as needed."));
-     
-      for( int i=0; i<getDataRatesCount(); i++ )
-      {
-         str_getDataRateDescription(getDataRatesBPS()[i], 0, szBuff);
-         m_pItemsSelect[30+iLink]->addSelection(szBuff);
-         if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iLink] == getDataRatesBPS()[i] )
-            m_pItemsSelect[30+iLink]->setSelectedIndex(m_pItemsSelect[30+iLink]->getSelectionsCount()-1);
-      }
-      for( int i=0; i<=MAX_MCS_INDEX; i++ )
-      {
-         str_getDataRateDescription(-1-i, 0, szBuff);
-         m_pItemsSelect[30+iLink]->addSelection(szBuff);
-         if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iLink] == -1-i )
-            m_pItemsSelect[30+iLink]->setSelectedIndex(m_pItemsSelect[30+iLink]->getSelectionsCount()-1);
-      }
-      m_pItemsSelect[30+iLink]->setIsEditable();
-      m_IndexDataRates[iLink] = addMenuItem(m_pItemsSelect[30+iLink]);
-   }
-}
-
 void MenuVehicleRadioConfig::populateTxPowers()
 {
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
@@ -421,6 +401,7 @@ void MenuVehicleRadioConfig::populateTxPowers()
       selectMenuItemTxPowersValue(m_pItemsSelect[40+iLink], false, bBoost2W, bBoost4W, &(iLinkPowersMw[0]), iCountLinkInterfaces, iVehicleLinkPowerMaxMw);
 
    }
+
    /*
    char szText[256];
    strcpy(szText, L("The Tx power is for the radio downlink(s).\nMaximum selectable Tx power is computed based on detected radio interfaces on the vehicle: "));
@@ -441,6 +422,16 @@ void MenuVehicleRadioConfig::populateTxPowers()
    pLegend->setExtraHeight(0.4*g_pRenderEngine->textHeight(g_idFontMenu));
    addMenuItem(pLegend);
    */
+
+   m_pItemsSelect[5] = new MenuItemSelect(L("Show Tx Power in OSD"), L("Shows radio tx power in the current OSD screen."));
+   m_pItemsSelect[5]->addSelection(L("No"));
+   m_pItemsSelect[5]->addSelection(L("Yes"));
+   m_pItemsSelect[5]->setIsEditable();
+   m_IndexShowTxPower = addMenuItem(m_pItemsSelect[5]);
+
+   m_pItemsSelect[5]->setSelectedIndex(0);
+   if ( g_pCurrentModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG2_SHOW_TX_POWER )
+      m_pItemsSelect[5]->setSelectedIndex(1);
 }
 
 void MenuVehicleRadioConfig::onShow()
@@ -750,41 +741,14 @@ void MenuVehicleRadioConfig::onSelectItem()
       sendNewRadioLinkFrequency(n, freq);
    }
 
-   for( int iLink=0; iLink<g_pCurrentModel->radioLinksParams.links_count; iLink++ )
-   {
-      if ( ! g_pCurrentModel->radioLinkIsWiFiRadio(iLink) )
-         continue;
-      if ( m_IndexDataRates[iLink] == m_SelectedIndex )
-      {
-         int iIndex = m_pItemsSelect[30+iLink]->getSelectedIndex();
-         int iDataRate = 0;
-         if ( iIndex < getDataRatesCount() )
-         {
-            iDataRate = getDataRatesBPS()[iIndex];
-            if ( iDataRate == g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iLink] )
-               return;
-         }
-         else
-         {
-            iDataRate = -1 - (iIndex-getDataRatesCount());
-            if ( iDataRate == g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iLink] )
-               return;
-         }
-         if ( iDataRate == 0 )
-            return;
-
-         u8 uBuffCommand[32];
-         memcpy(&uBuffCommand[0], &iDataRate, sizeof(int));
-         memcpy(&uBuffCommand[sizeof(int)], &g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iLink], sizeof(int));
-         memcpy(&uBuffCommand[2*sizeof(int)], &g_pCurrentModel->radioLinksParams.uplink_datarate_video_bps[iLink], sizeof(int));
-         memcpy(&uBuffCommand[3*sizeof(int)], &g_pCurrentModel->radioLinksParams.uplink_datarate_data_bps[iLink], sizeof(int));
-         if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_RADIO_LINK_DATARATES, iLink, uBuffCommand, 4*sizeof(int)) )
-            valuesToUI();
-      }
-   }
-
    if ( m_IndexRadioConfig == m_SelectedIndex )
    {
+      if ( get_sw_version_build(g_pCurrentModel) < 288 )
+      {
+         addMessage(L("Radio functionality has changed. You need to update your vehicle sowftware."));
+         return;
+      }
+
       MenuRadioConfig* pM = new MenuRadioConfig();
       pM->m_bGoToFirstRadioLinkOnShow = true;
       add_menu_to_stack(pM);
@@ -793,7 +757,7 @@ void MenuVehicleRadioConfig::onSelectItem()
 
    if ( m_IndexOptimizeLinks == m_SelectedIndex )
    {
-      if ( (NULL != g_pCurrentModel) && ((g_pCurrentModel->sw_version >> 16) < 264) )
+      if ( (NULL != g_pCurrentModel) && ((g_pCurrentModel->sw_version >> 16) < 288) )
       {
          addMessage(0, L("You must update your vehicle first."));
          return;
@@ -802,9 +766,31 @@ void MenuVehicleRadioConfig::onSelectItem()
       return;
    }
 
+   if ( (-1 != m_IndexShowTxPower) && (m_IndexShowTxPower == m_SelectedIndex) )
+   {
+      osd_parameters_t params;
+      memcpy(&params, &(g_pCurrentModel->osd_params), sizeof(osd_parameters_t));
+      int iScreenIndex = g_pCurrentModel->osd_params.iCurrentOSDScreen;
+
+      if ( 0 == m_pItemsSelect[5]->getSelectedIndex() )
+         params.osd_flags2[iScreenIndex] &= ~OSD_FLAG2_SHOW_TX_POWER;
+      else
+         params.osd_flags2[iScreenIndex] |= OSD_FLAG2_SHOW_TX_POWER;
+      params.osd_layout_preset[iScreenIndex] = OSD_PRESET_CUSTOM;
+      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_OSD_PARAMS, 0, (u8*)&params, sizeof(osd_parameters_t)) )
+         valuesToUI();
+      return;
+   }
+
    if ( m_IndexPitMode == m_SelectedIndex )
    {
       add_menu_to_stack(new MenuVehicleRadioLinkPITModes());
       return;
+   }
+
+   if ( (-1 != m_IndexDevRuntimeInfo) && (m_IndexDevRuntimeInfo == m_SelectedIndex) )
+   {
+      add_menu_to_stack(new MenuVehicleRadioRuntimeCapabilities());
+      return;    
    }
 }

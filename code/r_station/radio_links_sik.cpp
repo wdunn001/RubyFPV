@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -161,7 +161,7 @@ static void * _reinit_sik_thread_func(void *ignored_argument)
                if ( (iRadioLink >= 0) && (iRadioLink < g_pCurrentModel->radioLinksParams.links_count) )
                {
                   uFreqKhz = g_pCurrentModel->radioLinksParams.link_frequency_khz[iRadioLink];
-                  uDataRate = g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iRadioLink];
+                  uDataRate = g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iRadioLink];
                   uECC = (g_pCurrentModel->radioLinksParams.link_radio_flags[iRadioLink] & RADIO_FLAGS_SIK_ECC)? 1:0;
                   uLBT = (g_pCurrentModel->radioLinksParams.link_radio_flags[iRadioLink] & RADIO_FLAGS_SIK_LBT)? 1:0;
                   uMCSTR = (g_pCurrentModel->radioLinksParams.link_radio_flags[iRadioLink] & RADIO_FLAGS_SIK_MCSTR)? 1:0;
@@ -306,6 +306,8 @@ int radio_links_check_reinit_sik_interfaces()
       g_SiKRadiosState.bConfiguringSiKThreadWorking = false;
       return 0;
    }
+   else
+      pthread_detach(pThreadSiKReinit);
 
    log_line("[Router] Created thread to reinit SiK radio interfaces.");
    if ( 0 == g_SiKRadiosState.iThreadRetryCounter )

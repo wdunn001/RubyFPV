@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -49,7 +49,7 @@
 
 Model s_ModelFirstBoot;
 
-void do_first_boot_pre_initialization()
+void do_first_boot_pre_initialization(bool bIgnoreDrivers)
 {
    log_line("---------------------------------------");
    log_line("Do first time boot preinitialization...");
@@ -59,7 +59,8 @@ void do_first_boot_pre_initialization()
    fflush(stdout);
 
    hw_execute_bash_command("sync", NULL);
-   hardware_install_drivers(1);
+   if ( ! bIgnoreDrivers )
+      hardware_install_drivers(1);
    
    printf("\nRuby: Done doing first time ever initialization on Raspberry.\n");
    fflush(stdout);
@@ -69,11 +70,11 @@ void do_first_boot_pre_initialization()
 
    printf("\nRuby: Doing first time ever initialization on Radxa. Please wait...\n");
    fflush(stdout);
-   
-   hw_execute_bash_command("date -s 'next year'", NULL);
-   hw_execute_bash_command("date -s 'next year'", NULL);
 
-   hardware_install_drivers(1);
+   hw_execute_bash_command("systemctl disable glances", NULL);
+
+   if ( ! bIgnoreDrivers )
+      hardware_install_drivers(1);
    if ( ! hardware_is_running_on_runcam_vrx() )
       hw_execute_bash_command_raw("echo 'performance' | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor", NULL);
 
@@ -107,7 +108,9 @@ void do_first_boot_pre_initialization()
    #endif
 
    #if defined (HW_PLATFORM_OPENIPC_CAMERA)
-   hardware_install_drivers(1);
+   hw_execute_bash_command("rm -rf /etc/init.d/S*majestic", NULL);
+   if ( ! bIgnoreDrivers )
+      hardware_install_drivers(1);
    hardware_camera_check_set_oipc_sensor();
    hardware_camera_set_default_oipc_calibration(hardware_getCameraType());
    hardware_set_default_sigmastar_cpu_freq();
@@ -175,14 +178,6 @@ void do_first_boot_initialization_openipc(bool bIsVehicle, u32 uBoardType)
    log_line("Doing first time boot setup for OpenIPC platform...");
    hw_execute_bash_command("cp -rf /etc/majestic.yaml /etc/majestic.yaml.org", NULL);
 
-   hw_execute_bash_command_raw("cli -s .watchdog.enabled false", NULL);
-   hw_execute_bash_command_raw("cli -s .system.logLevel info", NULL);
-   hw_execute_bash_command_raw("cli -s .rtsp.enabled false", NULL);
-   hw_execute_bash_command_raw("cli -s .video1.enabled false", NULL);
-   hw_execute_bash_command_raw("cli -s .video0.enabled true", NULL);
-   hw_execute_bash_command_raw("cli -s .video0.rcMode cbr", NULL);
-   hw_execute_bash_command_raw("cli -s .isp.slowShutter disabled", NULL);
-
    hw_execute_bash_command("ln -s /lib/firmware/ath9k_htc/htc_9271.fw.3 /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw", NULL);
    hw_execute_bash_command("sed -i 's/console:/#console:/' /etc/inittab", NULL);
 }
@@ -216,7 +211,7 @@ void do_first_boot_initialization(bool bIsVehicle, u32 uBoardType)
    {
       #ifdef HW_PLATFORM_OPENIPC_CAMERA
       hardware_camera_maj_apply_all_settings(&s_ModelFirstBoot, &(s_ModelFirstBoot.camera_params[s_ModelFirstBoot.iCurrentCamera].profiles[s_ModelFirstBoot.camera_params[s_ModelFirstBoot.iCurrentCamera].iCurrentProfile]),
-          s_ModelFirstBoot.video_params.user_selected_video_link_profile,
+          s_ModelFirstBoot.video_params.iCurrentVideoProfile,
           &(s_ModelFirstBoot.video_params), false);
       #endif
    }
@@ -349,15 +344,16 @@ Model* first_boot_create_default_model(bool bIsVehicle, u32 uBoardType)
       {
          for( int i=0; i<s_ModelFirstBoot.radioLinksParams.links_count; i++ )
          {
-            s_ModelFirstBoot.radioLinksParams.link_datarate_video_bps[i] = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS;
-            s_ModelFirstBoot.radioLinksParams.link_datarate_data_bps[i] = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS;
+            s_ModelFirstBoot.radioLinksParams.downlink_datarate_video_bps[i] = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS;
+            s_ModelFirstBoot.radioLinksParams.downlink_datarate_data_bps[i] = DEFAULT_RADIO_DATARATE_VIDEO_ATHEROS;
          }
          for( int i=0; i<s_ModelFirstBoot.radioInterfacesParams.interfaces_count; i++ )
          {
             s_ModelFirstBoot.radioInterfacesParams.interface_dummy2[i] = 0;
          }
-         s_ModelFirstBoot.video_link_profiles[VIDEO_PROFILE_BEST_PERF].bitrate_fixed_bps = 5000000;
+         s_ModelFirstBoot.video_link_profiles[VIDEO_PROFILE_HIGH_PERF].bitrate_fixed_bps = 5000000;
          s_ModelFirstBoot.video_link_profiles[VIDEO_PROFILE_HIGH_QUALITY].bitrate_fixed_bps = 5000000;
+         s_ModelFirstBoot.video_link_profiles[VIDEO_PROFILE_LONG_RANGE].bitrate_fixed_bps = 5000000;
          s_ModelFirstBoot.video_link_profiles[VIDEO_PROFILE_USER].bitrate_fixed_bps = 5000000;
          s_ModelFirstBoot.video_link_profiles[VIDEO_PROFILE_PIP].bitrate_fixed_bps = 5000000;
       }
@@ -411,8 +407,8 @@ Model* first_boot_create_default_model(bool bIsVehicle, u32 uBoardType)
       s_ModelFirstBoot.radioInterfacesParams.interface_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA;
 
       s_ModelFirstBoot.radioLinksParams.link_radio_flags[0] = DEFAULT_RADIO_FRAMES_FLAGS;
-      s_ModelFirstBoot.radioLinksParams.link_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_VIDEO;
-      s_ModelFirstBoot.radioLinksParams.link_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_DATA;
+      s_ModelFirstBoot.radioLinksParams.downlink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_VIDEO;
+      s_ModelFirstBoot.radioLinksParams.downlink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_DATA;
 
       s_ModelFirstBoot.populateRadioInterfacesInfoFromHardware();
 

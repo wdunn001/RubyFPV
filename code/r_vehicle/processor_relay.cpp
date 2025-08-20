@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -182,8 +182,7 @@ void relay_process_received_radio_packet_from_relayed_vehicle(int iRadioLink, in
          bPacketContainsDataToForward = true;
          log_line("Will relay from relayed vehicle to controller the pairing confirmation message.");
       }
-      if ( (uPacketType == PACKET_TYPE_VIDEO_SWITCH_VIDEO_KEYFRAME_TO_VALUE_ACK) ||
-           (uPacketType == PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL_ACK) ||
+      if ( (uPacketType == PACKET_TYPE_VIDEO_ADAPTIVE_VIDEO_PARAMS_ACK) ||
            (uPacketType == PACKET_TYPE_NEGOCIATE_RADIO_LINKS) )
          bPacketContainsDataToForward = true;
 
@@ -430,11 +429,11 @@ void relay_send_packet_to_controller(u8* pBufferData, int iBufferLength)
       if ( !(g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[iRadioInterfaceIndex] & RADIO_HW_CAPABILITY_FLAG_CAN_TX) )
          continue;
       
-      int nRateTx = g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iRadioLinkId];
-      radio_set_out_datarate(nRateTx);
+      int nRateTx = g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[iRadioLinkId];
+      radio_set_out_datarate(nRateTx, uPacketType, g_TimeNow);
 
       u32 radioFlags = g_pCurrentModel->radioInterfacesParams.interface_current_radio_flags[iRadioInterfaceIndex];
-      radio_set_frames_flags(radioFlags);
+      radio_set_frames_flags(radioFlags, g_TimeNow);
 
       int totalLength = radio_build_new_raw_ieee_packet(iRadioLinkId, s_RadioRawPacketRelayed, pBufferData, iBufferLength, RADIO_PORT_ROUTER_DOWNLINK, 0);
 
@@ -518,11 +517,11 @@ void relay_send_single_packet_to_relayed_vehicle(u8* pBufferData, int iBufferLen
       if ( !(g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[iRadioInterfaceIndex] & RADIO_HW_CAPABILITY_FLAG_CAN_TX) )
          continue;
       
-      int nRateTx = g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iRadioLinkId];
-      radio_set_out_datarate(nRateTx);
+      int nRateTx = g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iRadioLinkId];
+      radio_set_out_datarate(nRateTx, pPH->packet_type, g_TimeNow);
 
       u32 radioFlags = g_pCurrentModel->radioInterfacesParams.interface_current_radio_flags[iRadioInterfaceIndex];
-      radio_set_frames_flags(radioFlags);
+      radio_set_frames_flags(radioFlags, g_TimeNow);
 
       int totalLength = radio_build_new_raw_ieee_packet(iRadioLinkId, s_RadioRawPacketRelayed, pBufferData, iBufferLength, RADIO_PORT_ROUTER_UPLINK, 0);
 

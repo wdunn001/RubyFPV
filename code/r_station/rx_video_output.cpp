@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -68,6 +68,7 @@
 #include "packets_utils.h"
 #include "timers.h"
 #include "ruby_rt_station.h"
+#include "adaptive_video.h"
 
 
 pthread_t s_pThreadRxVideoOutputStreamer;
@@ -92,7 +93,6 @@ bool s_bDidSentAnyDataToVideoStreamerPipe = false;
 u8 s_uCurrentReceivedVideoStreamType = 0;
 ParserH264 s_ParserH264StreamOutput;
 ParserH264 s_ParserH264VideoOutput;
-bool s_bEnableVideoOutputStreamParsing = false;
 
 u32 s_uLastIOErrorAlarmFlagsVideoStreamer = 0;
 u32 s_uLastIOErrorAlarmFlagsUSBPlayer = 0;
@@ -245,7 +245,7 @@ void rx_video_output_start_video_streamer()
 
    szPIDs[0] = 0;
    int count = 0;
-   log_line("[VideoOutput] Waiting for process (%s) to start using...", s_szOutputVideoStreamerFilename);
+   log_line("[VideoOutput] Waiting for process (%s) to start...", s_szOutputVideoStreamerFilename);
    u32 uTimeStart = get_current_timestamp_ms();
 
    hw_process_get_pids(s_szOutputVideoStreamerFilename, szPIDs);
@@ -531,8 +531,8 @@ void _rx_video_output_open_pipe_to_streamer()
    //log_line("[VideoOutput] Video streamer FIFO write endpoint pipe new flags: %s", str_get_pipe_flags(fcntl(s_fPipeVideoOutToStreamer, F_GETFL)));
   
    log_line("[VideoOutput] Video streamer pipe FIFO default size: %d bytes", fcntl(s_fPipeVideoOutToStreamer, F_GETPIPE_SZ));
-   //fcntl(s_fPipeVideoOutToStreamer, F_SETPIPE_SZ, 250000);
-   //log_line("[VideoOutput] Video streamer FIFO new size: %d bytes", fcntl(s_fPipeVideoOutToStreamer, F_GETPIPE_SZ));
+   fcntl(s_fPipeVideoOutToStreamer, F_SETPIPE_SZ, 250000);
+   log_line("[VideoOutput] Video streamer FIFO new size: %d bytes", fcntl(s_fPipeVideoOutToStreamer, F_GETPIPE_SZ));
    s_bDidSentAnyDataToVideoStreamerPipe = false;
 }
 
@@ -841,46 +841,42 @@ void rx_video_output_disable_local_player_udp_output()
    s_iLocalVideoPlayerUDPSocket = -1;
 }
 
-void rx_video_output_enable_stream_parsing(bool bEnable)
-{
-   s_bEnableVideoOutputStreamParsing = bEnable;
-}
-
 void _rx_video_output_parse_h264_stream(u32 uVehicleId, u8* pBuffer, int iLength)
 {
-   while ( iLength > 0 )
+
+   if ( (NULL != g_pCurrentModel) && g_pControllerSettings->iDeveloperMode )
+   if ( get_Preferences()->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_OUTPUT_VIDEO_FRAMES )
    {
-      int iBytesParsed = s_ParserH264StreamOutput.parseDataUntilStartOfNextNALOrLimit(pBuffer, iLength, iLength+1, g_TimeNow);
-      if ( iBytesParsed >= iLength )
-         break;
+      u32 uSize = (g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] >> 8) & 0xFFFF;
+      uSize += iLength;
+      g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] = 
+      (g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] & 0xFF0000FF) | ((uSize & 0xFFFF) << 8);
 
-      u32 uNewNALType = s_ParserH264StreamOutput.getCurrentNALType();
-      if ( uNewNALType == 1 )
-         g_SMControllerRTInfo.uRecvFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= 0b100000;
-      else if ( uNewNALType == 5 )
-         g_SMControllerRTInfo.uRecvFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= 0b10000;
-      else
-         g_SMControllerRTInfo.uRecvFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= 0b1000000;
-
-      // To fix
-      /*
-      update_shared_mem_video_frames_stats_on_new_frame( &g_SM_VideoFramesStatsOutput,
-          s_ParserH264StreamOutput.getSizeOfLastCompleteFrameInBytes(),
-          s_ParserH264StreamOutput.getCurrentFrameType(),
-          s_ParserH264StreamOutput.getDetectedSlices(), 
-          s_ParserH264StreamOutput.getDetectedFPS(), g_TimeNow );
-      */
-      pBuffer += iBytesParsed;
-      iLength -= iBytesParsed;
+      u32 uDeltaMS = g_TimeNow - g_SMControllerRTInfo.uCurrentSliceStartTime;
+      if ( uDeltaMS > 128 )
+         uDeltaMS = 128;
+      g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] &= 0xFFFFFF;
+      g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= (uDeltaMS << 24);
    }
 
-   shared_mem_video_stream_stats* pSMVideoStreamInfo = get_shared_mem_video_stream_stats_for_vehicle(&g_SM_VideoDecodeStats, uVehicleId); 
-   if ( NULL != pSMVideoStreamInfo )
-   {
-      pSMVideoStreamInfo->uDetectedH264Profile = s_ParserH264StreamOutput.getDetectedProfile();
-      pSMVideoStreamInfo->uDetectedH264ProfileConstrains = s_ParserH264StreamOutput.getDetectedProfileConstrains();
-      pSMVideoStreamInfo->uDetectedH264Level = s_ParserH264StreamOutput.getDetectedLevel();
-   }
+   u32 uNewNALType = s_ParserH264StreamOutput.parseData(pBuffer, iLength, g_TimeNow);
+   if ( uNewNALType == 1 )
+      g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= (VIDEO_STATUS_FLAGS2_IS_NAL_P>>8);
+   else if ( uNewNALType == 5 )
+      g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= (VIDEO_STATUS_FLAGS2_IS_NAL_I>>8);
+   else
+      g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= (VIDEO_STATUS_FLAGS2_IS_NAL_OTHER>>8);
+
+   if ( s_ParserH264StreamOutput.lastParseDetectedNALStart() != -1 )
+      g_SMControllerRTInfo.uOutputFramesInfo[g_SMControllerRTInfo.iCurrentIndex] |= (VIDEO_STATUS_FLAGS2_IS_NAL_START>>8);
+   // To fix
+   /*
+   update_shared_mem_video_frames_stats_on_new_frame( &g_SM_VideoFramesStatsOutput,
+       s_ParserH264StreamOutput.getSizeOfLastCompleteFrameInBytes(),
+       s_ParserH264StreamOutput.getCurrentFrameType(),
+       s_ParserH264StreamOutput.getDetectedSlices(), 
+       s_ParserH264StreamOutput.getDetectedFPS(), g_TimeNow );
+   */
 }
 
 void _rx_video_output_to_sharedmem(u8* pBuffer, u32 uLength)
@@ -1112,25 +1108,21 @@ void rx_video_output_video_data(u32 uVehicleId, u8 uVideoStreamType, int width, 
 
    bool bParseStream = false;
 
-   if ( s_bEnableVideoOutputStreamParsing )
-      bParseStream = true;
-
    if ( (NULL != g_pCurrentModel) && g_pControllerSettings->iDeveloperMode )
    if ( uVideoStreamType == VIDEO_TYPE_H264 )
    if ( g_pCurrentModel->osd_params.osd_flags[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG_SHOW_STATS_VIDEO_H264_FRAMES_INFO)
    //if ( get_ControllerSettings()->iShowVideoStreamInfoCompactType == 0 )
       bParseStream = true;
 
-   shared_mem_video_stream_stats* pSMVideoStreamInfo = get_shared_mem_video_stream_stats_for_vehicle(&g_SM_VideoDecodeStats, uVehicleId); 
-   if ( NULL != pSMVideoStreamInfo )
-   if ( (0 == pSMVideoStreamInfo->uDetectedH264Profile) || (0 == pSMVideoStreamInfo->uDetectedH264Level) )
-   {
-      s_ParserH264StreamOutput.resetDetectedProfileAndLevel();
+   if ( (NULL != g_pCurrentModel) && g_pControllerSettings->iDeveloperMode )
+   if ( get_Preferences()->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_OUTPUT_VIDEO_FRAMES )
       bParseStream = true;
-   }
-   if ( (s_ParserH264StreamOutput.getDetectedProfile() == 0) || (s_ParserH264StreamOutput.getDetectedLevel() == 0) )
-      bParseStream = true;
- 
+
+   static bool s_bLastParseVideoOutputStreamState = false;
+   if ( bParseStream != s_bLastParseVideoOutputStreamState )
+      s_ParserH264StreamOutput.init();
+   s_bLastParseVideoOutputStreamState = bParseStream;
+
    if ( bParseStream )
       _rx_video_output_parse_h264_stream(uVehicleId, pBuffer, video_data_length);
 
@@ -1145,6 +1137,8 @@ void rx_video_output_video_data(u32 uVehicleId, u8 uVideoStreamType, int width, 
       {
          s_iRxVideoForwardLastWidth = width;
          s_iRxVideoForwardLastHeight = height;
+         if ( (0 != width) || (0 != height) )
+            log_line("[VideoOutput] Initial video stream resolution: %d x %d", width, height);
       }
 
       if ( (width != s_iRxVideoForwardLastWidth) || (height != s_iRxVideoForwardLastHeight) )
@@ -1195,6 +1189,7 @@ void rx_video_output_video_data(u32 uVehicleId, u8 uVideoStreamType, int width, 
 
 void rx_video_output_on_controller_settings_changed()
 {
+   log_line("[VideoOutput] Handling controller settings changed.");
    if ( s_iLastUSBVideoForwardPort != g_pControllerSettings->iVideoForwardUSBPort ||
         s_iLastUSBVideoForwardPacketSize != g_pControllerSettings->iVideoForwardUSBPacketSize )
    if ( s_VideoUSBOutputInfo.bVideoUSBTethering )
@@ -1248,6 +1243,26 @@ void rx_video_output_on_controller_settings_changed()
    s_iLastUSBVideoForwardPacketSize = g_pControllerSettings->iVideoForwardUSBPacketSize;
 }
 
+void rx_video_output_on_changed_video_params(video_parameters_t* pOldVideoParams, type_video_link_profile* pOldVideoProfiles, video_parameters_t* pNewVideoParams, type_video_link_profile* pNewVideoProfiles)
+{
+   if ( (NULL == pOldVideoParams) || (NULL == pNewVideoParams) )
+   {
+      log_softerror_and_alarm("[VideoOutput] Received invalid change in video parameters: NULL video params.");
+      return;
+   }
+   if ( (NULL == pOldVideoProfiles) || (NULL == pNewVideoProfiles) )
+   {
+      log_softerror_and_alarm("[VideoOutput] Received invalid change in video parameters: NULL video profiles.");
+      return;
+   }
+
+   char szProfileOld[32];
+   char szProfileNew[32];
+   strcpy(szProfileOld, str_get_video_profile_name(pOldVideoParams->iCurrentVideoProfile));
+   strcpy(szProfileNew, str_get_video_profile_name(pNewVideoParams->iCurrentVideoProfile));
+   log_line("[VideoOutput] Changed video params. Old video profile: %s, new video profile: %s", szProfileOld, szProfileNew);
+}
+
 void rx_video_output_signal_restart_streamer()
 {
    if ( s_bRxVideoOutputStreamerMustReinitialize )
@@ -1266,6 +1281,8 @@ void rx_video_output_signal_restart_streamer()
       if ( NULL != g_pVideoProcessorRxList[i] )
          g_pVideoProcessorRxList[i]->pauseProcessing();
    }
+
+   adaptive_video_pause(5000);
 
    rx_video_output_disable_streamer_output();
    s_bRxVideoOutputStreamerMustReinitialize = true;

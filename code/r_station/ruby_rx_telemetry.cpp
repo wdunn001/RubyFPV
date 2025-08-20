@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -71,24 +71,20 @@ int s_PipeBufferTelemetryDownlinkPos = 0;
 
 t_packet_header_rc_info_downstream* s_pPHDownstreamInfoRC = NULL;
 
-int g_iSerialPortDataLink = -1;
-int g_iSerialPortIndexDataLink = -1;
+int g_iSerialPortDataLinkFD = -1;
 int g_iSerialPortDataLinkSpeed = 0;
+int g_iSerialPortIndexDataLink = -1;
 
-int g_iSerialPortTelemetry = -1;
-int g_iSerialPortIndexTelemetryOutput = -1;
-int g_iSerialPortIndexTelemetryInput = -1;
+int g_iSerialPortTelemetryFD = -1;
 int g_iSerialPortTelemetrySpeed = 0;
+int g_iSerialPortIndexTelemetry = -1;
 
-bool g_bOutputTelemetryToSerial = false;
-bool g_bInputTelemetryFromSerial = false;
-
-u8 telemetryBufferToVehicle[RAW_TELEMETRY_MAX_BUFFER];
+u8  telemetryBufferToVehicle[RAW_TELEMETRY_MAX_BUFFER];
 int telemetryBufferToVehicleMaxSize = RAW_TELEMETRY_MAX_BUFFER;
 int telemetryBufferToVehicleCount = 0;
 u32 telemetryBufferToVehicleLastSendTime = 0;
 
-u8 dataLinkBufferToVehicle[RAW_TELEMETRY_MAX_BUFFER];
+u8  dataLinkBufferToVehicle[RAW_TELEMETRY_MAX_BUFFER];
 int dataLinkBufferToVehicleMaxSize = RAW_TELEMETRY_MAX_BUFFER;
 int dataLinkBufferToVehicleCount = 0;
 u32 dataLinkBufferToVehicleLastSendTime = 0;
@@ -143,18 +139,17 @@ void process_datalink_packet_download(u8* pBuffer, int length)
    }
    s_uDataLinkLastReceivedDownloadedSegmentIndex = segment;
 
-   if ( NULL == g_pCurrentModel || g_pCurrentModel->is_spectator )
+   if ( (NULL == g_pCurrentModel) || (g_pCurrentModel->is_spectator) )
       return;
-   if ( -1 == g_iSerialPortDataLink )
+   if ( -1 == g_iSerialPortDataLinkFD )
       return;
 
    int len = pPH->total_length - sizeof(t_packet_header)-sizeof(u32);
 
    u8* pDataLinkData = pBuffer + sizeof(t_packet_header)+sizeof(u32);
-   if ( len != write(g_iSerialPortDataLink, pDataLinkData, len) )
+   if ( len != write(g_iSerialPortDataLinkFD, pDataLinkData, len) )
       log_softerror_and_alarm("Failed to write to serial port for datalink output on controller.");
 }
-
 
 void process_data_telemetry_raw_download(u8* pBuffer, int length)
 {
@@ -166,9 +161,9 @@ void process_data_telemetry_raw_download(u8* pBuffer, int length)
        pPHTR->telem_segment_index, pPH->total_length - sizeof(t_packet_header) - sizeof(t_packet_header_telemetry_raw), pPH->total_length);
    #endif
 
-   if ( s_uRawTelemetryLastReceivedDownloadedSegmentIndex != MAX_U32 &&
-        s_uRawTelemetryLastReceivedDownloadedSegmentIndex > 10 &&
-        pPHTR->telem_segment_index < s_uRawTelemetryLastReceivedDownloadedSegmentIndex-10 )
+   if ( (s_uRawTelemetryLastReceivedDownloadedSegmentIndex != MAX_U32) &&
+        (s_uRawTelemetryLastReceivedDownloadedSegmentIndex > 10) &&
+        (pPHTR->telem_segment_index < s_uRawTelemetryLastReceivedDownloadedSegmentIndex-10) )
       s_uRawTelemetryLastReceivedDownloadedSegmentIndex = MAX_U32;
 
    if ( s_uRawTelemetryLastReceivedDownloadedSegmentIndex != MAX_U32 )
@@ -208,20 +203,6 @@ void process_data_telemetry_raw_download(u8* pBuffer, int length)
       }
    }
 
-   if ( NULL == g_pCurrentModel || (g_pCurrentModel->is_spectator && (!(g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_SPECTATOR_ENABLE))) )
-      return;
-
-   if ( g_bOutputTelemetryToSerial && (-1 != g_iSerialPortTelemetry) )
-   {
-      int iWrite = write(g_iSerialPortTelemetry, pTelemetryData, len);
-      if ( len != iWrite )
-         log_softerror_and_alarm("Failed to write to serial port for telemetry output on controller.");
-
-      #ifdef LOG_RAW_TELEMETRY
-      log_line("[Raw_Telem] Sent %d of %d bytes of raw telemetry to serial port.", iWrite, len);
-      #endif
-   }
-
    if ( (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_SEND_FULL_TELEMETRY_TO_CONTROLLER) ||
         (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_SEND_FULL_TELEMETRY_TO_CONTROLLER_PLUGINS) )
    {
@@ -229,6 +210,20 @@ void process_data_telemetry_raw_download(u8* pBuffer, int length)
       pPH->packet_flags &= (~PACKET_FLAGS_MASK_MODULE);
       pPH->packet_flags |= PACKET_COMPONENT_LOCAL_CONTROL;
       ruby_ipc_channel_send_message(s_fIPCToRouter, pBuffer, length);
+   }
+
+   if ( g_pCurrentModel->is_spectator && (!(g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_SPECTATOR_ENABLE)) )
+      return;
+
+   if ( -1 != g_iSerialPortTelemetryFD )
+   {
+      int iWrite = write(g_iSerialPortTelemetryFD, pTelemetryData, len);
+      if ( len != iWrite )
+         log_softerror_and_alarm("Failed to write to serial port for telemetry output on controller.");
+
+      #ifdef LOG_RAW_TELEMETRY
+      log_line("[Raw_Telem] Sent %d of %d bytes of raw telemetry to serial port.", iWrite, len);
+      #endif
    }
 }
 
@@ -243,9 +238,7 @@ void _process_data_rc_telemetry(u8* pBuffer, int length)
 
 void upload_telemetry_packet()
 {
-   if ( NULL == g_pCurrentModel || g_pCurrentModel->is_spectator )
-      return;
-   if ( g_bUpdateInProgress )
+   if ( (NULL == g_pCurrentModel) || g_pCurrentModel->is_spectator || g_bUpdateInProgress )
       return;
 
    if ( NULL != g_pProcessStats )
@@ -293,13 +286,12 @@ void upload_telemetry_packet()
 
 void upload_datalink_packet()
 {
-   if ( NULL == g_pCurrentModel || g_pCurrentModel->is_spectator )
-      return;
-   if ( g_bUpdateInProgress )
+   if ( (NULL == g_pCurrentModel) || g_pCurrentModel->is_spectator || g_bUpdateInProgress )
       return;
 
    if ( NULL != g_pProcessStats )
       g_pProcessStats->lastIPCOutgoingTime = g_TimeNow;
+
    if ( dataLinkBufferToVehicleCount > RAW_TELEMETRY_MAX_BUFFER )
    {
       log_softerror_and_alarm("Trying to send more data link data than expected to uplink: %d bytes, max expected: %d bytes. Sending only max allowed.", dataLinkBufferToVehicleCount, RAW_TELEMETRY_MAX_BUFFER);
@@ -326,55 +318,12 @@ void upload_datalink_packet()
    s_uDataLinkUploadSegmentIndex++;
 }
 
-void try_read_serial_telemetry()
+int try_read_serial_telemetry()
 {
-   if ( -1 == g_iSerialPortTelemetry )
-      return;
-   if ( NULL == g_pCurrentModel || g_pCurrentModel->is_spectator )
-      return;
-
-   u8 bufferIn[RAW_TELEMETRY_MAX_BUFFER];
-   struct timeval to;
-   to.tv_sec = 0;
-   to.tv_usec = 2000; // 2 ms
-   fd_set readset;   
-   FD_ZERO(&readset);
-   FD_SET(g_iSerialPortTelemetry, &readset);
-   int res = select(g_iSerialPortTelemetry+1, &readset, NULL, NULL, &to);
-   if ( res <= 0 )
-      return;
-   if ( ! FD_ISSET(g_iSerialPortTelemetry, &readset) )
-      return;
-
-   int length = read(g_iSerialPortTelemetry, bufferIn, RAW_TELEMETRY_MAX_BUFFER);
-   if ( length <= 0 )
-      return;
-
-   s_uRawTelemetryUploadTotalReadFromSerial += length;
-   u8* pData = &bufferIn[0];
-   while ( length > 0 )
-   {
-         if ( telemetryBufferToVehicleCount + length < telemetryBufferToVehicleMaxSize )
-         {
-            memcpy(&(telemetryBufferToVehicle[telemetryBufferToVehicleCount]), pData, length);
-            telemetryBufferToVehicleCount += length;
-            return;
-         }
-         int chunkSize = telemetryBufferToVehicleMaxSize-telemetryBufferToVehicleCount;
-         memcpy(&(telemetryBufferToVehicle[telemetryBufferToVehicleCount]), pData, chunkSize);
-         telemetryBufferToVehicleCount += chunkSize;
-         pData += chunkSize;
-         length -= chunkSize;
-         upload_telemetry_packet();
-   }
-}  
-
-void try_read_serial_datalink()
-{
-   if ( -1 == g_iSerialPortDataLink )
-      return;
-   if ( NULL == g_pCurrentModel || g_pCurrentModel->is_spectator )
-      return;
+   if ( -1 == g_iSerialPortTelemetryFD )
+      return 0;
+   if ( (NULL == g_pCurrentModel) || g_pCurrentModel->is_spectator )
+      return 0;
 
    u8 bufferIn[RAW_TELEMETRY_MAX_BUFFER];
    struct timeval to;
@@ -382,16 +331,60 @@ void try_read_serial_datalink()
    to.tv_usec = 1000; // 1 ms
    fd_set readset;   
    FD_ZERO(&readset);
-   FD_SET(g_iSerialPortDataLink, &readset);
-   int res = select(g_iSerialPortDataLink+1, &readset, NULL, NULL, &to);
+   FD_SET(g_iSerialPortTelemetryFD, &readset);
+   int res = select(g_iSerialPortTelemetryFD+1, &readset, NULL, NULL, &to);
    if ( res <= 0 )
-      return;
-   if ( ! FD_ISSET(g_iSerialPortDataLink, &readset) )
-      return;
+      return 0;
+   if ( ! FD_ISSET(g_iSerialPortTelemetryFD, &readset) )
+      return 0;
 
-   int length = read(g_iSerialPortDataLink, bufferIn, RAW_TELEMETRY_MAX_BUFFER);
+   int length = read(g_iSerialPortTelemetryFD, bufferIn, RAW_TELEMETRY_MAX_BUFFER);
    if ( length <= 0 )
-      return;
+      return 0;
+
+   s_uRawTelemetryUploadTotalReadFromSerial += length;
+   u8* pData = &bufferIn[0];
+   while ( length > 0 )
+   {
+      if ( telemetryBufferToVehicleCount + length < telemetryBufferToVehicleMaxSize )
+      {
+         memcpy(&(telemetryBufferToVehicle[telemetryBufferToVehicleCount]), pData, length);
+         telemetryBufferToVehicleCount += length;
+         return 1;
+      }
+      int chunkSize = telemetryBufferToVehicleMaxSize-telemetryBufferToVehicleCount;
+      memcpy(&(telemetryBufferToVehicle[telemetryBufferToVehicleCount]), pData, chunkSize);
+      telemetryBufferToVehicleCount += chunkSize;
+      pData += chunkSize;
+      length -= chunkSize;
+      upload_telemetry_packet();
+   }
+   return 1;
+}  
+
+int try_read_serial_datalink()
+{
+   if ( -1 == g_iSerialPortDataLinkFD )
+      return 0;
+   if ( (NULL == g_pCurrentModel) || g_pCurrentModel->is_spectator )
+      return 0;
+
+   u8 bufferIn[RAW_TELEMETRY_MAX_BUFFER];
+   struct timeval to;
+   to.tv_sec = 0;
+   to.tv_usec = 1000; // 1 ms
+   fd_set readset;   
+   FD_ZERO(&readset);
+   FD_SET(g_iSerialPortDataLinkFD, &readset);
+   int res = select(g_iSerialPortDataLinkFD+1, &readset, NULL, NULL, &to);
+   if ( res <= 0 )
+      return 0;
+   if ( ! FD_ISSET(g_iSerialPortDataLinkFD, &readset) )
+      return 0;
+
+   int length = read(g_iSerialPortDataLinkFD, bufferIn, RAW_TELEMETRY_MAX_BUFFER);
+   if ( length <= 0 )
+      return 0;
 
    //log_line("Serial datalink read %d bytes.", length);
    //char szBuff[2000];
@@ -403,24 +396,25 @@ void try_read_serial_datalink()
    u8* pData = &bufferIn[0];
    while ( length > 0 )
    {
-         if ( dataLinkBufferToVehicleCount + length < dataLinkBufferToVehicleMaxSize )
-         {
-            memcpy(&(dataLinkBufferToVehicle[dataLinkBufferToVehicleCount]), pData, length);
-            dataLinkBufferToVehicleCount += length;
-            return;
-         }
-         int chunkSize = dataLinkBufferToVehicleMaxSize-dataLinkBufferToVehicleCount;
-         memcpy(&(dataLinkBufferToVehicle[dataLinkBufferToVehicleCount]), pData, chunkSize);
-         dataLinkBufferToVehicleCount += chunkSize;
-         pData += chunkSize;
-         length -= chunkSize;
-         upload_datalink_packet();
+      if ( dataLinkBufferToVehicleCount + length < dataLinkBufferToVehicleMaxSize )
+      {
+         memcpy(&(dataLinkBufferToVehicle[dataLinkBufferToVehicleCount]), pData, length);
+         dataLinkBufferToVehicleCount += length;
+         return 1;
+      }
+      int chunkSize = dataLinkBufferToVehicleMaxSize-dataLinkBufferToVehicleCount;
+      memcpy(&(dataLinkBufferToVehicle[dataLinkBufferToVehicleCount]), pData, chunkSize);
+      dataLinkBufferToVehicleCount += chunkSize;
+      pData += chunkSize;
+      length -= chunkSize;
+      upload_datalink_packet();
    }
+   return 1;
 }  
 
 void try_read_messages_from_router()
 {
-   int maxMessagesToRead = 10;
+   int maxMessagesToRead = 15;
  
    while ( (maxMessagesToRead > 0) && (NULL != ruby_ipc_try_read_message(s_fIPCFromRouter, s_PipeBufferTelemetryDownlink, &s_PipeBufferTelemetryDownlinkPos, s_BufferTelemetryDownlink)) )
    {
@@ -525,6 +519,8 @@ void init_serial_ports()
 
    g_iSerialPortIndexDataLink = -1;
    g_iSerialPortDataLinkSpeed = -1;
+   g_iSerialPortIndexTelemetry = -1;
+   g_iSerialPortTelemetrySpeed = -1;
    hw_serial_port_info_t* pPortInfo = NULL;
 
    for( int i=0; i<hardware_get_serial_ports_count(); i++ )
@@ -534,7 +530,11 @@ void init_serial_ports()
       {
           g_iSerialPortIndexDataLink = i;
           g_iSerialPortDataLinkSpeed = pPortInfo->lPortSpeed;
-          break;
+      }
+      if ( (NULL != pPortInfo) && (pPortInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY) )
+      {
+          g_iSerialPortIndexTelemetry = i;
+          g_iSerialPortTelemetrySpeed = pPortInfo->lPortSpeed;
       }
    }
 
@@ -542,8 +542,8 @@ void init_serial_ports()
    {
       log_line("Auxiliary data link is enabled on controller serial port %s (%s). Configuring serial port...", pPortInfo->szName, pPortInfo->szPortDeviceName);
       hardware_configure_serial(pPortInfo->szPortDeviceName, pPortInfo->lPortSpeed );
-      g_iSerialPortDataLink = hardware_open_serial_port(pPortInfo->szPortDeviceName, pPortInfo->lPortSpeed);
-      if ( -1 == g_iSerialPortDataLink )
+      g_iSerialPortDataLinkFD = hardware_open_serial_port(pPortInfo->szPortDeviceName, pPortInfo->lPortSpeed);
+      if ( -1 == g_iSerialPortDataLinkFD )
          log_softerror_and_alarm("Failed to open serial port %s (%s) for auxiliary data link.", pPortInfo->szName, pPortInfo->szPortDeviceName);
       else
          log_line("Opened serial port %s (%s) for auxiliary data link successfully at %d bps.", pPortInfo->szName, pPortInfo->szPortDeviceName, (int)pPortInfo->lPortSpeed);
@@ -551,40 +551,16 @@ void init_serial_ports()
    else
       log_line("No serial port configured for auxiliary data link. Skipping it.");
 
-
-   g_bOutputTelemetryToSerial = false;
-   g_bInputTelemetryFromSerial = false;
-   g_iSerialPortIndexTelemetryOutput = -1;
-   g_iSerialPortIndexTelemetryInput = -1;
-
-   if ( NULL == g_pCurrentModel || g_pCurrentModel->is_spectator )
+   if ( (NULL == g_pCurrentModel) || (g_pCurrentModel->is_spectator) )
       return;
 
-   if ( -1 == pCS->iTelemetryOutputSerialPortIndex && -1 == pCS->iTelemetryInputSerialPortIndex )
+   if ( -1 == g_iSerialPortIndexTelemetry )
    {
       log_line("Telemetry is not enabled on any serial port on controller. Serial for telemetry not enabled/configured.");
       return;
    }
 
-   g_iSerialPortIndexTelemetryOutput = pCS->iTelemetryOutputSerialPortIndex;
-   g_iSerialPortIndexTelemetryInput = pCS->iTelemetryInputSerialPortIndex;
-   
-   int portIndex = g_iSerialPortIndexTelemetryOutput;
-   if ( -1 == portIndex )
-      portIndex = g_iSerialPortIndexTelemetryInput;
-
-   log_line("Telemetry output serial port index: %d, input serial port index: %d", g_iSerialPortIndexTelemetryOutput, g_iSerialPortIndexTelemetryInput);
-
-   if ( portIndex == -1 )
-   {
-      log_line("Telemetry serial output or input on the controller is not enabled. Do not configure serial ports.");
-      return;
-   }
-   else if ( portIndex >= hardware_get_serial_ports_count() )
-   {
-      log_softerror_and_alarm("Using an invalid serial port number %d for telemetry. Serial ports available count: %d", portIndex, hardware_get_serial_ports_count());
-      return;
-   }
+   log_line("Telemetry enabled on local serial port index: %d", g_iSerialPortIndexTelemetry);
 
    telemetryBufferToVehicleMaxSize = 320;
    if ( telemetryBufferToVehicleMaxSize > RAW_TELEMETRY_MAX_BUFFER )
@@ -595,45 +571,21 @@ void init_serial_ports()
    telemetryBufferToVehicleCount = 0;
    telemetryBufferToVehicleLastSendTime = g_TimeNow;
    
-   pPortInfo = hardware_get_serial_port_info(portIndex);
+   pPortInfo = hardware_get_serial_port_info(g_iSerialPortIndexTelemetry);
 
    if ( NULL == pPortInfo )
    {
-      g_iSerialPortIndexTelemetryOutput = -1;
-      g_iSerialPortIndexTelemetryInput = -1;
       log_softerror_and_alarm("Can't get serial port info. Serial not enabled/configured.");
       return;
    }
    
-   if ( (pPortInfo->iPortUsage != SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) &&
-        (pPortInfo->iPortUsage != SERIAL_PORT_USAGE_TELEMETRY_LTM) )
-   {
-      g_iSerialPortIndexTelemetryOutput = -1;
-      g_iSerialPortIndexTelemetryInput = -1;
-      log_line("Telemetry is not configured on any serial port on controller. Serial not enabled/configured");
-      return;
-   }
-
    log_line("Telemetry is enabled on controller serial port %s (%s). Configuring serial port...", pPortInfo->szName, pPortInfo->szPortDeviceName);
    hardware_configure_serial(pPortInfo->szPortDeviceName, pPortInfo->lPortSpeed );
-   g_iSerialPortTelemetry = hardware_open_serial_port(pPortInfo->szPortDeviceName, pPortInfo->lPortSpeed);
-   if ( -1 == g_iSerialPortTelemetry )
+   g_iSerialPortTelemetryFD = hardware_open_serial_port(pPortInfo->szPortDeviceName, pPortInfo->lPortSpeed);
+   if ( -1 == g_iSerialPortTelemetryFD )
       log_softerror_and_alarm("Failed to open serial port %s (%s) for telemetry.", pPortInfo->szName, pPortInfo->szPortDeviceName);
    else
       log_line("Opened serial port %s (%s) for telemetry successfully at %d bps.", pPortInfo->szName, pPortInfo->szPortDeviceName, (int)pPortInfo->lPortSpeed);
-
-   g_iSerialPortTelemetrySpeed = pPortInfo->lPortSpeed;
-
-   if ( -1 != g_iSerialPortTelemetry )
-   if ( -1 != g_iSerialPortIndexTelemetryOutput )
-      g_bOutputTelemetryToSerial = true;
-
-   if ( -1 != g_iSerialPortTelemetry )
-   if ( -1 != g_iSerialPortIndexTelemetryInput )
-      g_bInputTelemetryFromSerial = true;
-
-   log_line("Reading telemetry from serial port? %s", g_bInputTelemetryFromSerial?"yes":"no");
-   log_line("Writing telemetry to serial port? %s", g_bOutputTelemetryToSerial?"yes":"no");
 }
 
 void checkTelemetrySettingsOnControllerChanged()
@@ -653,40 +605,12 @@ void checkTelemetrySettingsOnControllerChanged()
       log_line("Telemetry Output to USB closed momentarly due to telemetry serial ports settings changed.");
    }
 
-
    // Telemetry serial port changed ?
-
-   int telemetryLinkPort = -1;
-   int telemetryLinkSpeed = -1;
-   for( int i=0; i<hardware_get_serial_ports_count(); i++ )
-   {
-      hw_serial_port_info_t* pPortInfo = hardware_get_serial_port_info(i);
-      if ( (NULL != pPortInfo) && 
-           ((pPortInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK)||
-            (pPortInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY_LTM)) )
-      {
-          telemetryLinkPort = i;
-          telemetryLinkSpeed = pPortInfo->lPortSpeed;
-          break;
-      }
-   }
-
-   int iOldPortIndex = g_iSerialPortIndexTelemetryOutput;
-   if ( -1 == iOldPortIndex )
-      iOldPortIndex = g_iSerialPortIndexTelemetryInput;
-
-   if ( (telemetryLinkPort != iOldPortIndex) || (telemetryLinkSpeed != g_iSerialPortTelemetrySpeed) )
-      bParamsChanged = true;
-
-   if ( pCS->iTelemetryOutputSerialPortIndex != g_iSerialPortIndexTelemetryOutput )
-      bParamsChanged = true;
-   if ( pCS->iTelemetryInputSerialPortIndex != g_iSerialPortIndexTelemetryInput )
-      bParamsChanged = true;
-
-   // Data link serial port changed ?
 
    int dataLinkPort = -1;
    int dataLinkSpeed = -1;
+   int telemetryLinkPort = -1;
+   int telemetryLinkSpeed = -1;
    for( int i=0; i<hardware_get_serial_ports_count(); i++ )
    {
       hw_serial_port_info_t* pPortInfo = hardware_get_serial_port_info(i);
@@ -694,32 +618,35 @@ void checkTelemetrySettingsOnControllerChanged()
       {
           dataLinkPort = i;
           dataLinkSpeed = pPortInfo->lPortSpeed;
-          break;
+      }
+      if ( (NULL != pPortInfo) && (pPortInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY) )
+      {
+          telemetryLinkPort = i;
+          telemetryLinkSpeed = pPortInfo->lPortSpeed;
       }
    }
 
+   if ( (telemetryLinkPort != g_iSerialPortIndexTelemetry) || (telemetryLinkSpeed != g_iSerialPortTelemetrySpeed) )
+      bParamsChanged = true;
    if ( (dataLinkPort != g_iSerialPortIndexDataLink) || (dataLinkSpeed != g_iSerialPortDataLinkSpeed) )
       bParamsChanged = true;
 
    if ( ! bParamsChanged )
    {
-      log_line("Telemetry params on the controller are unchanged. Do no change to the serial ports used.");
+      log_line("Telemetry/datalink params on the controller are unchanged. Do no change to the serial ports used.");
       return;
    }
 
    log_line("Telemetry params or the auxiliary data link changed on the controller. Reinitializing serial ports and telemetry params...");
 
-   if ( -1 != g_iSerialPortDataLink )
-      close(g_iSerialPortDataLink);
-   g_iSerialPortDataLink = -1;
+   if ( -1 != g_iSerialPortDataLinkFD )
+      close(g_iSerialPortDataLinkFD);
+   g_iSerialPortDataLinkFD = -1;
 
-   if ( -1 != g_iSerialPortTelemetry )
-      close(g_iSerialPortTelemetry);
-   g_iSerialPortTelemetry = -1;
+   if ( -1 != g_iSerialPortTelemetryFD )
+      close(g_iSerialPortTelemetryFD);
+   g_iSerialPortTelemetryFD = -1;
 
-   g_iSerialPortIndexDataLink = -1;
-   g_iSerialPortIndexTelemetryInput = -1;
-   g_iSerialPortIndexTelemetryOutput = -1;
    init_serial_ports();
 }
 
@@ -846,8 +773,6 @@ int main(int argc, char *argv[])
    //log_add_file("logs/log_rx_telemetry.log");
 
    if ( strcmp(argv[argc-1], "-debug") == 0 )
-      g_bDebugState = true;
-   if ( g_bDebugState )
       log_enable_stdout();
   
    g_uControllerId = controller_utils_getControllerId();
@@ -892,6 +817,7 @@ int main(int argc, char *argv[])
    {
       hardware_sleep_ms(iSleepTime);
 
+      g_uLoopCounter++;
       g_TimeNow = get_current_timestamp_ms();
       if ( NULL != g_pProcessStats )
       {
@@ -905,22 +831,30 @@ int main(int argc, char *argv[])
       periodic_checks();
 
       iSleepTime = 50;
-      if ( g_bInputTelemetryFromSerial )
+      if ( -1 != g_iSerialPortTelemetryFD )
       {
-         iSleepTime = 10;
-         try_read_serial_telemetry();
-         if ( telemetryBufferToVehicleCount >= RAW_TELEMETRY_MIN_SEND_LENGTH || 
-             (telemetryBufferToVehicleCount > 0 && g_TimeNow >= telemetryBufferToVehicleLastSendTime + RAW_TELEMETRY_SEND_TIMEOUT ) )
-            upload_telemetry_packet();
+         iSleepTime = 20;
+         int iReads = 3;
+         while ( (try_read_serial_telemetry() > 0) && (iReads > 0) )
+         {
+            iReads--;
+            if ( telemetryBufferToVehicleCount >= RAW_TELEMETRY_MIN_SEND_LENGTH || 
+                (telemetryBufferToVehicleCount > 0 && g_TimeNow >= telemetryBufferToVehicleLastSendTime + RAW_TELEMETRY_SEND_TIMEOUT ) )
+               upload_telemetry_packet();
+         }
       }
 
-      if ( -1 != g_iSerialPortDataLink )
+      if ( -1 != g_iSerialPortDataLinkFD )
       {
-         iSleepTime = 10;
-         try_read_serial_datalink();
-         if ( dataLinkBufferToVehicleCount >= AUXILIARY_DATA_LINK_MIN_SEND_LENGTH || 
-             (dataLinkBufferToVehicleCount > 0 && g_TimeNow >= dataLinkBufferToVehicleLastSendTime + AUXILIARY_DATA_LINK_SEND_TIMEOUT ) )
-            upload_datalink_packet();
+         iSleepTime = 20;
+         int iReads = 3;
+         while ( (try_read_serial_telemetry() > 0) && (iReads > 0) )
+         {
+            iReads--;
+            if ( dataLinkBufferToVehicleCount >= AUXILIARY_DATA_LINK_MIN_SEND_LENGTH || 
+                (dataLinkBufferToVehicleCount > 0 && g_TimeNow >= dataLinkBufferToVehicleLastSendTime + AUXILIARY_DATA_LINK_SEND_TIMEOUT ) )
+               upload_datalink_packet();
+         }
       }
 
       try_read_messages_from_router();
@@ -943,13 +877,13 @@ int main(int argc, char *argv[])
 
    log_line("Stopping...");
 
-   if ( -1 != g_iSerialPortDataLink )
-      close(g_iSerialPortDataLink);
-   g_iSerialPortDataLink = -1;
+   if ( -1 != g_iSerialPortDataLinkFD )
+      close(g_iSerialPortDataLinkFD);
+   g_iSerialPortDataLinkFD = -1;
 
-   if ( -1 != g_iSerialPortTelemetry )
-      close(g_iSerialPortTelemetry);
-   g_iSerialPortTelemetry = -1;
+   if ( -1 != g_iSerialPortTelemetryFD )
+      close(g_iSerialPortTelemetryFD);
+   g_iSerialPortTelemetryFD = -1;
    
    ruby_close_ipc_channel(s_fIPCFromRouter);
    ruby_close_ipc_channel(s_fIPCToRouter);

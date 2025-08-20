@@ -21,8 +21,9 @@ class MenuControllerDevStatsConfig: public Menu
       int m_IndexQAButton;
       int m_IndexShowRXTXPackets;
       int m_IndexShowRXAirGaps;
-      int m_IndexShowRxH264Frames;
+      int m_IndexShowOutputVideoFrames;
       int m_IndexShowRxDBM;
+      int m_IndexShowRxSNR;
       int m_IndexShowRxMissingPackets;
       int m_IndexShowRxMissingPacketsMaxGap;
       int m_IndexShowRxConsumedPackets;

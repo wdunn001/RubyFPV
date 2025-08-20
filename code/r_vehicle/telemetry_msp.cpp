@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -40,7 +40,7 @@
 void broadcast_vehicle_stats();
 bool isRadioLinksInitInProgress();
 extern int s_fIPCToRouter;
-extern t_packet_header_ruby_telemetry_extended_v4 sPHRTE;
+extern t_packet_header_ruby_telemetry_extended_v5 sPHRTE;
 extern u32 s_CountMessagesFromFCPerSecond;
 
 u8 s_uMSPRawStream[256]; // Max size is one byte long
@@ -97,8 +97,15 @@ void _send_msp_to_fc(u8 uCommand, u8* pData, int iDataLength)
    uMSPBuffer[5 + iDataLength] = uChecksum;
    int iTotalSize = iDataLength + 6;
 
+   static int s_iCountTelemetryMSPWriteErrors = 0;
    if ( write(telemetry_get_serial_port_file(), uMSPBuffer, iTotalSize) != iTotalSize )
-      log_softerror_and_alarm("[Telem] Failed to write MSD (%d bytes) to serial port to FC", iTotalSize);
+   {
+      s_iCountTelemetryMSPWriteErrors++;
+      if ( s_iCountTelemetryMSPWriteErrors < 10 )
+         log_softerror_and_alarm("[Telem] Failed to write MSP (%d bytes) to serial port to FC", iTotalSize);
+   }
+   else
+      s_iCountTelemetryMSPWriteErrors = 0;
 }
 
 void telemetry_msp_on_open_port(int iSerialPortFile)
@@ -332,7 +339,9 @@ void _parse_msp_command()
                s_PHTMSP.uFlags |= MSP_FLAGS_FC_TYPE_BETAFLIGHT;
             else if ( strncmp("ARDU", (char*)s_uMSPCommandData, s_iMSPCommandDataSize) == 0 )
                s_PHTMSP.uFlags |= MSP_FLAGS_FC_TYPE_ARDUPILOT;
-            else // "INAV"
+            else if ( strncmp("PITL", (char*)s_uMSPCommandData, s_iMSPCommandDataSize) == 0 )
+               s_PHTMSP.uFlags |= MSP_FLAGS_FC_TYPE_PITLAB;
+            else
                s_PHTMSP.uFlags |= MSP_FLAGS_FC_TYPE_INAV;
 
             _send_msp_to_fc(MSP_CMD_API_VERSION, NULL, 0);

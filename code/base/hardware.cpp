@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -306,6 +306,8 @@ void _hardware_detectSystemType()
 
 int init_hardware()
 {
+   log_force_full_log();
+   
    log_line("[Hardware] Start Initialization...");
    s_uTimeInitHardware = get_current_timestamp_ms();
 
@@ -318,7 +320,7 @@ int init_hardware()
    if ( failedButtons )
    {
       log_softerror_and_alarm("[Hardware] Failed to set GPIOs for buttons (for Radxa)");
-       failed = 1;
+      failed = 1;
    }
    else
    {
@@ -326,37 +328,40 @@ int init_hardware()
       s_iButtonsWhereInited = 1;
    }
 
-   if (-1 == GPIOExport(GPIOGetPinBuzzer()))
+   log_line("[Hardware] Pins for buzzer: %d, vehicle detect: %d, controller detect: %d",
+      GPIOGetPinBuzzer(), GPIOGetPinDetectVehicle(), GPIOGetPinDetectController());
+
+   if ( (GPIOGetPinBuzzer() > 0) && (-1 == GPIOExport(GPIOGetPinBuzzer())) )
    {
       log_line("[Hardware] Failed to get GPIO access to pin for buzzer.");
       failed = 1;
    }
 
-   if (-1 == GPIODirection(GPIOGetPinBuzzer(), OUT))
+   if ( (GPIOGetPinBuzzer() > 0) && (-1 == GPIODirection(GPIOGetPinBuzzer(), OUT)) )
    {
       log_line("[Hardware] Failed set GPIO configuration for pin buzzer.");
       failed = 1;
    }
 
-   if (-1 == GPIOExport(GPIOGetPinDetectVehicle()))
+   if ( (GPIOGetPinDetectVehicle() > 0) && (-1 == GPIOExport(GPIOGetPinDetectVehicle())) )
    {
       log_line("[Hardware] Failed to get GPIO access to pin VehicleType.");
       failed = 1;
    }
 
-   if (-1 == GPIODirection(GPIOGetPinDetectVehicle(), IN))
+   if ( (GPIOGetPinDetectVehicle() > 0) && (-1 == GPIODirection(GPIOGetPinDetectVehicle(), IN)) )
    {
       log_line("[Hardware] Failed set GPIO configuration for pin VehicleType.");
       failed = 1;
    }
 
-   if (-1 == GPIOExport(GPIOGetPinDetectController()))
+   if ( (GPIOGetPinDetectController() > 0) && (-1 == GPIOExport(GPIOGetPinDetectController())) )
    {
       log_line("[Hardware] Failed to get GPIO access to pin ControllerType.");
       failed = 1;
    }
 
-   if (-1 == GPIODirection(GPIOGetPinDetectController(), IN))
+   if ( (GPIOGetPinDetectController() > 0) && (-1 == GPIODirection(GPIOGetPinDetectController(), IN)) )
    {
       log_line("[Hardware] Failed set GPIO configuration for pin ControllerType.");
       failed = 1;
@@ -395,7 +400,8 @@ int init_hardware()
    }
    #endif
 
-   GPIOWrite(GPIOGetPinBuzzer(), LOW);
+   if ( GPIOGetPinBuzzer() > 0 )
+      GPIOWrite(GPIOGetPinBuzzer(), LOW);
 
    log_line("[Hardware] GPIO setup successfully.");
 
@@ -418,7 +424,8 @@ int init_hardware()
    s_bDoHardwareInitializationLedSequence = true;
 
    log_line("[Hardware] Initialization complete. %s.", failed?"Failed":"No errors");
-
+   log_regular_mode();
+   
    if ( failed )
       return 0;
    return 1;
@@ -501,6 +508,13 @@ void hardware_reboot()
          #else
          hw_execute_bash_command_nonblock("reboot -f --no-wall", NULL);
          #endif
+
+         #if defined (HW_PLATFORM_OPENIPC_CAMERA)
+         hw_execute_bash_command("reboot -f", NULL);
+         #else
+         hw_execute_bash_command("reboot -f --no-wall", NULL);
+         #endif
+
          iCounter = 0;
       }
    }

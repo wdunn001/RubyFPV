@@ -280,6 +280,12 @@ int hdmi_load_current_mode()
       return -1;    
    }
    fclose(fd);
+
+   if ( (w < 200) || (w > 8000) || (h < 200) || (h > 8000) || (r < 30) || (r > 200) )
+   {
+      log_softerror_and_alarm("[HDMI] Can't read user set HDMI mode. Invalid params (%d x %d @ %d)", w,h,r);
+      return -1;
+   }
    log_line("[HDMI] Read user set HDMI mode: %dx%d@%d", w,h,r);
    return hdmi_get_best_resolution_index_for(w, h, r);
 }
@@ -456,7 +462,7 @@ int hdmi_set_current_resolution(int width, int height, int refresh)
 
    fprintf(fd, "%d %d %d\n", width, height, refresh);
    fclose(fd);
-   log_line("[HDMI] Stored used selected HDMI mode.");
+   log_line("[HDMI] Stored used selected HDMI mode (%d x %d @ %d)", width, height, refresh);
    #endif
    return 0;
 }

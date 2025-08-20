@@ -3,8 +3,8 @@
 #include "../base/config.h"
 #include "../base/models.h"
 
+int hardware_camera_maj_validate_config();
 void hardware_camera_maj_add_log(const char* szLog, bool bAsync);
-int hardware_camera_maj_init();
 int hardware_camera_maj_get_current_pid();
 bool hardware_camera_maj_start_capture_program(bool bEnableLog);
 bool hardware_camera_maj_stop_capture_program();
@@ -14,7 +14,7 @@ void hardware_camera_maj_update_nal_size(Model* pModel, bool bAsync);
 void hardware_camera_maj_apply_image_settings(camera_profile_parameters_t* pCameraParams, bool bAsync);
 void hardware_camera_maj_apply_all_settings(Model* pModel, camera_profile_parameters_t* pCameraParams, int iVideoProfile, video_parameters_t* pVideoParams, bool bAsync);
 void hardware_camera_maj_set_irfilter_off(int iOff, bool bAsync);
-void hardware_camera_maj_set_daylight_off(int iDLOff);
+void hardware_camera_maj_set_daylight_off(int iDLOff, bool bAsync);
 
 void hardware_camera_maj_set_calibration_file(int iCameraType, int iCalibrationFileType, char* szCalibrationFile);
 
