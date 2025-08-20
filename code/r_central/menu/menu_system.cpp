@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -182,9 +182,9 @@ void MenuSystem::onReturnFromChild(int iChildMenuId, int returnValue)
    if ( 10 == iChildMenuId/1000 )
    {
       ruby_signal_alive();
-      ruby_pause_watchdog();
+      ruby_pause_watchdog("export controller settings to USB stick");
       int nReturn = controller_utils_export_all_to_usb();
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("finish export controller settings to USB stick");
       ruby_signal_alive();
 
       if ( nReturn == -1 )
@@ -204,7 +204,6 @@ void MenuSystem::onReturnFromChild(int iChildMenuId, int returnValue)
       }
       ruby_signal_alive();
       
-      ruby_resume_watchdog();
       addMessage("Done. All configuration files have been successfully exported. You can now remove the USB memory stick.");
       return;
    }
@@ -212,10 +211,10 @@ void MenuSystem::onReturnFromChild(int iChildMenuId, int returnValue)
    if ( 11 == iChildMenuId/1000 )
    {
       ruby_signal_alive();
-      ruby_pause_watchdog();
+      ruby_pause_watchdog("import controller settings from USB stick");
       pairing_stop();
       int nReturn = controller_utils_import_all_from_usb(false);
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("import controller settings finished.");
       ruby_signal_alive();
       if ( nReturn == -1 )
       {
@@ -349,7 +348,15 @@ void MenuSystem::onSelectItem()
 
       if ( (NULL != g_pCurrentModel) && (! g_pCurrentModel->is_spectator) )
       if ( pairing_isStarted() && link_is_vehicle_online_now(g_pCurrentModel->uVehicleId) )
-         g_pCurrentModel->b_mustSyncFromVehicle = true;
+      {
+         if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
+            valuesToUI();
+         else
+         {
+            if ( pCS->iDeveloperMode != ((g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?1:0) )
+               addMessage("You need to restart your vehicle for the changes to take effect.");
+         }
+      }
       return;
    }
 

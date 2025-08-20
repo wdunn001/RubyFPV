@@ -15,7 +15,6 @@
 #define SHARED_MEM_VIDEO_FRAMES_STATS "/SYSTEM_SHARED_MEM_STATION_VIDEO_STREAM_INFO"
 #define SHARED_MEM_VIDEO_FRAMES_STATS_RADIO_IN "/SYSTEM_SHARED_MEM_STATION_VIDEO_STREAM_INFO_RADIO_IN"
 #define SHARED_MEM_VIDEO_FRAMES_STATS_RADIO_OUT "/SYSTEM_SHARED_MEM_STATION_VIDEO_STREAM_INFO_RADIO_OUT"
-#define SHARED_MEM_VIDEO_LINK_GRAPHS "/SYSTEM_SHARED_MEM_STATION_VIDEO_LINK_GRAPHS"
 #define SHARED_MEM_RC_DOWNLOAD_INFO "R_SHARED_MEM_VEHICLE_RC_DOWNLOAD_INFO"
 #define SHARED_MEM_RC_UPSTREAM_FRAME "R_SHARED_MEM_RC_UPSTREAM_FRAME"
 
@@ -81,29 +80,6 @@ typedef struct
 #define VIDEO_LINK_STATS_REFRESH_INTERVAL_MS 80
 // one every 80 milisec, for 2 sec total
 // !!! Interval should be the same as the one send by controller in link stats: CONTROLLER_LINK_STATS_HISTORY_SLICE_INTERVAL
-
-
-typedef struct
-{
-   u32 timeLastStatsUpdate;
-
-   u8 tmp_vehileReceivedRetransmissionsRequestsCount;
-   u8 tmp_vehicleReceivedRetransmissionsRequestsPackets;
-   u8 tmp_vehicleReceivedRetransmissionsRequestsPacketsRetried;
-   u8 vehicleRXQuality[MAX_INTERVALS_VIDEO_LINK_STATS];
-   u8 vehicleRXMaxTimeGap[MAX_INTERVALS_VIDEO_LINK_STATS];
-   u8 vehileReceivedRetransmissionsRequestsCount[MAX_INTERVALS_VIDEO_LINK_STATS];
-   u8 vehicleReceivedRetransmissionsRequestsPackets[MAX_INTERVALS_VIDEO_LINK_STATS];
-   u8 vehicleReceivedRetransmissionsRequestsPacketsRetried[MAX_INTERVALS_VIDEO_LINK_STATS];
-   
-   u8 controller_received_radio_interfaces_rx_quality[MAX_RADIO_INTERFACES][MAX_INTERVALS_VIDEO_LINK_STATS]; // 0...100 %, or 255 for no packets received or lost for this time slice
-   u8 controller_received_radio_streams_rx_quality[MAX_VIDEO_STREAMS][MAX_INTERVALS_VIDEO_LINK_STATS]; // 0...100 %, or 255 for no packets received or lost for this time slice
-   u8 controller_received_video_streams_blocks_clean[MAX_VIDEO_STREAMS][MAX_INTERVALS_VIDEO_LINK_STATS];
-   u8 controller_received_video_streams_blocks_reconstructed[MAX_VIDEO_STREAMS][MAX_INTERVALS_VIDEO_LINK_STATS];
-   u8 controller_received_video_streams_blocks_max_ec_packets_used[MAX_VIDEO_STREAMS][MAX_INTERVALS_VIDEO_LINK_STATS];
-   u8 controller_received_video_streams_requested_retransmission_packets[MAX_VIDEO_STREAMS][MAX_INTERVALS_VIDEO_LINK_STATS];
-
-} ALIGN_STRUCT_SPEC_INFO shared_mem_video_link_graphs;
 
 
 #define MAX_INTERVALS_VIDEO_BITRATE_HISTORY 70
@@ -214,11 +190,6 @@ void shared_mem_video_frames_stats_radio_in_close(shared_mem_video_frames_stats*
 shared_mem_video_frames_stats* shared_mem_video_frames_stats_radio_out_open_for_read();
 shared_mem_video_frames_stats* shared_mem_video_frames_stats_radio_out_open_for_write();
 void shared_mem_video_frames_stats_radio_out_close(shared_mem_video_frames_stats* pAddress);
-
-
-shared_mem_video_link_graphs* shared_mem_video_link_graphs_open_for_read();
-shared_mem_video_link_graphs* shared_mem_video_link_graphs_open_for_write();
-void shared_mem_video_link_graphs_close(shared_mem_video_link_graphs* pAddress);
 
 t_packet_header_rc_info_downstream* shared_mem_rc_downstream_info_open_read();
 t_packet_header_rc_info_downstream* shared_mem_rc_downstream_info_open_write();

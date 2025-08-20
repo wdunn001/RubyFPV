@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -36,13 +36,36 @@
 #include "menu_item_section.h"
 #include "menu_item_text.h"
 #include "menu_item_legend.h"
+#include "menu_vehicle_radio_rt_capab.h"
 #include "../process_router_messages.h"
 #include "../warnings.h"
 #include "../osd/osd_common.h"
+#include "../../base/tx_powers.h"
+#include <math.h>
 
-int s_ArrayTestRadioRates[] = {6000000, 12000000, 18000000, 24000000, 36000000, 48000000, -1, -2, -3, -4, -5};
+#define MAX_FAILING_RADIO_NEGOCIATE_STEPS 4
+#define SINGLE_TEST_DURATION 700
+#define TEST_DATARATE_QUALITY_THRESHOLD 0.7
 
-#define MAX_FAILING_RADIO_NEGOCIATE_STEPS 9
+#define NEGOCIATE_STATE_NONE 0
+#define NEGOCIATE_STATE_START_TEST 10
+#define NEGOCIATE_STATE_TEST_RUNNING_WAIT_VEHICLE_START_TEST_CONFIRMATION 20
+#define NEGOCIATE_STATE_TEST_RUNNING 30
+#define NEGOCIATE_STATE_TEST_ENDED 40
+#define NEGOCIATE_STATE_SET_VIDEO_SETTINGS 50
+#define NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_VIDEO_SETTINGS_CONFIRMATION 60
+#define NEGOCIATE_STATE_SET_RADIO_SETTINGS 70
+#define NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_RADIO_SETTINGS_CONFIRMATION 80
+#define NEGOCIATE_STATE_END_TESTS 90
+#define NEGOCIATE_STATE_WAIT_VEHICLE_END_CONFIRMATION 100
+#define NEGOCIATE_STATE_ENDED 200
+
+#define NEGOCIATE_USER_STATE_NONE 0
+#define NEGOCIATE_USER_STATE_WAIT_CANCEL 1
+#define NEGOCIATE_USER_STATE_WAIT_FAILED_CONFIRMATION 2
+#define NEGOCIATE_USER_STATE_WAIT_VIDEO_CONFIRMATION 3
+#define NEGOCIATE_USER_STATE_WAIT_FINISH_CONFIRMATION 4
+
 
 MenuNegociateRadio::MenuNegociateRadio(void)
 :Menu(MENU_ID_NEGOCIATE_RADIO, L("Initial Auto Radio Link Adjustment"), NULL)
@@ -50,88 +73,14 @@ MenuNegociateRadio::MenuNegociateRadio(void)
    m_Width = 0.72;
    m_xPos = 0.14; m_yPos = 0.26;
    float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
-   addExtraHeightAtEnd(3.5*height_text + height_text * 1.5 * hardware_get_radio_interfaces_count());
+   addExtraHeightAtEnd(4.5*height_text + height_text * 1.5 * hardware_get_radio_interfaces_count());
    m_uShowTime = g_TimeNow;
    m_MenuIndexCancel = -1;
    m_iLoopCounter = 0;
    addTopLine(L("Doing the initial radio link parameters adjustment for best performance..."));
    addTopLine(L("(This is done on first installation and on first pairing with a vehicle or when hardware has changed on the vehicle)"));
 
-   strcpy(m_szStatusMessage, L("Please wait, it will take a minute (you can press [Cancel] to cancel)."));
-   strcpy(m_szStatusMessage2, L("Computing Link Quality"));
-
-   for( int i=0; i<MAX_NEGOCIATE_TESTS; i++ )
-   {
-      m_TestStepsInfo[i].iDataRateToTest = 0;
-      m_TestStepsInfo[i].uFlagsToTest = RADIO_FLAGS_FRAME_TYPE_DATA;
-      for( int k=0; k<MAX_RADIO_INTERFACES; k++ )
-      {
-         m_TestStepsInfo[i].iRadioInterfacesRXPackets[k] = -1;
-         m_TestStepsInfo[i].iRadioInterfacesRxLostPackets[k] = -1;
-         m_TestStepsInfo[i].fQualityCards[k] = 0;
-      }
-      m_TestStepsInfo[i].fComputedQuality = 0;
-   }
-
-   m_iTestsCount = 0;
-   for( int i=0; i<(int)(sizeof(s_ArrayTestRadioRates)/sizeof(s_ArrayTestRadioRates[0])); i++ )
-   {
-      for( int k=0; k<3; k++ )
-      {
-         m_TestStepsInfo[m_iTestsCount].iDataRateToTest = s_ArrayTestRadioRates[i];
-         m_iTestsCount++;
-      }
-   }
-   m_iIndexFirstRadioFlagsTest = m_iTestsCount;
-   for( int k=0; k<3; k++ )
-   {
-      m_TestStepsInfo[m_iTestsCount].iDataRateToTest = -3;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest = RADIO_FLAG_STBC_VEHICLE | RADIO_FLAGS_USE_MCS_DATARATES;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest |= RADIO_FLAGS_FRAME_TYPE_DATA;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
-      m_iTestsCount++;
-   }
-   for( int k=0; k<3; k++ )
-   {
-      m_TestStepsInfo[m_iTestsCount].iDataRateToTest = -3;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest = RADIO_FLAG_LDPC_VEHICLE | RADIO_FLAGS_USE_MCS_DATARATES;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest |= RADIO_FLAGS_FRAME_TYPE_DATA;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
-      m_iTestsCount++;
-   }
-   for( int k=0; k<3; k++ )
-   {
-      m_TestStepsInfo[m_iTestsCount].iDataRateToTest = -3;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest = RADIO_FLAG_STBC_VEHICLE | RADIO_FLAG_LDPC_VEHICLE | RADIO_FLAGS_USE_MCS_DATARATES;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest |= RADIO_FLAGS_FRAME_TYPE_DATA;
-      m_TestStepsInfo[m_iTestsCount].uFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
-      m_iTestsCount++;
-   }
-
-   for( int i=0; i<MAX_NEGOCIATE_TESTS; i++ )
-   {
-      if ( m_TestStepsInfo[i].iDataRateToTest < 0 )
-      {
-         m_TestStepsInfo[i].uFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
-         m_TestStepsInfo[i].uFlagsToTest |= RADIO_FLAGS_USE_MCS_DATARATES;
-      }
-      else
-      {
-         m_TestStepsInfo[i].uFlagsToTest &= ~(RADIO_FLAGS_USE_MCS_DATARATES);
-         m_TestStepsInfo[i].uFlagsToTest |= RADIO_FLAGS_USE_LEGACY_DATARATES;       
-      }
-   }
-   m_iStep = NEGOCIATE_RADIO_STEP_DATA_RATE;
-   m_iCurrentTestIndex = 0;
-   m_fQualityOfDataRateToApply = 0.0;
-   m_iIndexTestDataRateToApply = -1;
-   m_iDataRateToApply = 0;
-   m_uRadioFlagsToApply = g_pCurrentModel->radioLinksParams.link_radio_flags[0];
-   m_iCountSucceededSteps = 0;
-   m_iCountFailedSteps = 0;
-   m_bWaitingCancelConfirmationFromUser = false;
-   g_bAskedForNegociateRadioLink = true;
-   _switch_to_step(NEGOCIATE_RADIO_STEP_DATA_RATE);
+   _reset_tests_and_state();
 }
 
 MenuNegociateRadio::~MenuNegociateRadio()
@@ -150,33 +99,32 @@ void MenuNegociateRadio::Render()
    for( int i=0; i<m_ItemsCount; i++ )
       y += RenderItem(i,y);
 
+   y = yTop;
    float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
    float wPixel = g_pRenderEngine->getPixelWidth();
    float hPixel = g_pRenderEngine->getPixelHeight();
    y += height_text*0.5;
    g_pRenderEngine->setColors(get_Color_MenuText());
    
-   float fTextWidth = g_pRenderEngine->textWidth(g_idFontMenu, m_szStatusMessage);
-   g_pRenderEngine->drawText(m_RenderXPos+m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenu, m_szStatusMessage);
+   float fTextWidth = g_pRenderEngine->textWidth(g_idFontMenuLarge, m_szStatusMessage);
+   g_pRenderEngine->drawText(m_RenderXPos+m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenuLarge, m_szStatusMessage);
 
-   y += height_text*1.5;
-   fTextWidth = g_pRenderEngine->textWidth(g_idFontMenu, m_szStatusMessage2);
-   g_pRenderEngine->drawText(m_RenderXPos+m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenu, m_szStatusMessage2);
+   y += height_text*2.0;
+   fTextWidth = g_pRenderEngine->textWidth(g_idFontMenuLarge, m_szStatusMessage2);
+   g_pRenderEngine->drawText(m_RenderXPos+m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenuLarge, m_szStatusMessage2);
    char szBuff[32];
    szBuff[0] = 0;
    for(int i=0; i<(m_iLoopCounter%4); i++ )
       strcat(szBuff, ".");
-   g_pRenderEngine->drawText(m_RenderXPos + fTextWidth + m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenu, szBuff);
+   g_pRenderEngine->drawText(m_RenderXPos + fTextWidth + m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenuLarge, szBuff);
 
-   y += height_text*1.5;
+   y += height_text*2.0;
 
    float hBar = height_text*1.5;
-   float wBar = height_text*0.5;
+   float wBar = (m_RenderWidth - m_sfMenuPaddingX*2.0)/(float)m_iTestsCount;
+   if ( wBar < 5.0*wPixel )
+      wBar = 5.0*wPixel;
    float x = m_RenderXPos+m_sfMenuPaddingX;
-
-   x += 0.5*(m_RenderWidth - 2.0*m_sfMenuPaddingX - (wBar+4.0*wPixel)*m_iTestsCount);
-
-   _computeQualities();
 
    int iIndexBestQuality = -1;
    float fBestQ = 0;
@@ -187,24 +135,26 @@ void MenuNegociateRadio::Render()
       if ( !hardware_radio_index_is_wifi_radio(iInt) )
          continue;
 
-      float fQualityCard = m_TestStepsInfo[iTest].fQualityCards[iInt];
+      float fQualityCard = m_TestsInfo[iTest].fQualityCards[iInt];
 
       if ( fQualityCard > fBestQ )
+      if ( ! m_TestsInfo[iTest].bSkipTest )
       if ( iTest < m_iCurrentTestIndex )
+      if ( iTest < m_iIndexFirstRadioPowersTest )
       {
          fBestQ = fQualityCard;
          iIndexBestQuality = iTest;
       }
 
       g_pRenderEngine->setFill(0,0,0,0);
-      g_pRenderEngine->drawRect(x + iTest*(wBar+4.0*wPixel), y + iInt*(hBar+hPixel*2.0), wBar, hBar-2.0*hPixel);
+      g_pRenderEngine->drawRect(x + iTest*wBar, y + iInt*(hBar+hPixel*2.0), wBar-4.0*wPixel, hBar-2.0*hPixel);
 
       float fRectH = 1.0;
-      if ( fQualityCard > 0.99 )
+      if ( fQualityCard > 0.98 )
          g_pRenderEngine->setFill(0,200,0,1.0);
-      else if ( fQualityCard > 0.95 )
+      else if ( fQualityCard > 0.92 )
          g_pRenderEngine->setColors(get_Color_MenuText());
-      else if ( fQualityCard > 0.9 )
+      else if ( fQualityCard > 0.85 )
          g_pRenderEngine->setFill(200,200,0,1.0);
       else if ( fQualityCard > 0.11 )
          g_pRenderEngine->setFill(200,100,100,1.0);
@@ -218,67 +168,529 @@ void MenuNegociateRadio::Render()
          fRectH = 0.0;
          g_pRenderEngine->setFill(0,0,0,0);
       }
-      if ( fRectH > 0.001 )
-         g_pRenderEngine->drawRect(x + iTest*(wBar+4.0*wPixel) + wPixel, y + iInt*(hBar+hPixel*2.0) + hBar - fRectH*hBar - hPixel, wBar - 2.0*wPixel, fRectH*(hBar-2.0*hPixel));
-   }
 
-   if ( m_iIndexTestDataRateToApply != -1 )
-      iIndexBestQuality = m_iIndexTestDataRateToApply;
+      if ( m_TestsInfo[iTest].bSkipTest )
+      {
+         fRectH = 1.0;
+         g_pRenderEngine->setColors(get_Color_MenuText());
+         g_pRenderEngine->setFill(150,150,150,0.4);
+      }
+      if ( fRectH > 0.001 )
+         g_pRenderEngine->drawRect(x + iTest*wBar + wPixel, y + iInt*(hBar+hPixel*2.0) + hBar - fRectH*hBar - hPixel, wBar - 4.0*wPixel - 2.0*wPixel, fRectH*(hBar-2.0*hPixel));
+   }
 
    if ( iIndexBestQuality >= 0 )
    {
       g_pRenderEngine->setFill(0,0,0,0);
-      g_pRenderEngine->drawRect(x + iIndexBestQuality*(wBar+4.0*wPixel) - 3.0*wPixel,
-                y - hPixel*4.0, wBar+5.0*wPixel, (hBar+2.0*hPixel)*hardware_get_radio_interfaces_count() + 6.0*hPixel);
+      g_pRenderEngine->drawRect(x + iIndexBestQuality*wBar - 3.0*wPixel,
+                y - hPixel*4.0, wBar+3.0*wPixel, (hBar+2.0*hPixel)*hardware_get_radio_interfaces_count() + 6.0*hPixel);
    }
 
    RenderEnd(yTop);
 }
 
+void MenuNegociateRadio::_reset_tests_and_state()
+{
+   m_iState = NEGOCIATE_STATE_START_TEST;
+   m_iUserState = NEGOCIATE_USER_STATE_NONE;
+   m_bCanceled = false;
+   m_bFailed = false;
+   m_bUpdated = false;
+
+   strcpy(m_szStatusMessage, L("Please wait, it will take a minute."));
+   strcpy(m_szStatusMessage2, L("Computing radio links capabilities"));
+
+   log_line("[NegociateRadioLink] Reset state.");
+
+   for( int i=0; i<MAX_NEGOCIATE_TESTS; i++ )
+   {
+      memset(&(m_TestsInfo[i]), 0, sizeof(type_negociate_radio_step));
+      m_TestsInfo[i].bSkipTest = false;
+      m_TestsInfo[i].bMustTestUplink = false;
+
+      m_TestsInfo[i].bHasSubTests = false;
+      m_TestsInfo[i].iCurrentSubTest = -1;
+
+      m_TestsInfo[i].bSucceeded = false;
+      m_TestsInfo[i].bReceivedEnoughData = false;
+      m_TestsInfo[i].fComputedQualityMax = -1.0;
+      m_TestsInfo[i].fComputedQualityMin = -1.0;
+      m_TestsInfo[i].uTimeStarted = 0;
+      m_TestsInfo[i].uTimeEnded = 0;
+      for( int k=0; k<MAX_RADIO_INTERFACES; k++ )
+      {
+         m_TestsInfo[i].iRadioInterfacesRXPackets[k] = 0;
+         m_TestsInfo[i].iRadioInterfacesRxLostPackets[k] = 0;
+         m_TestsInfo[i].fQualityCards[k] = -1.0;
+      }
+   }
+
+   //-----------------------------------------------------
+   // Rates tests
+
+   m_iTestsCount = 0;
+   m_iIndexFirstDatarateLegacyTest = m_iTestsCount;
+   for( int i=0; i<getTestDataRatesCountLegacy(); i++ )
+   {
+      for( int k=0; k<2; k++ )
+      {
+         m_TestsInfo[m_iTestsCount].iDataRateToTest = getTestDataRatesLegacy()[i];
+         m_TestsInfo[m_iTestsCount].uRadioFlagsToTest = RADIO_FLAGS_USE_LEGACY_DATARATES;
+         m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = 5;
+         m_TestsInfo[m_iTestsCount].uDurationToTest = SINGLE_TEST_DURATION;
+         if ( (i == 0) && (k == 0) )
+            m_TestsInfo[m_iTestsCount].uDurationToTest *=2;
+         m_iTestsCount++;
+      }
+   }
+   m_iIndexLastDatarateLegacyTest = m_iTestsCount-1;
+   m_iIndexFirstDatarateMCSTest = m_iTestsCount;
+   for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+   {
+      for( int k=0; k<2; k++ )
+      {
+         m_TestsInfo[m_iTestsCount].iDataRateToTest = getTestDataRatesMCS()[i];
+         m_TestsInfo[m_iTestsCount].uRadioFlagsToTest = RADIO_FLAGS_USE_MCS_DATARATES;
+         m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = 5;
+         m_TestsInfo[m_iTestsCount].uDurationToTest = SINGLE_TEST_DURATION;
+         if ( (i == 0) && (k == 0) )
+            m_TestsInfo[m_iTestsCount].uDurationToTest *=2;
+         m_iTestsCount++;
+      }
+   }
+   m_iIndexLastDatarateMCSTest = m_iTestsCount-1;
+
+   //-----------------------------------------------
+   // Radio flags tests
+
+   m_iIndexFirstRadioFlagsTest = m_iTestsCount;
+   m_iTestIndexSTBCV = m_iTestsCount;
+   for( int k=0; k<2; k++ )
+   {
+      m_TestsInfo[m_iTestsCount].iDataRateToTest = -3;
+      m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = 5;
+      m_TestsInfo[m_iTestsCount].uDurationToTest = SINGLE_TEST_DURATION;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest = RADIO_FLAG_STBC_VEHICLE | RADIO_FLAGS_USE_MCS_DATARATES;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest |= RADIO_FLAGS_FRAME_TYPE_DATA;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
+      m_iTestsCount++;
+   }
+   m_iTestIndexLDPVV = m_iTestsCount;
+   for( int k=0; k<2; k++ )
+   {
+      m_TestsInfo[m_iTestsCount].iDataRateToTest = -3;
+      m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = 5;
+      m_TestsInfo[m_iTestsCount].uDurationToTest = SINGLE_TEST_DURATION;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest = RADIO_FLAG_LDPC_VEHICLE | RADIO_FLAGS_USE_MCS_DATARATES;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest |= RADIO_FLAGS_FRAME_TYPE_DATA;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
+      m_iTestsCount++;
+   }
+   m_iTestIndexSTBCLDPCV = m_iTestsCount;
+   for( int k=0; k<2; k++ )
+   {
+      m_TestsInfo[m_iTestsCount].iDataRateToTest = -3;
+      m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = 5;
+      m_TestsInfo[m_iTestsCount].uDurationToTest = SINGLE_TEST_DURATION;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest = RADIO_FLAG_STBC_VEHICLE | RADIO_FLAG_LDPC_VEHICLE | RADIO_FLAGS_USE_MCS_DATARATES;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest |= RADIO_FLAGS_FRAME_TYPE_DATA;
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
+      m_iTestsCount++;
+   }
+
+   //-----------------------------------------------
+   // Tx powers tests
+
+   m_iIndexFirstRadioPowersTest = m_iTestsCount;
+
+   int iRadioInterfacelModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[0];
+   if ( iRadioInterfacelModel < 0 )
+      iRadioInterfacelModel = -iRadioInterfacelModel;
+   int iRadioInterfacePowerMaxMw = tx_powers_get_max_usable_power_mw_for_card(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel);
+
+   
+   for( int i=0; i<2/*getTestDataRatesCountLegacy()*/; i++ )
+   {
+      m_TestsInfo[m_iTestsCount].iDataRateToTest = getTestDataRatesLegacy()[i];
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest = RADIO_FLAGS_USE_LEGACY_DATARATES;
+      m_TestsInfo[m_iTestsCount].iTxPowerLastGood = -1;
+      m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMin = 1;
+      m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMax = iRadioInterfacePowerMaxMw;
+      if ( i < 3 )
+         m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMax*0.9;
+      else
+         m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = (m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMin + m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMax) / 2;
+      m_TestsInfo[m_iTestsCount].bHasSubTests = true;
+      m_TestsInfo[m_iTestsCount].iCurrentSubTest = 0;
+      m_TestsInfo[m_iTestsCount].uDurationToTest = 100000;
+      m_TestsInfo[m_iTestsCount].uDurationSubTest = SINGLE_TEST_DURATION*1.5;
+      m_iTestsCount++;
+   }
+   /*
+   for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+   {
+      m_TestsInfo[m_iTestsCount].iDataRateToTest = getTestDataRatesMCS()[i];
+      m_TestsInfo[m_iTestsCount].uRadioFlagsToTest = RADIO_FLAGS_USE_MCS_DATARATES;
+      m_TestsInfo[m_iTestsCount].iTxPowerLastGood = -1;
+      m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMin = 1;
+      m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMax = iRadioInterfacePowerMaxMw;
+      if ( i < 3 )
+         m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMax*0.9;
+      else
+         m_TestsInfo[m_iTestsCount].iTxPowerMwToTest = (m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMin + m_TestsInfo[m_iTestsCount].iTxPowerMwToTestMax) / 2;
+      m_TestsInfo[m_iTestsCount].bHasSubTests = true;
+      m_TestsInfo[m_iTestsCount].iCurrentSubTest = 0;
+      m_TestsInfo[m_iTestsCount].uDurationToTest = 100000;
+      m_TestsInfo[m_iTestsCount].uDurationSubTest = SINGLE_TEST_DURATION*1.5;
+      m_iTestsCount++;
+   }
+   */
+
+   for( int i=0; i<m_iTestsCount; i++ )
+   {
+      m_TestsInfo[i].uRadioFlagsToTest |= RADIO_FLAGS_FRAME_TYPE_DATA;
+   }
+
+   m_iTxPowerMwToApply = 0;
+   m_uRadioFlagsToApply = g_pCurrentModel->radioLinksParams.link_radio_flags[0];
+
+   m_uTimeStartedVehicleOperation = 0;
+   m_uLastTimeSentVehicleOperation = 0;
+   g_bAskedForNegociateRadioLink = true;
+
+   send_pause_adaptive_to_router(6000);
+
+   m_iCurrentTestIndex = 0;
+   m_iCountSucceededTests = 0;
+   m_iCountFailedTests = 0;
+   m_iCountFailedTestsDatarates = 0;
+
+   m_bSkipRateTests = false;
+   if ( m_bSkipRateTests )
+   {
+      memcpy(&m_RadioRuntimeCapabilitiesToApply, &g_pCurrentModel->radioRuntimeCapabilities, sizeof(type_radio_runtime_capabilities_parameters));
+      for( int i=0; i<getTestDataRatesCountLegacy(); i++ )
+      {
+         m_TestsInfo[i].fComputedQualityMin = m_RadioRuntimeCapabilitiesToApply.fQualitiesLegacy[0][i];
+         m_TestsInfo[i].fComputedQualityMax = m_RadioRuntimeCapabilitiesToApply.fQualitiesLegacy[0][i];
+      }
+      for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+      {
+         m_TestsInfo[i + getTestDataRatesCountLegacy()].fComputedQualityMin = m_RadioRuntimeCapabilitiesToApply.fQualitiesMCS[0][i];
+         m_TestsInfo[i + getTestDataRatesCountLegacy()].fComputedQualityMax = m_RadioRuntimeCapabilitiesToApply.fQualitiesMCS[0][i];
+      }
+
+      for( int i=0; i<m_iIndexFirstRadioFlagsTest; i++ )
+      {
+         m_TestsInfo[i].bSucceeded = true;
+         m_TestsInfo[i].uTimeEnded = g_TimeNow;
+         for( int j=0; j<hardware_get_radio_interfaces_count(); j++ )
+            m_TestsInfo[i].fQualityCards[j] = m_TestsInfo[i].fComputedQualityMax;
+      }
+
+      m_iCountSucceededTests = m_iIndexFirstRadioFlagsTest-1;
+      m_iCountFailedTestsDatarates = 0;
+      m_iCountFailedTests = 0;
+      m_iCurrentTestIndex = m_iIndexFirstRadioFlagsTest;
+   }
+   else
+   {
+      g_pCurrentModel->resetRadioCapabilitiesRuntime(&m_RadioRuntimeCapabilitiesToApply);
+   }
+
+   log_line("[NegociateRadioLink] State reseted.");
+}
+
+void MenuNegociateRadio::_getTestType(int iTestIndex, char* szType)
+{
+   if ( NULL == szType )
+      return;
+   strcpy(szType, "N/A");
+   if ( iTestIndex < 0 )
+      return;
+
+   if ( iTestIndex < m_iIndexFirstRadioFlagsTest )
+      strcpy(szType, "DataRate");
+   else if ( iTestIndex < m_iIndexFirstRadioPowersTest )
+      strcpy(szType, "RadioFlags");
+   else
+      strcpy(szType, "TxPowers");
+}
+
+char* MenuNegociateRadio::_getTestType(int iTestIndex)
+{
+   static char s_szNegociateRadioTestType[128];
+   s_szNegociateRadioTestType[0] = 0;
+   _getTestType(iTestIndex, s_szNegociateRadioTestType);
+   return s_szNegociateRadioTestType;
+}
+
+bool MenuNegociateRadio::periodicLoop()
+{
+   m_iLoopCounter++;
+   if ( -1 == m_MenuIndexCancel )
+   if ( g_TimeNow > m_uShowTime + 2000 )
+   {
+      m_MenuIndexCancel = addMenuItem(new MenuItem(L("Cancel"), L("Aborts the autoadjustment procedure without making any changes.")));
+      float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
+      addExtraHeightAtEnd(4.5*height_text + height_text * 1.5 * hardware_get_radio_interfaces_count() - m_pMenuItems[m_MenuIndexCancel]->getItemHeight(1.0));
+      invalidate();
+   }
+
+   if ( 0 != m_iUserState )
+   {
+      log_line("[NegociateRadioLink] Periodic loop, waiting user input, user state: %d", m_iUserState);
+      static u32 s_uLastAdaptivePauseFromNegociateRadio = 0;
+      if ( g_TimeNow > s_uLastAdaptivePauseFromNegociateRadio + 1000 )
+      {
+         s_uLastAdaptivePauseFromNegociateRadio = g_TimeNow;
+         send_pause_adaptive_to_router(4000);
+         _send_keep_alive_to_vehicle();
+      }
+
+      if ( m_iState == NEGOCIATE_STATE_TEST_RUNNING )
+      if ( m_TestsInfo[m_iCurrentTestIndex].uTimeLastConfirmationFromVehicle != 0 )
+      {
+         _storeCurrentTestData();
+         _computeQualities();
+      }
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_START_TEST )
+   {
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Start test -> Starting test.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      _startTest(m_iCurrentTestIndex);
+      return true;
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_TEST_RUNNING_WAIT_VEHICLE_START_TEST_CONFIRMATION )
+   {
+      if ( g_TimeNow > m_TestsInfo[m_iCurrentTestIndex].uTimeStarted + m_TestsInfo[m_iCurrentTestIndex].uDurationToTest )
+      {
+         log_line("[NegociateRadioLink] Failed to get a confirmation from vehicle to start a test.");
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Wait vehicle test start -> End test. (no Ack from vehicle)", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+         _endCurrentTest();
+         return true;
+      }
+      // Resend test to vehicle
+      if ( (g_TimeNow > m_TestsInfo[m_iCurrentTestIndex].uTimeLastSendToVehicle + 60) )
+         _send_start_test_to_vehicle(m_iCurrentTestIndex);
+      return true;
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_TEST_RUNNING )
+   {
+      _currentTestUpdateWhenRunning();
+      return true;
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_TEST_ENDED )
+   {
+      if ( m_iUserState != NEGOCIATE_USER_STATE_NONE )
+         return true;
+
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Test ended -> Advance to next test.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      _advance_to_next_test();
+      return true;
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_SET_VIDEO_SETTINGS )
+   {
+      if ( (g_TimeNow > m_uLastTimeSentVehicleOperation + 60) &&
+           (g_TimeNow < m_uTimeStartedVehicleOperation + 1200) )
+      {
+         m_uLastTimeSentVehicleOperation = g_TimeNow;
+         handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMETERS, 0, (u8*)&m_VideoParamsToApply, sizeof(video_parameters_t), (u8*)&m_VideoProfilesToApply, MAX_VIDEO_LINK_PROFILES * sizeof(type_video_link_profile));
+      }
+      return true;
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_VIDEO_SETTINGS_CONFIRMATION )
+   {
+      if ( (g_TimeNow > m_uLastTimeSentVehicleOperation + 2400) &&
+           (g_TimeNow < m_uTimeStartedVehicleOperation + 2400) )
+      {
+         m_uLastTimeSentVehicleOperation = g_TimeNow;
+         handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMETERS, 0, (u8*)&m_VideoParamsToApply, sizeof(video_parameters_t), (u8*)&m_VideoProfilesToApply, MAX_VIDEO_LINK_PROFILES * sizeof(type_video_link_profile));
+      }
+      else
+      {
+         log_line("[NegociateRadioLink] Failed to get a confirmation from vehicle to set video settings.");
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Wait vehicle set video params ack -> Failed flow.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+         addMessage2(0, L("Failed to negociate radio links."), L("You radio links quality is very poor. Please fix the physical radio links quality and try again later."));
+         m_iUserState = NEGOCIATE_USER_STATE_WAIT_FAILED_CONFIRMATION;
+         m_iState = NEGOCIATE_STATE_END_TESTS;
+         m_bFailed = true;
+      }
+      return true;
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_SET_RADIO_SETTINGS )
+   {
+      m_uTimeStartedVehicleOperation = g_TimeNow;
+      m_uLastTimeSentVehicleOperation = 0;
+      m_iState = NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_RADIO_SETTINGS_CONFIRMATION;
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Set Radio params -> Wait vehicle set radio params ack.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      _send_apply_settings_to_vehicle();
+      return true;
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_RADIO_SETTINGS_CONFIRMATION )
+   {
+      if ( (g_TimeNow > m_uLastTimeSentVehicleOperation + 60) &&
+           (g_TimeNow > m_uTimeStartedVehicleOperation + 1200) )
+      {
+         log_line("[NegociateRadioLink] Failed to get a confirmation from vehicle to set radio settings.");
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Wait vehicle set radio params ack -> Failed flow.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+         addMessage2(0, L("Failed to negociate radio links."), L("You radio links quality is very poor. Please fix the physical radio links quality and try again later."));
+         m_iUserState = NEGOCIATE_USER_STATE_WAIT_FAILED_CONFIRMATION;
+         m_iState = NEGOCIATE_STATE_END_TESTS;
+         m_bFailed = true;
+         return true;
+      }
+
+      if ( (g_TimeNow > m_uLastTimeSentVehicleOperation + 60) &&
+           (g_TimeNow < m_uTimeStartedVehicleOperation + 400) )
+         _send_apply_settings_to_vehicle();
+      return true;
+   }
+   
+   if ( m_iState == NEGOCIATE_STATE_END_TESTS )
+   {
+      if ( m_iUserState != 0 )
+      {
+         log_line("[NegociateRadioLink] Waiting for user finish confirmation on state end tests...");
+         return true;
+      }
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) End tests -> Send end tests to vehicle.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+
+      if ( (! m_bCanceled) && (!m_bFailed) )
+         _save_new_settings_to_model();
+
+      m_uTimeStartedVehicleOperation = g_TimeNow;
+      m_uLastTimeSentVehicleOperation = 0;
+      _send_end_all_tests_to_vehicle(m_bCanceled | m_bFailed);
+      return true;
+   }
+
+   if ( m_iState == NEGOCIATE_STATE_WAIT_VEHICLE_END_CONFIRMATION )
+   {
+      if ( (g_TimeNow > m_uLastTimeSentVehicleOperation + 60) &&
+           (g_TimeNow > m_uTimeStartedVehicleOperation + 500) )
+      {
+         log_line("[NegociateRadioLink] Failed to get a confirmation from vehicle to end tests.");
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Wait vehicle end tests -> Finish flow.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+         _onFinishedFlow();
+         return true;
+      }
+      if ( (g_TimeNow > m_uLastTimeSentVehicleOperation + 60) &&
+           (g_TimeNow < m_uTimeStartedVehicleOperation + 400) )
+         _send_end_all_tests_to_vehicle(m_bCanceled | m_bFailed);
+      return true;
+   }
+
+   return false;
+}
+
 int MenuNegociateRadio::onBack()
 {
-   log_line("[NegociateRadioLink] OnBack: Now there are %d failing steps of max %d", m_iCountFailedSteps, MAX_FAILING_RADIO_NEGOCIATE_STEPS);
+   log_line("[NegociateRadioLink] OnBack: Now there are %d failing tests of max %d", m_iCountFailedTests, MAX_FAILING_RADIO_NEGOCIATE_STEPS);
 
    if ( -1 != m_MenuIndexCancel )
-   {
       _onCancel();
-   }
+
    return 0;
 }
 
-void MenuNegociateRadio::_computeQualities()
+void MenuNegociateRadio::onVehicleCommandFinished(u32 uCommandId, u32 uCommandType, bool bSucceeded)
 {
-   for( int iTest=0; iTest<=m_iCurrentTestIndex; iTest++ )
+   Menu::onVehicleCommandFinished(uCommandId, uCommandType, bSucceeded);
+
+   if ( uCommandType == COMMAND_ID_SET_VIDEO_PARAMETERS )
+   if ( m_iState == NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_VIDEO_SETTINGS_CONFIRMATION )
    {
-      m_TestStepsInfo[iTest].fComputedQuality = 0.1;
-      for( int iInt=0; iInt<hardware_get_radio_interfaces_count(); iInt++ )
-      {
-         if ( !hardware_radio_index_is_wifi_radio(iInt) )
-            continue;
-         m_TestStepsInfo[iTest].fQualityCards[iInt] = 0.1;
-         if ( m_TestStepsInfo[iTest].iRadioInterfacesRXPackets[iInt] + m_TestStepsInfo[iTest].iRadioInterfacesRxLostPackets[iInt] > 50 )
-         {
-            m_TestStepsInfo[iTest].fQualityCards[iInt]= (float)m_TestStepsInfo[iTest].iRadioInterfacesRXPackets[iInt]/((float)m_TestStepsInfo[iTest].iRadioInterfacesRXPackets[iInt] + (float)m_TestStepsInfo[iTest].iRadioInterfacesRxLostPackets[iInt]);
-            if ( m_TestStepsInfo[iTest].fQualityCards[iInt] > m_TestStepsInfo[iTest].fComputedQuality )
-              m_TestStepsInfo[iTest].fComputedQuality = m_TestStepsInfo[iTest].fQualityCards[iInt];
-         }
-      }
+      log_line("[NegociateRadioLink] Received confirmation from vehicle for set video params.");
+      m_iState = NEGOCIATE_STATE_SET_RADIO_SETTINGS;
+      m_uTimeStartedVehicleOperation = 0;
+      m_uLastTimeSentVehicleOperation = 0;
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (C) -> Set radio settings.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      return;
    }
 }
 
-float MenuNegociateRadio::_getComputedQualityForDatarate(int iDatarate, int* pTestIndex)
+void MenuNegociateRadio::_storeCurrentTestData()
+{
+   log_line("[NegociateRadioLink] Store test data from radio stats.");
+   for(int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      if ( !hardware_radio_index_is_wifi_radio(i) )
+         continue;
+      if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != m_TestsInfo[m_iCurrentTestIndex].iVehicleRadioLink )
+         continue;
+      m_TestsInfo[m_iCurrentTestIndex].iRadioInterfacesRXPackets[i] = g_SM_RadioStats.radio_interfaces[i].totalRxPackets;
+      m_TestsInfo[m_iCurrentTestIndex].iRadioInterfacesRxLostPackets[i] = g_SM_RadioStats.radio_interfaces[i].totalRxPacketsBad + g_SM_RadioStats.radio_interfaces[i].totalRxPacketsLost;
+   }
+}
+
+void MenuNegociateRadio::_logTestData(int iTestIndex)
+{
+   char szRx[256];
+   char szLost[256];
+   
+   strcpy(szRx, "[");
+   strcpy(szLost, "[");
+   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      if ( i != 0 )
+      {
+         strcat(szRx, ", ");
+         strcat(szLost, ", ");
+      }
+      char szTmp[32];
+      sprintf(szTmp, "%d", m_TestsInfo[iTestIndex].iRadioInterfacesRXPackets[i]);
+      strcat(szRx, szTmp);
+      sprintf(szTmp, "%d", m_TestsInfo[iTestIndex].iRadioInterfacesRxLostPackets[i]);
+      strcat(szLost, szTmp);
+
+      if ( !hardware_radio_index_is_wifi_radio(i) )
+         continue;
+      if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != m_TestsInfo[iTestIndex].iVehicleRadioLink )
+         continue;
+   }
+   strcat(szRx, "]");
+   strcat(szLost, "]");
+
+   char szTestType[64];
+   _getTestType(iTestIndex, szTestType);
+
+   char szState[128];
+   strcpy(szState, "not started");
+   if ( m_TestsInfo[iTestIndex].uTimeStarted != 0 )
+      sprintf(szState, "started %u ms ago", g_TimeNow - m_TestsInfo[iTestIndex].uTimeStarted);
+   if ( m_TestsInfo[iTestIndex].uTimeEnded != 0 )
+      sprintf(szState, "ended %u ms ago, in %u ms", g_TimeNow - m_TestsInfo[iTestIndex].uTimeEnded, m_TestsInfo[iTestIndex].uTimeEnded - m_TestsInfo[iTestIndex].uTimeStarted);
+
+   log_line("[NegociateRadioLink] Test %d (type: %s) (datarate %s) %s, succeded? %s, enough rx data? %s, rx packets: %s, rx lost packets: %s",
+      iTestIndex, szTestType, str_format_datarate_inline(m_TestsInfo[iTestIndex].iDataRateToTest),
+      szState,
+      m_TestsInfo[iTestIndex].bSucceeded?"yes":"no",
+      m_TestsInfo[iTestIndex].bReceivedEnoughData?"yes":"no",
+      szRx, szLost);
+}
+
+float MenuNegociateRadio::_getMaxComputedQualityForDatarate(int iDatarate, int* pTestIndex)
 {
    float fQuality = 0.0;
    for( int iTest=0; iTest<m_iIndexFirstRadioFlagsTest; iTest++ )
    {
       if ( iTest > m_iCurrentTestIndex )
          break;
-      if ( m_TestStepsInfo[iTest].iDataRateToTest != iDatarate )
+      if ( m_TestsInfo[iTest].iDataRateToTest != iDatarate )
          continue;
 
-      if ( m_TestStepsInfo[iTest].fComputedQuality > fQuality )
+      if ( m_TestsInfo[iTest].fComputedQualityMax > fQuality )
       {
-         fQuality = m_TestStepsInfo[iTest].fComputedQuality;
+         fQuality = m_TestsInfo[iTest].fComputedQualityMax;
          if ( NULL != pTestIndex )
             *pTestIndex = iTest;
       }
@@ -289,17 +701,17 @@ float MenuNegociateRadio::_getComputedQualityForDatarate(int iDatarate, int* pTe
 
 float MenuNegociateRadio::_getMinComputedQualityForDatarate(int iDatarate, int* pTestIndex)
 {
-   float fQuality = 100.0;
+   float fQuality = 1.0;
    for( int iTest=0; iTest<m_iIndexFirstRadioFlagsTest; iTest++ )
    {
       if ( iTest > m_iCurrentTestIndex )
          break;
-      if ( m_TestStepsInfo[iTest].iDataRateToTest != iDatarate )
+      if ( m_TestsInfo[iTest].iDataRateToTest != iDatarate )
          continue;
 
-      if ( m_TestStepsInfo[iTest].fComputedQuality < fQuality )
+      if ( m_TestsInfo[iTest].fComputedQualityMin < fQuality )
       {
-         fQuality = m_TestStepsInfo[iTest].fComputedQuality;
+         fQuality = m_TestsInfo[iTest].fComputedQualityMin;
          if ( NULL != pTestIndex )
             *pTestIndex = iTest;
       }
@@ -307,352 +719,993 @@ float MenuNegociateRadio::_getMinComputedQualityForDatarate(int iDatarate, int* 
    return fQuality;
 }
 
-void MenuNegociateRadio::_send_command_to_vehicle()
+void MenuNegociateRadio::_send_keep_alive_to_vehicle()
+{
+   t_packet_header PH;
+   radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_NEGOCIATE_RADIO_LINKS, STREAM_ID_DATA);
+   PH.packet_flags |= PACKET_FLAGS_BIT_HIGH_PRIORITY;
+   PH.vehicle_id_src = g_uControllerId;
+   PH.vehicle_id_dest = g_pCurrentModel->uVehicleId;
+   PH.total_length = sizeof(t_packet_header) + 2*sizeof(u8);
+
+   u8 buffer[1024];
+
+   memcpy(buffer, (u8*)&PH, sizeof(t_packet_header));
+   u8* pBuffer = &(buffer[sizeof(t_packet_header)]);
+   *pBuffer = (u8)m_iCurrentTestIndex;
+   pBuffer++;
+   *pBuffer = NEGOCIATE_RADIO_KEEP_ALIVE;
+   pBuffer++;
+  
+   radio_packet_compute_crc(buffer, PH.total_length);
+   send_packet_to_router(buffer, PH.total_length);
+   m_uLastTimeSentVehicleOperation = g_TimeNow;
+   log_line("[NegociateRadioLink] Sent keep alive message to vehicle.");
+}
+
+void MenuNegociateRadio::_send_start_test_to_vehicle(int iTestIndex)
 {
    t_packet_header PH;
    radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_NEGOCIATE_RADIO_LINKS, STREAM_ID_DATA);
    PH.vehicle_id_src = g_uControllerId;
    PH.vehicle_id_dest = g_pCurrentModel->uVehicleId;
-   PH.total_length = sizeof(t_packet_header) + 2*sizeof(u8) + 2*sizeof(u32);
+   PH.total_length = sizeof(t_packet_header) + 3*sizeof(u8) + sizeof(u32) + 2*sizeof(int);
 
    u8 buffer[1024];
 
    memcpy(buffer, (u8*)&PH, sizeof(t_packet_header));
-   u8 uType = 0;
-   u32 uParam1 = 0;
-   u32 uParam2 = 0;
-   int iParam1 = 0;
+   u8* pBuffer = &(buffer[sizeof(t_packet_header)]);
+   *pBuffer = (u8)m_iCurrentTestIndex;
+   pBuffer++;
+   *pBuffer = NEGOCIATE_RADIO_TEST_PARAMS;
+   pBuffer++;
+   *pBuffer = m_TestsInfo[iTestIndex].iVehicleRadioLink;
+   pBuffer++;
+   memcpy(pBuffer, &(m_TestsInfo[iTestIndex].iDataRateToTest), sizeof(int));
+   pBuffer += sizeof(int);
+   memcpy(pBuffer, &(m_TestsInfo[iTestIndex].uRadioFlagsToTest), sizeof(u32));
+   pBuffer += sizeof(u32);
+   memcpy(pBuffer, &(m_TestsInfo[iTestIndex].iTxPowerMwToTest), sizeof(int));
+   pBuffer += sizeof(int);
+  
+   radio_packet_compute_crc(buffer, PH.total_length);
+   send_packet_to_router(buffer, PH.total_length);
+   m_TestsInfo[iTestIndex].uTimeLastSendToVehicle = g_TimeNow;
+   log_line("[NegociateRadioLink] Sent start test message to vehicle.");
+}
 
-   if ( m_iStep == NEGOCIATE_RADIO_STEP_DATA_RATE )
-   {
-      iParam1 = m_TestStepsInfo[m_iCurrentTestIndex].iDataRateToTest;
-      memcpy(&uParam1, &iParam1, sizeof(int));
-      uParam2 = m_TestStepsInfo[m_iCurrentTestIndex].uFlagsToTest;
-   }
+void MenuNegociateRadio::_send_end_all_tests_to_vehicle(bool bCanceled)
+{
+   send_pause_adaptive_to_router(4000);
 
-   if ( m_iStep == NEGOCIATE_RADIO_STEP_END )
-   {
-      iParam1 = m_iDataRateToApply;
-      memcpy(&uParam1, &iParam1, sizeof(int));
-      uParam2 = m_uRadioFlagsToApply;
-      log_line("[NegociateRadioLink] Sending to vehicle final video radio datarate: %d (int size: %d, u32 size: %d), radio flags: %u (%s)", m_iDataRateToApply, (int)sizeof(int), (int)sizeof(u32), uParam2, str_get_radio_frame_flags_description2(uParam2));
-   }
+   t_packet_header PH;
+   radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_NEGOCIATE_RADIO_LINKS, STREAM_ID_DATA);
+   PH.packet_flags |= PACKET_FLAGS_BIT_HIGH_PRIORITY;
+   PH.vehicle_id_src = g_uControllerId;
+   PH.vehicle_id_dest = g_pCurrentModel->uVehicleId;
+   PH.total_length = sizeof(t_packet_header) + 3*sizeof(u8);
 
-   log_line("[NegociateRadioLink] Sending packet to vehicle, step: %d, command: %d, param: %u", m_iStep, iParam1, uParam2);
-   buffer[sizeof(t_packet_header)] = uType;
-   buffer[sizeof(t_packet_header)+sizeof(u8)] = (u8)m_iStep;
-   memcpy(&(buffer[0]) + sizeof(t_packet_header) + 2*sizeof(u8), &uParam1, sizeof(u32));
-   memcpy(&(buffer[0]) + sizeof(t_packet_header) + 2*sizeof(u8) + sizeof(u32), &uParam2, sizeof(u32));
+   u8 buffer[1024];
 
+   memcpy(buffer, (u8*)&PH, sizeof(t_packet_header));
+   u8* pBuffer = &(buffer[sizeof(t_packet_header)]);
+   *pBuffer = (u8)m_iCurrentTestIndex;
+   if ( m_iCurrentTestIndex < 0 )
+      *pBuffer = 0xFF;
+   pBuffer++;
+   *pBuffer = NEGOCIATE_RADIO_END_TESTS;
+   pBuffer++;
+   *pBuffer = bCanceled?1:0;
+   pBuffer++;
+  
    radio_packet_compute_crc(buffer, PH.total_length);
    send_packet_to_router(buffer, PH.total_length);
 
-   m_uLastTimeSendCommandToVehicle = g_TimeNow;
+   if ( m_iState != NEGOCIATE_STATE_WAIT_VEHICLE_END_CONFIRMATION )
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Send end tests to vehicle -> Wait vehicle end confirmation.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+   m_iState = NEGOCIATE_STATE_WAIT_VEHICLE_END_CONFIRMATION;
+   m_uLastTimeSentVehicleOperation = g_TimeNow;
+
+   log_line("[NegociateRadioLink] Sent end all tests message to vehicle.");
 }
 
-void MenuNegociateRadio::_switch_to_step(int iStep)
+void MenuNegociateRadio::_send_revert_flags_to_vehicle()
 {
-   m_iStep = iStep;
-   log_line("[NegociateRadioLink] Switched to step %d, current test index: %d of %d+%d", m_iStep, m_iCurrentTestIndex, m_iIndexFirstRadioFlagsTest, m_iTestsCount - m_iIndexFirstRadioFlagsTest);
-   if ( m_iStep == NEGOCIATE_RADIO_STEP_END )
-   {
-      strcpy(m_szStatusMessage, L("Done. Sending message to vehicle to save parameters."));
-      _apply_new_settings(true);
-   }
-   if ( m_iStep == NEGOCIATE_RADIO_STEP_CANCEL )
-      strcpy(m_szStatusMessage, L("Canceling, please wait."));
+   log_line("[NegociateRadioLink] Send revert flags to vehicle");
+   u8 uFlagsRuntimeCapab = g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab;
+   g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab = uFlagsRuntimeCapab & (~MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED);
+   g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab &= ~MODEL_RUNTIME_RADIO_CAPAB_FLAG_DIRTY;
+   g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags &= ~MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS;
 
-   m_bWaitingVehicleConfirmation = true;
-   m_uStepStartTime = g_TimeNow;
-   _send_command_to_vehicle();
-
+   g_pCurrentModel->validateRadioSettings();
+   saveCurrentModel();
+   send_model_changed_message_to_router(MODEL_CHANGED_GENERIC, 0);
+   g_bMustNegociateRadioLinksFlag = true;
 }
 
-void MenuNegociateRadio::_advance_to_next_step()
+
+void MenuNegociateRadio::_send_apply_settings_to_vehicle()
 {
-   if ( m_iStep != NEGOCIATE_RADIO_STEP_DATA_RATE )
-      return;
+   send_pause_adaptive_to_router(6000);
 
-   if ( (m_iCountFailedSteps >= MAX_FAILING_RADIO_NEGOCIATE_STEPS) && (m_iCountSucceededSteps < MAX_FAILING_RADIO_NEGOCIATE_STEPS/2) )
-   {
-      log_softerror_and_alarm("[NegociateRadioLink] Failed 6 data steps. Aborting operation.");
-      _switch_to_step(NEGOCIATE_RADIO_STEP_CANCEL);
-      return;
-   }
+   t_packet_header PH;
+   radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_NEGOCIATE_RADIO_LINKS, STREAM_ID_DATA);
+   PH.vehicle_id_src = g_uControllerId;
+   PH.vehicle_id_dest = g_pCurrentModel->uVehicleId;
+   PH.total_length = sizeof(t_packet_header) + 3*sizeof(u8) + sizeof(u32) + 2*sizeof(int) + sizeof(type_radio_runtime_capabilities_parameters);
 
-   if ( m_iCurrentTestIndex >= (m_iTestsCount-1) )
-   {
-      _switch_to_step(NEGOCIATE_RADIO_STEP_END);
-      return;    
-   }    
+   u8 buffer[1024];
+   int iDataRates = 0;
 
-   m_iCurrentTestIndex++;
-   _compute_datarate_settings_to_apply();
-   //if ( m_TestStepsInfo[m_iCurrentTestIndex].uFlagsToTest != 0 )
-   //if ( m_TestStepsInfo[m_iCurrentTestIndex-1].uFlagsToTest == 0 )
-   if ( m_iCurrentTestIndex == m_iIndexFirstRadioFlagsTest )
-   {
-      for( int i=m_iCurrentTestIndex; i<m_iTestsCount; i++ )
-      {
-         m_TestStepsInfo[i].iDataRateToTest = m_iDataRateToApply;
-         if ( m_TestStepsInfo[i].iDataRateToTest < 0 )
-         {
-            m_TestStepsInfo[i].uFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
-            m_TestStepsInfo[i].uFlagsToTest |= RADIO_FLAGS_USE_MCS_DATARATES;
-         }
-         else
-         {
-            m_TestStepsInfo[i].uFlagsToTest &= ~(RADIO_FLAGS_USE_MCS_DATARATES);
-            m_TestStepsInfo[i].uFlagsToTest |= RADIO_FLAGS_USE_LEGACY_DATARATES;       
-         }
-      }
-      strcpy(m_szStatusMessage2, L("Testing modulation schemes parameters"));
+   memcpy(buffer, (u8*)&PH, sizeof(t_packet_header));
+   u8* pBuffer = &(buffer[sizeof(t_packet_header)]);
+   *pBuffer = 0xFF;
+   pBuffer++;
+   *pBuffer = NEGOCIATE_RADIO_APPLY_PARAMS;
+   pBuffer++;
+   *pBuffer = 0;
+   pBuffer++;
+   memcpy(pBuffer, &iDataRates, sizeof(int));
+   pBuffer += sizeof(int);
+   memcpy(pBuffer, &m_uRadioFlagsToApply, sizeof(u32));
+   pBuffer += sizeof(u32);
+   memcpy(pBuffer, &m_iTxPowerMwToApply, sizeof(int));
+   pBuffer += sizeof(int);
 
-      if ( m_iDataRateToApply > 0 )
-      {
-         m_iCurrentTestIndex = m_iTestsCount-1;
-         _switch_to_step(NEGOCIATE_RADIO_STEP_END);
-         return;
-      }
-   }
-   _switch_to_step(m_iStep);
+   memcpy(pBuffer, &m_RadioRuntimeCapabilitiesToApply, sizeof(type_radio_runtime_capabilities_parameters));
+   pBuffer += sizeof(type_radio_runtime_capabilities_parameters);
+
+   radio_packet_compute_crc(buffer, PH.total_length);
+   send_packet_to_router(buffer, PH.total_length);
+   
+   m_uLastTimeSentVehicleOperation = g_TimeNow;
+   char szRadioFlags[128];
+   str_get_radio_frame_flags_description(m_uRadioFlagsToApply, szRadioFlags);
+   log_line("[NegociateRadioLink] Sent [apply settings] message to vehicle. Datarate: %s, Radio flags: %s, Tx power: %d, %d bytes",
+      str_format_datarate_inline(0), szRadioFlags, m_iTxPowerMwToApply, PH.total_length);
 }
 
-void MenuNegociateRadio::_compute_datarate_settings_to_apply()
+void MenuNegociateRadio::_startTest(int iTestIndex)
 {
-   m_fQualityOfDataRateToApply = 0.0;
-   m_iDataRateToApply = 0;
-   m_iIndexTestDataRateToApply = -1;
+   char szTestType[64];
+   _getTestType(m_iCurrentTestIndex, szTestType);
+
+   if ( m_TestsInfo[iTestIndex].bHasSubTests )
+      log_line("[NegociateRadioLink] Starting test %d, substep %d (type: %s) (current test is %d), for radio link %d, tx power: %d, datarate: %s, radio flags: %s",
+          iTestIndex, m_TestsInfo[iTestIndex].iCurrentSubTest, szTestType, m_iCurrentTestIndex,
+          m_TestsInfo[iTestIndex].iVehicleRadioLink+1,
+          m_TestsInfo[iTestIndex].iTxPowerMwToTest,
+          str_format_datarate_inline(m_TestsInfo[iTestIndex].iDataRateToTest),
+          str_get_radio_frame_flags_description2(m_TestsInfo[iTestIndex].uRadioFlagsToTest) );
+   else
+      log_line("[NegociateRadioLink] Starting test %d (type: %s) (current test is %d), for radio link %d, tx power: %d, datarate: %s, radio flags: %s",
+          iTestIndex, szTestType, m_iCurrentTestIndex,
+          m_TestsInfo[iTestIndex].iVehicleRadioLink+1,
+          m_TestsInfo[iTestIndex].iTxPowerMwToTest,
+          str_format_datarate_inline(m_TestsInfo[iTestIndex].iDataRateToTest),
+          str_get_radio_frame_flags_description2(m_TestsInfo[iTestIndex].uRadioFlagsToTest) );
+   
+   m_iCurrentTestIndex = iTestIndex;
+   m_TestsInfo[m_iCurrentTestIndex].uTimeStarted = g_TimeNow;
+
+   m_iState = NEGOCIATE_STATE_TEST_RUNNING_WAIT_VEHICLE_START_TEST_CONFIRMATION;
+   send_pause_adaptive_to_router(6000);
+   _send_start_test_to_vehicle(m_iCurrentTestIndex);
+}
+
+void MenuNegociateRadio::_endCurrentTest()
+{
+   if ( 0 != m_TestsInfo[m_iCurrentTestIndex].uTimeLastConfirmationFromVehicle )
+      _storeCurrentTestData();
+
    _computeQualities();
 
-   int iTest6 = -1, iTest12 = -1, iTest18 = -1, iTest24 = -1, iTest48 = -1, iTestMCS0 = -1, iTestMCS1 = -1, iTestMCS2 = -1, iTestMCS3 = -1, iTestMCS4 = -1;
-   float fQuality6 = _getComputedQualityForDatarate(6000000, &iTest6);
-   float fQuality12 = _getComputedQualityForDatarate(12000000, &iTest12);
-   float fQuality18 = _getComputedQualityForDatarate(18000000, &iTest18);
-   float fQuality24 = _getComputedQualityForDatarate(24000000, &iTest24);
-   float fQuality48 = _getComputedQualityForDatarate(48000000, &iTest48);
-   float fQualityMCS0 = _getComputedQualityForDatarate(-1, &iTestMCS0);
-   float fQualityMCS1 = _getComputedQualityForDatarate(-2, &iTestMCS1);
-   float fQualityMCS2 = _getComputedQualityForDatarate(-3, &iTestMCS2);
-   float fQualityMCS3 = _getComputedQualityForDatarate(-4, &iTestMCS3);
-   float fQualityMCS4 = _getComputedQualityForDatarate(-5, &iTestMCS4);
+   m_TestsInfo[m_iCurrentTestIndex].uTimeEnded = g_TimeNow;
+   m_TestsInfo[m_iCurrentTestIndex].bReceivedEnoughData = false;
+
+   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      if ( !hardware_radio_index_is_wifi_radio(i) )
+         continue;
+      if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != m_TestsInfo[m_iCurrentTestIndex].iVehicleRadioLink )
+         continue;
+
+      if ( m_TestsInfo[m_iCurrentTestIndex].iRadioInterfacesRXPackets[i] > 40 )
+         m_TestsInfo[m_iCurrentTestIndex].bReceivedEnoughData = true;
+   }
+
+   if ( (m_TestsInfo[m_iCurrentTestIndex].uTimeLastConfirmationFromVehicle == 0) || (! m_TestsInfo[m_iCurrentTestIndex].bReceivedEnoughData) )
+      m_TestsInfo[m_iCurrentTestIndex].bSucceeded = false;
+   else
+      m_TestsInfo[m_iCurrentTestIndex].bSucceeded = true;
+
+   if ( m_TestsInfo[m_iCurrentTestIndex].fComputedQualityMin < TEST_DATARATE_QUALITY_THRESHOLD )
+      m_TestsInfo[m_iCurrentTestIndex].bSucceeded = false;
+
+   if ( m_TestsInfo[m_iCurrentTestIndex].bSucceeded )
+      m_iCountSucceededTests++;
+   else
+   {
+      m_iCountFailedTests++;
+      if ( m_iCurrentTestIndex < m_iIndexFirstRadioFlagsTest )
+      {
+         if ( (m_TestsInfo[m_iCurrentTestIndex].iDataRateToTest < 0) && (m_TestsInfo[m_iCurrentTestIndex].iDataRateToTest >= -3) )
+            m_iCountFailedTestsDatarates++;
+         if ( (m_TestsInfo[m_iCurrentTestIndex].iDataRateToTest > 0) && (m_TestsInfo[m_iCurrentTestIndex].iDataRateToTest <= getTestDataRatesLegacy()[2]) )
+            m_iCountFailedTestsDatarates++;
+      }
+   }
+
+   _logTestData(m_iCurrentTestIndex);
+
+   m_iState = NEGOCIATE_STATE_TEST_ENDED;
+   log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (E)* -> Test ended.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+
+
+   // Failed too many tests? Cancel the negociation.
+   if ( m_iCurrentTestIndex < m_iIndexFirstRadioFlagsTest )
+   if ( (m_iCountFailedTestsDatarates >= MAX_FAILING_RADIO_NEGOCIATE_STEPS) && (m_iCountSucceededTests < MAX_FAILING_RADIO_NEGOCIATE_STEPS/2) )
+   {
+      log_softerror_and_alarm("[NegociateRadioLink] Failed 6 tests. Aborting operation.");
+      log_line("[NegociateRadioLink] Cancel negociate radio with %d failing steps.", MAX_FAILING_RADIO_NEGOCIATE_STEPS);
+      addMessage2(0, L("Failed to negociate radio links."), L("You radio links quality is very poor. Please fix the physical radio links quality and try again later."));
+      m_iUserState = NEGOCIATE_USER_STATE_WAIT_FAILED_CONFIRMATION;
+      m_iState = NEGOCIATE_STATE_END_TESTS;
+      m_bFailed = true;
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (E)* -> End all tests.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      return;
+   }
+
+   // Mark to skip remaining datarate tests if this failed
+   if ( ! m_TestsInfo[m_iCurrentTestIndex].bSucceeded )
+   if ( m_iCurrentTestIndex < m_iIndexFirstRadioFlagsTest )
+   if ( m_iCurrentTestIndex % 2 )
+   {
+      log_line("[NegociateRadioLink] Datarate %d test %d failed. Skip remaining datarates tests.", m_TestsInfo[m_iCurrentTestIndex].iDataRateToTest, m_iCurrentTestIndex);
+      if ( m_iCurrentTestIndex <= m_iIndexLastDatarateLegacyTest )
+      {
+         for( int i=m_iCurrentTestIndex+1; i<=m_iIndexLastDatarateLegacyTest; i++ )
+            m_TestsInfo[i].bSkipTest = true;
+      }
+      else if ( m_iCurrentTestIndex <= m_iIndexLastDatarateMCSTest )
+      {
+         for( int i=m_iCurrentTestIndex+1; i<=m_iIndexLastDatarateMCSTest; i++ )
+            m_TestsInfo[i].bSkipTest = true;
+      }
+   }
+}
+
+void MenuNegociateRadio::_currentTestUpdateWhenRunning()
+{
+   if ( m_TestsInfo[m_iCurrentTestIndex].uTimeLastConfirmationFromVehicle != 0 )
+   {
+      _storeCurrentTestData();
+      _computeQualities();
+   }
+
+   if ( ! m_TestsInfo[m_iCurrentTestIndex].bHasSubTests )
+   {
+      if ( g_TimeNow > m_TestsInfo[m_iCurrentTestIndex].uTimeStarted + m_TestsInfo[m_iCurrentTestIndex].uDurationToTest/2 )
+      if ( m_TestsInfo[m_iCurrentTestIndex].uDurationToTest <= SINGLE_TEST_DURATION )
+      if ( m_TestsInfo[m_iCurrentTestIndex].fComputedQualityMax < 0.5 )
+      {
+          m_TestsInfo[m_iCurrentTestIndex].uDurationToTest += SINGLE_TEST_DURATION;
+          log_line("[NegociateRadioLink] Increase duration of current test %d to %u ms as the quality is too small: %.2f", m_iCurrentTestIndex, m_TestsInfo[m_iCurrentTestIndex].uDurationToTest, m_TestsInfo[m_iCurrentTestIndex].fComputedQualityMax);
+      }
+      if ( g_TimeNow > m_TestsInfo[m_iCurrentTestIndex].uTimeStarted + m_TestsInfo[m_iCurrentTestIndex].uDurationToTest )
+      {
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Test running -> End test.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+         _endCurrentTest();
+      }
+      return;
+   }
+
+   // Multistep test
+
+   if ( g_TimeNow > m_TestsInfo[m_iCurrentTestIndex].uTimeStarted + m_TestsInfo[m_iCurrentTestIndex].uDurationSubTest )
+   if ( m_iCurrentTestIndex >= m_iIndexFirstRadioPowersTest )
+   {
+      if ( m_TestsInfo[m_iCurrentTestIndex].uTimeLastConfirmationFromVehicle != 0 )
+      {
+         _storeCurrentTestData();
+         _computeQualities();
+      }
+      if ( m_TestsInfo[m_iCurrentTestIndex].fComputedQualityMin >= TEST_DATARATE_QUALITY_THRESHOLD )
+      {
+         m_TestsInfo[m_iCurrentTestIndex].iTxPowerLastGood = m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest;
+         m_TestsInfo[m_iCurrentTestIndex].bSucceeded = true;
+         log_line("[NegociateRadioLink] Power test %d/%d substep %d: set last good tx power to: %d mW", m_iCurrentTestIndex, m_iTestsCount-1, m_TestsInfo[m_iCurrentTestIndex].iCurrentSubTest, m_TestsInfo[m_iCurrentTestIndex].iTxPowerLastGood);
+      }
+      else
+         log_line("[NegociateRadioLink] Power test %d/%d substep %d: failed to measure new good power.", m_iCurrentTestIndex, m_iTestsCount-1, m_TestsInfo[m_iCurrentTestIndex].iCurrentSubTest);
+
+      int iRadioInterfacelModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[0];
+      if ( iRadioInterfacelModel < 0 )
+         iRadioInterfacelModel = -iRadioInterfacelModel;
+      int iRadioInterfacePowerMaxMw = tx_powers_get_max_usable_power_mw_for_card(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel);
+
+      log_line("[NegociateRadioLink] Power test %d/%d substep %d: finished substep: min/max/mid tx power: %d / %d / %d mW. Succeeded? %s, last good tx power for test: %d mW, max radio link power: %d mW",
+         m_iCurrentTestIndex, m_iTestsCount-1, m_TestsInfo[m_iCurrentTestIndex].iCurrentSubTest,
+         m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMin,
+         m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax,
+         m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest,
+         m_TestsInfo[m_iCurrentTestIndex].bSucceeded?"yes":"no",
+         m_TestsInfo[m_iCurrentTestIndex].iTxPowerLastGood,
+         iRadioInterfacePowerMaxMw );
+
+      bool bFinishTest = false;
+      if ( (m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest - m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMin) < ((float)iRadioInterfacePowerMaxMw)*0.08 )
+         bFinishTest = true;
+      if ( (m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax - m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest) < ((float)iRadioInterfacePowerMaxMw)*0.05 )
+         bFinishTest = true;
+
+      if ( bFinishTest )
+      {
+         m_TestsInfo[m_iCurrentTestIndex].bSucceeded = false;
+         if ( m_TestsInfo[m_iCurrentTestIndex].iTxPowerLastGood > 0 )
+            m_TestsInfo[m_iCurrentTestIndex].bSucceeded = true;
+         m_TestsInfo[m_iCurrentTestIndex].uDurationToTest = 1;
+         
+         log_line("[NegociateRadioLink] Power test %d/%d substep %d: ended, succeeded: %s, good tx power: %d mw. End test & proceed to next test",
+            m_iCurrentTestIndex, m_iTestsCount-1, m_TestsInfo[m_iCurrentTestIndex].iCurrentSubTest,
+            m_TestsInfo[m_iCurrentTestIndex].bSucceeded?"yes":"no", m_TestsInfo[m_iCurrentTestIndex].iTxPowerLastGood);
+
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (P) Multistep Test running -> End test.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+         _endCurrentTest();
+      }
+      else
+      {
+         log_line("[NegociateRadioLink] Power test %d/%d substep %d: adjust testing power range.", m_iCurrentTestIndex, m_iTestsCount-1, m_TestsInfo[m_iCurrentTestIndex].iCurrentSubTest);
+         if ( m_TestsInfo[m_iCurrentTestIndex].bSucceeded )
+         {
+            m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMin = m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest;
+            if ( (fabs(m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMin - m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax) < ((float)iRadioInterfacePowerMaxMw)*0.08) ||
+                 (m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax - m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest) <= 5 )
+               m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMin = m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax;
+         }
+         else
+            m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax = m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest;
+
+         m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest = (m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax + m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMin) / 2;
+         if ( m_TestsInfo[m_iCurrentTestIndex].bSucceeded )
+         if ( m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest < m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax )
+            m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest++;
+
+         log_line("[NegociateRadioLink] Power test %d/%d subset %d: start new subtest: min/max/mid tx power: %d / %d / %d mW. Last good tx power for test: %d mW, max radio link power: %d mW",
+            m_iCurrentTestIndex, m_iTestsCount-1,
+            m_TestsInfo[m_iCurrentTestIndex].iCurrentSubTest,
+            m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMin,
+            m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTestMax,
+            m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest,
+            m_TestsInfo[m_iCurrentTestIndex].iTxPowerLastGood,
+            iRadioInterfacePowerMaxMw);
+
+         m_TestsInfo[m_iCurrentTestIndex].uTimeLastConfirmationFromVehicle = 0;
+         m_TestsInfo[m_iCurrentTestIndex].uTimeLastSendToVehicle = 0;
+         m_TestsInfo[m_iCurrentTestIndex].uTimeEnded = 0;
+         m_TestsInfo[m_iCurrentTestIndex].uDurationSubTest = SINGLE_TEST_DURATION*1.5;
+         for(int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+         {
+            m_TestsInfo[m_iCurrentTestIndex].iRadioInterfacesRXPackets[i] = 0;
+            m_TestsInfo[m_iCurrentTestIndex].iRadioInterfacesRxLostPackets[i] = 0;
+            m_TestsInfo[m_iCurrentTestIndex].fQualityCards[i] = 0.0;
+         }
+         m_TestsInfo[m_iCurrentTestIndex].fComputedQualityMin = -1.0;
+         m_TestsInfo[m_iCurrentTestIndex].fComputedQualityMax = -1.0;
+
+         m_TestsInfo[m_iCurrentTestIndex].iCurrentSubTest++;
+         m_iState = NEGOCIATE_STATE_START_TEST;
+         log_line("[NegociateRadioLink] Multistep test %d/%d increase substep to: %d", m_iCurrentTestIndex, m_iTestsCount-1, m_TestsInfo[m_iCurrentTestIndex].iCurrentSubTest);
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (Multi step test running) -> Start test.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      }
+   }   
+}
+
+void MenuNegociateRadio::_advance_to_next_test()
+{
+   log_line("[NegociateRadioLink] Advancing to next test (current test: %d (%s))...", m_iCurrentTestIndex, _getTestType(m_iCurrentTestIndex));
+
+   m_iCurrentTestIndex++;
+
+   // Finished all tests? Apply changes
+
+   if ( m_iCurrentTestIndex >= m_iTestsCount )
+   {
+      _onFinishedTests();
+      return;
+   }
+
+   if ( m_iCurrentTestIndex > m_iIndexFirstRadioPowersTest + 2 )
+   if ( m_TestsInfo[m_iCurrentTestIndex-1].bSucceeded )
+   if ( m_TestsInfo[m_iCurrentTestIndex-1].iTxPowerLastGood > 0 )
+      m_TestsInfo[m_iCurrentTestIndex].iTxPowerMwToTest = m_TestsInfo[m_iCurrentTestIndex-1].iTxPowerLastGood * 0.7;
+
+   // Switched to radio flags tests?
+   // Update radio flags tests
+   if ( m_iCurrentTestIndex == m_iIndexFirstRadioFlagsTest )
+   {
+      int iMaxMCSDatarate = m_RadioRuntimeCapabilitiesToApply.iMaxSupportedMCSDataRate;
+      if ( iMaxMCSDatarate == 0 )
+      {
+         log_line("[NegociateRadioLink] MCS datarate tests failed. Skip testing MCS flags.");
+         for( int i=m_iIndexFirstRadioFlagsTest; i<m_iIndexFirstRadioPowersTest; i++ )
+               m_TestsInfo[i].bSkipTest = true;
+      }
+      else
+      {
+         if ( iMaxMCSDatarate < -3 )
+            iMaxMCSDatarate++;
+         log_line("[NegociateRadioLink] Updated tests MCS flags: use %d datarate for them.", iMaxMCSDatarate);
+         for( int i=m_iIndexFirstRadioFlagsTest; i<m_iIndexFirstRadioPowersTest; i++ )
+         {
+            m_TestsInfo[i].iDataRateToTest = iMaxMCSDatarate;
+            m_TestsInfo[i].uRadioFlagsToTest &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
+            m_TestsInfo[i].uRadioFlagsToTest |= RADIO_FLAGS_USE_MCS_DATARATES;
+         }
+         strcpy(m_szStatusMessage2, L("Testing radio modulation schemes"));
+         log_line("[NegociateRadioLink] Switching to test MCS flags tests.");
+      }
+   }
+
+   // Switched to tx powers tests?
+   // Update which tx power tests to run
+   if ( m_iCurrentTestIndex == m_iIndexFirstRadioPowersTest )
+   {
+      strcpy(m_szStatusMessage2, L("Testing radio powers"));
+      log_line("[NegociateRadioLink] Switching to tx powers tests.");
+
+      for( int i=0; i<getTestDataRatesCountLegacy(); i++ )
+      {
+         if ( m_RadioRuntimeCapabilitiesToApply.fQualitiesLegacy[0][i] < TEST_DATARATE_QUALITY_THRESHOLD )
+            m_TestsInfo[m_iIndexFirstRadioPowersTest + i].bSkipTest = true;
+      }
+      for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+      {
+         if ( m_RadioRuntimeCapabilitiesToApply.fQualitiesMCS[0][i] < TEST_DATARATE_QUALITY_THRESHOLD )
+            m_TestsInfo[m_iIndexFirstRadioPowersTest + getTestDataRatesCountLegacy() + i].bSkipTest = true;
+      }
+   }
+
+   // Skip test?
+   if ( m_TestsInfo[m_iCurrentTestIndex].bSkipTest )
+   {
+      log_line("[NegociateRadioLink] Test %d is marked as to be skipped. Skip it.", m_iCurrentTestIndex);
+      m_TestsInfo[m_iCurrentTestIndex].bSucceeded = true;
+      m_TestsInfo[m_iCurrentTestIndex].bReceivedEnoughData = true;
+      m_TestsInfo[m_iCurrentTestIndex].uTimeStarted = g_TimeNow;
+      m_TestsInfo[m_iCurrentTestIndex].uTimeEnded = g_TimeNow;
+      _advance_to_next_test();
+      return;
+   }
+
+   m_iState = NEGOCIATE_STATE_START_TEST;
+   log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (A)* -> Start test.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+}
+
+void MenuNegociateRadio::_save_new_settings_to_model()
+{
+   log_line("[NegociateRadioLink] Save new settings and flags to model. Updated settings? %s", m_bUpdated?"yes":"no");
+   u8 uFlagsRuntimeCapab = g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab;
+
+   if ( m_bUpdated )
+   {
+      // Apply new settings
+      g_pCurrentModel->radioLinksParams.link_radio_flags[0] = m_uRadioFlagsToApply;
+      memcpy(&g_pCurrentModel->radioRuntimeCapabilities, &m_RadioRuntimeCapabilitiesToApply, sizeof(type_radio_runtime_capabilities_parameters));
+   }
+   g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab = uFlagsRuntimeCapab | MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED;
+   g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab &= ~MODEL_RUNTIME_RADIO_CAPAB_FLAG_DIRTY;
+   g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags |= MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS;
+
+   g_pCurrentModel->validateRadioSettings();
+   saveCurrentModel();
+   send_model_changed_message_to_router(MODEL_CHANGED_GENERIC, 0);
+   g_bMustNegociateRadioLinksFlag = false;
+}
+
+void MenuNegociateRadio::_onFinishedTests()
+{
+   log_line("[NegociateRadioLink] Finished running all tests.");
+   m_bUpdated = _compute_settings_to_apply();
+   m_iCurrentTestIndex = -1;
+   if ( ! m_bUpdated )
+   {
+      log_line("[NegociateRadioLink] No updates where done to radio datarates or radio flags or radio qualities." );
+      m_iState = NEGOCIATE_STATE_END_TESTS;
+      m_iUserState = NEGOCIATE_USER_STATE_WAIT_FINISH_CONFIRMATION;
+      addMessage2(0, L("Finished optimizing radio links."), L("No changes were done."));
+      warnings_add(g_pCurrentModel->uVehicleId, L("Finished optimizing radio links."), g_idIconRadio);
+
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (A)* -> End all tests.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      return;
+   }
+
+   if ( ! m_bCanceled )
+      _save_new_settings_to_model();
+
+   // Check for new constrains on video bitrate based on new current supported datarates;
+
+   u32 uMaxVideoBitrate = g_pCurrentModel->getMaxVideoBitrateSupportedForCurrentRadioLinks();
+   log_line("[NegociateRadioLink] Max supported video bitrate: %u bps for max supported datarates: legacy: %d, MCS: MCS-%d, DR boost: %d",
+      uMaxVideoBitrate, g_pCurrentModel->radioRuntimeCapabilities.iMaxSupportedLegacyDataRate, -g_pCurrentModel->radioRuntimeCapabilities.iMaxSupportedMCSDataRate-1, ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileFlags & VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK) >> VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT));
+   log_line("[NegociateRadioLink] Current video profile video bitrate: %u bps", g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps);
+
+   bool bUpdatedVideoBitrate = false;
+   u32 uVideoBitrateToSet = 0;
+
+   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+   {
+      if ( 0 == g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps )
+         continue;
+      log_line("[NegociateRadioLink] Video profile %s video bitrate: %u bps", str_get_video_profile_name(i), g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps);
+      if ( g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps > uMaxVideoBitrate )
+      {
+         log_line("[NegociateRadioLink] Must decrease video bitrate (%.2f Mbps) for video profile %s to max allowed on current links: %.2f Mbps",
+            (float)g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps/1000.0/1000.0,
+            str_get_video_profile_name(i),
+            (float)uMaxVideoBitrate/1000.0/1000.0);
+         uVideoBitrateToSet = uMaxVideoBitrate;
+         bUpdatedVideoBitrate = true;
+      }
+
+      if ( ((g_pCurrentModel->hwCapabilities.uBoardType & BOARD_TYPE_MASK) != BOARD_TYPE_OPENIPC_GOKE200) && ((g_pCurrentModel->hwCapabilities.uBoardType & BOARD_TYPE_MASK) != BOARD_TYPE_OPENIPC_GOKE210) &&
+           ((g_pCurrentModel->hwCapabilities.uBoardType & BOARD_TYPE_MASK) != BOARD_TYPE_PIZERO) && ((g_pCurrentModel->hwCapabilities.uBoardType & BOARD_TYPE_MASK) != BOARD_TYPE_PIZEROW) && ((g_pCurrentModel->hwCapabilities.uBoardType & BOARD_TYPE_MASK) != BOARD_TYPE_NONE) )
+      if ( (g_pCurrentModel->radioRuntimeCapabilities.iMaxSupportedMCSDataRate < -4) &&
+           (g_pCurrentModel->radioRuntimeCapabilities.iMaxSupportedLegacyDataRate > 36000000) &&
+           (g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps < 9000000 ) )
+      {
+         log_line("[NegociateRadioLink] Must increase video bitrate (%.2f Mbps) for video profile %s as radio supports higher datarates.",
+            (float)g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps/1000.0/1000.0,
+            str_get_video_profile_name(i));
+         uVideoBitrateToSet = 9000000;
+         bUpdatedVideoBitrate = true;
+      }
+   }
+   if ( bUpdatedVideoBitrate && (0 != uVideoBitrateToSet) )
+   {
+      memcpy(&m_VideoParamsToApply, &g_pCurrentModel->video_params, sizeof(video_parameters_t));
+      memcpy(&(m_VideoProfilesToApply[0]), &(g_pCurrentModel->video_link_profiles[0]), MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
+
+      for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+      {
+         if ( 0 != m_VideoProfilesToApply[i].bitrate_fixed_bps )
+            m_VideoProfilesToApply[i].bitrate_fixed_bps = uVideoBitrateToSet;
+      }
+      m_iUserState = NEGOCIATE_USER_STATE_WAIT_VIDEO_CONFIRMATION;
+      m_iState = NEGOCIATE_STATE_SET_VIDEO_SETTINGS;
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (F) -> Set video settings", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+
+      addMessage2(0, L("Video bitrate updated"), L("Your video bitrate was updated to match the currently supported radio links."));
+
+      /*
+      m_uTimeStartedVehicleOperation = g_TimeNow;
+      m_uLastTimeSentVehicleOperation = g_TimeNow;
+      if ( handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMETERS, 0, (u8*)&m_VideoParamsToApply, sizeof(video_parameters_t), (u8*)&m_VideoProfilesToApply, MAX_VIDEO_LINK_PROFILES * sizeof(type_video_link_profile)) )
+      {
+         m_iState = NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_VIDEO_SETTINGS_CONFIRMATION;
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (F) -> Wait set video settings ack.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      }
+      else
+      {
+         m_iState = NEGOCIATE_STATE_SET_VIDEO_SETTINGS;
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (F) -> Set video settings", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      }
+      */
+      return;
+   }
+
+   m_iState = NEGOCIATE_STATE_SET_RADIO_SETTINGS;
+   m_uTimeStartedVehicleOperation = 0;
+   m_uLastTimeSentVehicleOperation = 0;
+   log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (F) -> Set radio settings.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+}
+
+void MenuNegociateRadio::_computeQualities()
+{
+   m_RadioRuntimeCapabilitiesToApply.iMaxSupportedLegacyDataRate = 0;
+   m_RadioRuntimeCapabilitiesToApply.iMaxSupportedMCSDataRate = 0;
+
+   for( int iTest=0; iTest<=m_iCurrentTestIndex; iTest++ )
+   {
+      m_TestsInfo[iTest].fComputedQualityMax = -1.0;
+      m_TestsInfo[iTest].fComputedQualityMin = -1.0;
+      if ( m_TestsInfo[iTest].bSkipTest )
+         continue;
+      for( int iInt=0; iInt<hardware_get_radio_interfaces_count(); iInt++ )
+      {
+         if ( !hardware_radio_index_is_wifi_radio(iInt) )
+            continue;
+         if ( g_SM_RadioStats.radio_interfaces[iInt].assignedVehicleRadioLinkId != m_TestsInfo[iTest].iVehicleRadioLink )
+            continue;
+         m_TestsInfo[iTest].fQualityCards[iInt] = 0.1;
+         if ( m_TestsInfo[iTest].iRadioInterfacesRXPackets[iInt] + m_TestsInfo[iTest].iRadioInterfacesRxLostPackets[iInt] > 50 )
+         {
+            m_TestsInfo[iTest].fQualityCards[iInt]= (float)m_TestsInfo[iTest].iRadioInterfacesRXPackets[iInt]/((float)m_TestsInfo[iTest].iRadioInterfacesRXPackets[iInt] + (float)m_TestsInfo[iTest].iRadioInterfacesRxLostPackets[iInt]);
+            if ( (m_TestsInfo[iTest].fComputedQualityMax < 0.0) || (m_TestsInfo[iTest].fQualityCards[iInt] > m_TestsInfo[iTest].fComputedQualityMax) )
+              m_TestsInfo[iTest].fComputedQualityMax = m_TestsInfo[iTest].fQualityCards[iInt];
+            if ( (m_TestsInfo[iTest].fComputedQualityMin < 0.0) || (m_TestsInfo[iTest].fQualityCards[iInt] < m_TestsInfo[iTest].fComputedQualityMin) )
+              m_TestsInfo[iTest].fComputedQualityMin = m_TestsInfo[iTest].fQualityCards[iInt];
+         }
+         else if ( m_TestsInfo[iTest].iRadioInterfacesRXPackets[iInt] > 0 )
+             m_TestsInfo[iTest].fComputedQualityMin = 0.1;
+         else
+             m_TestsInfo[iTest].fComputedQualityMin = 0.1;
+      }
+
+      // To remove
+      /*
+      if ( iTest > m_iIndexFirstDatarateLegacyTest+5 )
+      if ( iTest <= m_iIndexLastDatarateLegacyTest )
+      {
+         m_TestsInfo[iTest].fComputedQualityMin = 0.1;
+         m_TestsInfo[iTest].fComputedQualityMax = 0.1;
+      }
+      if ( iTest > m_iIndexFirstDatarateMCSTest+5 )
+      if ( iTest <= m_iIndexLastDatarateMCSTest )
+      {
+         m_TestsInfo[iTest].fComputedQualityMin = 0.1;
+         m_TestsInfo[iTest].fComputedQualityMax = 0.1;
+      }
+      */
+
+      if ( iTest < m_iIndexFirstRadioFlagsTest )
+      if ( m_TestsInfo[iTest].fComputedQualityMin >= TEST_DATARATE_QUALITY_THRESHOLD )
+      {
+         if ( m_TestsInfo[iTest].iDataRateToTest > 0 )
+         if ( m_TestsInfo[iTest].iDataRateToTest > m_RadioRuntimeCapabilitiesToApply.iMaxSupportedLegacyDataRate )
+            m_RadioRuntimeCapabilitiesToApply.iMaxSupportedLegacyDataRate = m_TestsInfo[iTest].iDataRateToTest;
+         if ( m_TestsInfo[iTest].iDataRateToTest < 0 )
+         if ( m_TestsInfo[iTest].iDataRateToTest < m_RadioRuntimeCapabilitiesToApply.iMaxSupportedMCSDataRate )
+            m_RadioRuntimeCapabilitiesToApply.iMaxSupportedMCSDataRate = m_TestsInfo[iTest].iDataRateToTest;
+      }
+   }
+
+   //------------------------------------------------
+   // Store radio data rates
+   int iIndex = 0;
+   if ( ! m_bSkipRateTests )
+   {
+      iIndex = 0;
+      for( int i=0; i<getTestDataRatesCountLegacy(); i++ )
+      {
+         int iDataRate = getTestDataRatesLegacy()[i];
+         int iTest = 0;
+         float fQuality = _getMaxComputedQualityForDatarate(iDataRate, &iTest);
+         m_RadioRuntimeCapabilitiesToApply.fQualitiesLegacy[0][iIndex] = fQuality;
+         iIndex++;
+      }
+
+      iIndex = 0;
+      for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+      {
+         int iDataRate = getTestDataRatesMCS()[i];
+         int iTest = 0;
+         float fQuality = _getMaxComputedQualityForDatarate(iDataRate, &iTest);
+         m_RadioRuntimeCapabilitiesToApply.fQualitiesMCS[0][iIndex] = fQuality;
+         iIndex++;
+      }
+   }
+
+   //----------------------------------------
+   // Store tx powers
+   
+   iIndex = m_iIndexFirstRadioPowersTest;
+   for( int i=0; i<getTestDataRatesCountLegacy(); i++ )
+   {
+      int iPower = -1;
+      if ( ! m_TestsInfo[iIndex].bSkipTest )
+      if ( m_TestsInfo[iIndex].bSucceeded )
+         iPower = m_TestsInfo[iIndex].iTxPowerLastGood;
+
+      m_RadioRuntimeCapabilitiesToApply.iMaxTxPowerMwLegacy[0][i] = iPower;
+      iIndex++;
+   }
+
+   iIndex = m_iIndexFirstRadioPowersTest + getTestDataRatesCountLegacy();
+   for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+   {
+      int iPower = -1;
+      if ( ! m_TestsInfo[iIndex].bSkipTest )
+      if ( m_TestsInfo[iIndex].bSucceeded )
+         iPower = m_TestsInfo[iIndex].iTxPowerLastGood;
+
+      m_RadioRuntimeCapabilitiesToApply.iMaxTxPowerMwMCS[0][i] = iPower;
+      iIndex++;
+   }
+}
+
+// Returns true if settings to apply are different than model
+bool MenuNegociateRadio::_compute_settings_to_apply()
+{
+   _computeQualities();
+
+   m_RadioRuntimeCapabilitiesToApply.uFlagsRuntimeCapab = g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab;
+
+   int iTest6 = -1, iTest12 = -1, iTest18 = -1, iTestMCS0 = -1, iTestMCS1 = -1, iTestMCS2 = -1;
+   float fQualityMax6 = _getMaxComputedQualityForDatarate(6000000, &iTest6);
+   float fQualityMax12 = _getMaxComputedQualityForDatarate(12000000, &iTest12);
+   float fQualityMax18 = _getMaxComputedQualityForDatarate(18000000, &iTest18);
+   float fQualityMaxMCS0 = _getMaxComputedQualityForDatarate(-1, &iTestMCS0);
+   float fQualityMaxMCS1 = _getMaxComputedQualityForDatarate(-2, &iTestMCS1);
+   float fQualityMaxMCS2 = _getMaxComputedQualityForDatarate(-3, &iTestMCS2);
    
    float fQualityMin6 = _getMinComputedQualityForDatarate(6000000, &iTest6);
    float fQualityMin12 = _getMinComputedQualityForDatarate(12000000, &iTest12);
    float fQualityMin18 = _getMinComputedQualityForDatarate(18000000, &iTest18);
-   float fQualityMin24 = _getMinComputedQualityForDatarate(24000000, &iTest24);
-   float fQualityMin48 = _getMinComputedQualityForDatarate(48000000, &iTest48);
    float fQualityMinMCS0 = _getMinComputedQualityForDatarate(-1, &iTestMCS0);
    float fQualityMinMCS1 = _getMinComputedQualityForDatarate(-2, &iTestMCS1);
    float fQualityMinMCS2 = _getMinComputedQualityForDatarate(-3, &iTestMCS2);
-   float fQualityMinMCS3 = _getMinComputedQualityForDatarate(-4, &iTestMCS3);
-   float fQualityMinMCS4 = _getMinComputedQualityForDatarate(-5, &iTestMCS4);
 
-   /*
-   if ( fQualityMCS4 > 0.99 )
+   float fQualMinMCS = 1.0;
+   float fQualMinLegacy = 1.0;
+   float fQualMaxMCS = 0.0;
+   float fQualMaxLegacy = 0.0;
+
+   if ( m_TestsInfo[iTestMCS0].bSucceeded )
+   if ( fQualityMinMCS0 < fQualMinMCS )
+      fQualMinMCS = fQualityMinMCS0;
+   if ( m_TestsInfo[iTestMCS1].bSucceeded )
+   if ( fQualityMinMCS1 < fQualMinMCS )
+      fQualMinMCS = fQualityMinMCS1;
+   if ( m_TestsInfo[iTestMCS2].bSucceeded )
+   if ( fQualityMinMCS2 < fQualMinMCS )
+      fQualMinMCS = fQualityMinMCS2;
+
+   if ( m_TestsInfo[iTest6].bSucceeded )
+   if ( fQualityMin6 < fQualMinLegacy )
+      fQualMinLegacy = fQualityMin6;
+   if ( m_TestsInfo[iTest12].bSucceeded )
+   if ( fQualityMin12 < fQualMinLegacy )
+      fQualMinLegacy = fQualityMin12;
+   if ( m_TestsInfo[iTest18].bSucceeded )
+   if ( fQualityMin18 < fQualMinLegacy )
+      fQualMinLegacy = fQualityMin18;
+   
+
+   if ( m_TestsInfo[iTestMCS0].bSucceeded )
+   if ( fQualityMaxMCS0 > fQualMaxMCS )
+      fQualMaxMCS = fQualityMaxMCS0;
+   if ( m_TestsInfo[iTestMCS1].bSucceeded )
+   if ( fQualityMaxMCS1 > fQualMaxMCS )
+      fQualMaxMCS = fQualityMaxMCS1;
+   if ( m_TestsInfo[iTestMCS2].bSucceeded )
+   if ( fQualityMaxMCS2 > fQualMaxMCS )
+      fQualMaxMCS = fQualityMaxMCS2;
+
+   if ( m_TestsInfo[iTest6].bSucceeded )
+   if ( fQualityMax6 > fQualMaxLegacy )
+      fQualMaxLegacy = fQualityMax6;
+   if ( m_TestsInfo[iTest12].bSucceeded )
+   if ( fQualityMax12 > fQualMaxLegacy )
+      fQualMaxLegacy = fQualityMin12;
+   if ( m_TestsInfo[iTest18].bSucceeded )
+   if ( fQualityMax18 > fQualMaxLegacy )
+      fQualMaxLegacy = fQualityMax18;
+
+   float fQualitySTBCMin = 1.0;
+   if ( m_TestsInfo[m_iTestIndexSTBCV].fComputedQualityMin < fQualitySTBCMin )
+      fQualitySTBCMin = m_TestsInfo[m_iTestIndexSTBCV].fComputedQualityMin;
+   if ( m_TestsInfo[m_iTestIndexSTBCV+1].fComputedQualityMin < fQualitySTBCMin )
+      fQualitySTBCMin = m_TestsInfo[m_iTestIndexSTBCV+1].fComputedQualityMin;        
+
+   float fQualitySTBCMax = 0.0;
+   if ( m_TestsInfo[m_iTestIndexSTBCV].fComputedQualityMax > fQualitySTBCMax )
+      fQualitySTBCMax = m_TestsInfo[m_iTestIndexSTBCV].fComputedQualityMax;
+   if ( m_TestsInfo[m_iTestIndexSTBCV+1].fComputedQualityMax > fQualitySTBCMax )
+      fQualitySTBCMax = m_TestsInfo[m_iTestIndexSTBCV+1].fComputedQualityMax;
+
+   float fQualitySTBCLDPCMin = 1.0;
+   if ( m_TestsInfo[m_iTestIndexSTBCLDPCV].fComputedQualityMin < fQualitySTBCLDPCMin )
+      fQualitySTBCLDPCMin = m_TestsInfo[m_iTestIndexSTBCLDPCV].fComputedQualityMin;
+   if ( m_TestsInfo[m_iTestIndexSTBCLDPCV+1].fComputedQualityMin < fQualitySTBCLDPCMin )
+      fQualitySTBCLDPCMin = m_TestsInfo[m_iTestIndexSTBCLDPCV+1].fComputedQualityMin;        
+
+   float fQualitySTBCLDPCMax = 0.0;
+   if ( m_TestsInfo[m_iTestIndexSTBCLDPCV].fComputedQualityMax > fQualitySTBCLDPCMax )
+      fQualitySTBCLDPCMax = m_TestsInfo[m_iTestIndexSTBCLDPCV].fComputedQualityMax;
+   if ( m_TestsInfo[m_iTestIndexSTBCLDPCV+1].fComputedQualityMax > fQualitySTBCLDPCMax )
+      fQualitySTBCLDPCMax = m_TestsInfo[m_iTestIndexSTBCLDPCV+1].fComputedQualityMax;
+
+   char szBuff[512];
+   szBuff[0] = 0;
+   int iCountRatesLegacy = getTestDataRatesCountLegacy();
+   for( int i=0; i<iCountRatesLegacy; i++ )
    {
-      m_fQualityOfDataRateToApply = fQualityMCS4;
-      m_iIndexTestDataRateToApply = iTestMCS4;
-      m_iDataRateToApply = -5;
-   }
-   else if ( fQualityMCS3 > 0.99 )
+      int iTestIndex = i*2 + m_iIndexFirstDatarateLegacyTest;
+      char szTmp[64];
+      sprintf(szTmp, "[%d: (%.3f-%.3f) %s]",
+          getTestDataRatesLegacy()[i], m_TestsInfo[iTestIndex].fComputedQualityMin, m_TestsInfo[iTestIndex].fComputedQualityMax, m_TestsInfo[iTestIndex].bSkipTest?"skipped":(m_TestsInfo[iTestIndex].bSucceeded?"ok":"failed"));
+      if ( i != 0 )
+         strcat(szBuff, ", ");
+      strcat(szBuff, szTmp);
+   }   
+   log_line("[NegociateRadioLink] Compute settings to apply: Test rates results (legacy): %s", szBuff);
+
+   szBuff[0] = 0;
+   for( int i=0; i<getTestDataRatesCountMCS(); i++ )
    {
-      m_fQualityOfDataRateToApply = fQualityMCS3;
-      m_iIndexTestDataRateToApply = iTestMCS3;
-      m_iDataRateToApply = -4;
-   }
-   else 
-   */
-   if ( (fQualityMinMCS2 > 0.9) && (fQualityMCS2 >= fQuality18*0.98) )
+      int iTestIndex = i*2 + m_iIndexFirstDatarateMCSTest;
+      char szTmp[64];
+      sprintf(szTmp, "[%d: (%.3f-%.3f) %s]",
+          -getTestDataRatesMCS()[i]-1, m_TestsInfo[iTestIndex].fComputedQualityMin, m_TestsInfo[iTestIndex].fComputedQualityMax, m_TestsInfo[iTestIndex].bSkipTest?"skipped":(m_TestsInfo[iTestIndex].bSucceeded?"ok":"failed"));
+
+      if ( i != 0 )
+         strcat(szBuff, ", ");
+      strcat(szBuff, szTmp);
+   }   
+   log_line("[NegociateRadioLink] Compute settings to apply: Test rates results (MCS): %s", szBuff);
+
+   log_line("[NegociateRadioLink] Computed max usable rates: legacy: %d, MCS: MCS-%d", m_RadioRuntimeCapabilitiesToApply.iMaxSupportedLegacyDataRate, -m_RadioRuntimeCapabilitiesToApply.iMaxSupportedMCSDataRate-1);
+   
+   szBuff[0] = 0;
+   int iTestIndex = m_iIndexFirstRadioPowersTest;
+   for( int i=0; i<iCountRatesLegacy; i++ )
    {
-      m_fQualityOfDataRateToApply = fQualityMCS2;
-      m_iIndexTestDataRateToApply = iTestMCS2;
-      m_iDataRateToApply = -3;
-   }
-   /*
-   else if ( fQuality48 > 0.99 )
+      char szTmp[64];
+      sprintf(szTmp, "[%d: (%s %d mW)]",
+          getTestDataRatesLegacy()[i], m_TestsInfo[iTestIndex].bSkipTest?"skipped":(m_TestsInfo[iTestIndex].bSucceeded?"ok":"failed"), m_TestsInfo[iTestIndex].iTxPowerLastGood);
+      if ( i != 0 )
+         strcat(szBuff, ", ");
+      strcat(szBuff, szTmp);
+      iTestIndex++;
+   }   
+   log_line("[NegociateRadioLink] Compute settings to apply: Test powers results (legacy): %s", szBuff);
+
+   szBuff[0] = 0;
+   iTestIndex = m_iIndexFirstRadioPowersTest + getTestDataRatesCountLegacy();
+   for( int i=0; i<getTestDataRatesCountMCS(); i++ )
    {
-      m_fQualityOfDataRateToApply = fQuality48;
-      m_iIndexTestDataRateToApply = iTest48;
-      m_iDataRateToApply = 48000000;
-   }
-   else if ( fQuality24 > 0.99 )
+      char szTmp[64];
+      sprintf(szTmp, "[MCS-%d: (%s %d mW)]",
+          -getTestDataRatesMCS()[i]-1, m_TestsInfo[iTestIndex].bSkipTest?"skipped":(m_TestsInfo[iTestIndex].bSucceeded?"ok":"failed"), m_TestsInfo[iTestIndex].iTxPowerLastGood);
+      if ( i != 0 )
+         strcat(szBuff, ", ");
+      strcat(szBuff, szTmp);
+      iTestIndex++;
+   }   
+   log_line("[NegociateRadioLink] Compute settings to apply: Test powers results (MCS): %s", szBuff);
+   log_line("[NegociateRadioLink] Compute settings: MCS STBC min/max quality: %.3f / %.3f", fQualitySTBCMin, fQualitySTBCMax);
+   log_line("[NegociateRadioLink] Compute settings: MCS STBC-LDPC min/max quality: %.3f / %.3f", fQualitySTBCLDPCMin, fQualitySTBCLDPCMax);
+
+   bool bUseMCSRates = false;
+
+   if ( m_TestsInfo[iTestMCS2].bSucceeded )
+   if ( fQualMaxMCS >= fQualMaxLegacy )
+   //if ( fabs(fQualMaxMCS-fQualMaxLegacy) < 0.2 )
+      bUseMCSRates = true;
+
+   if ( m_TestsInfo[iTestMCS2].bSucceeded )
+   //if ( fabs(fQualMinMCS-fQualMinLegacy) < 0.1 )
+   if ( fabs(fQualMaxMCS-fQualMaxLegacy) < 0.01 )
+      bUseMCSRates = true;
+
+   if ( bUseMCSRates && (m_RadioRuntimeCapabilitiesToApply.iMaxSupportedMCSDataRate <= -1) )
    {
-      m_fQualityOfDataRateToApply = fQuality24;
-      m_iIndexTestDataRateToApply = iTest24;
-      m_iDataRateToApply = 24000000;
+      log_line("[NegociateRadioLink] Compute settings: MCS rx quality (min: %.3f max: %.3f) is greater than Legacy rx quality (min: %.3f max: %.3f)", fQualMinMCS, fQualMaxMCS, fQualMinLegacy, fQualMaxLegacy);
+      m_uRadioFlagsToApply = RADIO_FLAGS_USE_MCS_DATARATES;
    }
-   */
    else
    {
-      m_fQualityOfDataRateToApply = fQuality18;
-      m_iIndexTestDataRateToApply = iTest18;
-      m_iDataRateToApply = 18000000;
+      log_line("[NegociateRadioLink] Compute settings: Legacy rx quality (min: %.3f max: %.3f) is greater than MCS rx quality (min: %.3f max: %.3f)", fQualMinLegacy, fQualMaxLegacy, fQualMinMCS, fQualMaxMCS);
+      m_uRadioFlagsToApply = RADIO_FLAGS_USE_LEGACY_DATARATES;
    }
 
-   log_line("[NegociateRadioLink] Computed Q: 6: %.3f 18: %.3f, 24: %.3f, 48: %.3f",
-      fQuality6, fQuality18, fQuality24, fQuality48);
-   log_line("[NegociateRadioLink] Computed Q: MCS0: %.3f, MCS2: %.3f, MCS3: %.3f, MCS4: %.3f",
-      fQualityMCS0, fQualityMCS2, fQualityMCS3, fQualityMCS4);
-   log_line("[NegociateRadioLink] Will apply datarate: %d (%u bps), test index: %d", m_iDataRateToApply, getRealDataRateFromRadioDataRate(m_iDataRateToApply, 0), m_iIndexTestDataRateToApply);
-}
+   bool bUpdatedRadioFlags = false;
 
-void MenuNegociateRadio::_apply_new_settings(bool bVehicleOnly)
-{
-   log_line("[NegociateRadioLink] Applying new radio settings (%s)...", bVehicleOnly?"on vehicle":"on controller");
-   if ( NULL == g_pCurrentModel )
+   if ( m_uRadioFlagsToApply & RADIO_FLAGS_USE_LEGACY_DATARATES )
+   if ( !(g_pCurrentModel->radioLinksParams.link_radio_flags[0] & RADIO_FLAGS_USE_LEGACY_DATARATES) )
    {
-      log_softerror_and_alarm("No model.");
-      return;
+      log_line("[NegociateRadioLink] Compute settings: Model will switch from MCS to legacy data rates.");
+      bUpdatedRadioFlags = true;
    }
 
-   if ( bVehicleOnly )
+   if ( m_uRadioFlagsToApply & RADIO_FLAGS_USE_MCS_DATARATES )
+   if ( !(g_pCurrentModel->radioLinksParams.link_radio_flags[0] & RADIO_FLAGS_USE_MCS_DATARATES) )
    {
-      _computeQualities();
+      log_line("[NegociateRadioLink] Compute settings: Model will switch from legacy to MCS data rates.");
+      bUpdatedRadioFlags = true;
+   }
 
-      log_line("[NegociateRadioLink] Appling datarate: %d (%u bps), test index: %d, quality: %.3f", m_iDataRateToApply, getRealDataRateFromRadioDataRate(m_iDataRateToApply, 0), m_iIndexTestDataRateToApply, m_fQualityOfDataRateToApply);
-      log_line("[NegociateRadioLink] Current model radio flags (for radio link 1): %u (%s)", g_pCurrentModel->radioLinksParams.link_radio_flags[0], str_get_radio_frame_flags_description2(g_pCurrentModel->radioLinksParams.link_radio_flags[0]));
-
-      m_uRadioFlagsToApply = g_pCurrentModel->radioLinksParams.link_radio_flags[0];
-
-      float fBestFlagsQuality = 0.0;
-
-      if ( m_iDataRateToApply < 0 )
+   if ( m_uRadioFlagsToApply & RADIO_FLAGS_USE_MCS_DATARATES )
+   {   
+      if ( fQualitySTBCMin >= fQualMinMCS )
       {
-         for( int i=m_iIndexFirstRadioFlagsTest; i<m_iTestsCount; i++ )
-         {
-            float fQuality = m_TestStepsInfo[i].fComputedQuality;
-            log_line("[NegociateRadioLink] Quality of radio flags (%s): %.3f", str_get_radio_frame_flags_description2(m_TestStepsInfo[i].uFlagsToTest), fQuality);
-            if ( fQuality > 0.5 )
-            if ( fQuality > fBestFlagsQuality )
-            {
-               fBestFlagsQuality = fQuality;
-               if ( fQuality >= m_fQualityOfDataRateToApply*0.92 )
-               {
-                  log_line("[NegociateRadioLink] New greater radio flags quality: %.3f", fQuality);
-                  m_fQualityOfDataRateToApply = fQuality;
-                  m_uRadioFlagsToApply &= ~(RADIO_FLAG_STBC_VEHICLE | RADIO_FLAG_LDPC_VEHICLE);
-                  m_uRadioFlagsToApply |= m_TestStepsInfo[i].uFlagsToTest;
-                  if ( m_uRadioFlagsToApply & RADIO_FLAG_LDPC_VEHICLE )
-                  if ( !(m_uRadioFlagsToApply & RADIO_FLAG_STBC_VEHICLE) )
-                     m_uRadioFlagsToApply &= ~(RADIO_FLAG_LDPC_VEHICLE);
-               }
-            }
-         }
-      }
-
-      if ( m_iDataRateToApply < 0 )
-      {
-         m_uRadioFlagsToApply &= ~(RADIO_FLAGS_USE_LEGACY_DATARATES);
-         m_uRadioFlagsToApply |= RADIO_FLAGS_USE_MCS_DATARATES;
+         log_line("[NegociateRadioLink] Compute settings: Vehicle STBC quality greater than no STBC.");
+         m_uRadioFlagsToApply |= RADIO_FLAG_STBC_VEHICLE;
       }
       else
       {
-         m_uRadioFlagsToApply &= ~(RADIO_FLAGS_USE_MCS_DATARATES);
-         m_uRadioFlagsToApply |= RADIO_FLAGS_USE_LEGACY_DATARATES;       
+         log_line("[NegociateRadioLink] Compute settings: Vehicle STBC quality lower than no STBC.");
+         m_uRadioFlagsToApply &= ~RADIO_FLAG_STBC_VEHICLE;
       }
 
-      log_line("[NegociateRadioLink] Appling radio flags: %u (%s)", m_uRadioFlagsToApply, str_get_radio_frame_flags_description2(m_uRadioFlagsToApply));
-      log_line("[NegociateRadioLink] Max/Min video bitrate interval to set: %u / %u bps",
-        (getRealDataRateFromRadioDataRate(m_iDataRateToApply, 0) / 100 ) * DEFAULT_VIDEO_LINK_LOAD_PERCENT,
-        (getRealDataRateFromRadioDataRate(m_iDataRateToApply, 0) / 100 ) * 30 );
+
+      if ( m_uRadioFlagsToApply & RADIO_FLAG_STBC_VEHICLE )
+      {      
+         if ( fQualitySTBCLDPCMin >= fQualitySTBCMin )
+         {
+            log_line("[NegociateRadioLink] Compute settings: Vehicle STBC-LDPC quality greater than STBC.");
+            m_uRadioFlagsToApply |= RADIO_FLAG_LDPC_VEHICLE;
+         }
+         else
+         {
+            log_line("[NegociateRadioLink] Compute settings: Vehicle STBC-LDPC quality lower than STBC.");
+            m_uRadioFlagsToApply &= ~RADIO_FLAG_LDPC_VEHICLE;
+         }
+      }
+
+      if ( (m_uRadioFlagsToApply & RADIO_FLAG_STBC_VEHICLE) != (g_pCurrentModel->radioLinksParams.link_radio_flags[0] & RADIO_FLAG_STBC_VEHICLE) )
+      {
+         log_line("[NegociateRadioLink] Compute settings: Vehicle STBC flag was updated. Will apply settings.");
+         bUpdatedRadioFlags = true;
+      }
+      else
+         log_line("[NegociateRadioLink] Compute settings: Vehicle STBC flag was not changed.");
+   }
+
+   char szFlagsBefore[128];
+   char szFlagsAfter[128];
+   str_get_radio_frame_flags_description(g_pCurrentModel->radioLinksParams.link_radio_flags[0], szFlagsBefore);
+   if ( m_uRadioFlagsToApply == g_pCurrentModel->radioLinksParams.link_radio_flags[0] )
+   {
+      bUpdatedRadioFlags = false;
+      log_line("[NegociateRadioLink] Compute settings: No change in radio flags (now: %s)", szFlagsBefore);
    }
    else
    {
-      for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
-      {
-         if ( (g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps / 100) * DEFAULT_VIDEO_LINK_LOAD_PERCENT > getRealDataRateFromRadioDataRate(m_iDataRateToApply, 0) )
-            g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps = (getRealDataRateFromRadioDataRate(m_iDataRateToApply, 0) / 100 )* DEFAULT_VIDEO_LINK_LOAD_PERCENT;
-      
-         if ( (i == VIDEO_PROFILE_USER) || (i == VIDEO_PROFILE_HIGH_QUALITY) )
-         if ( (g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps / 100) * 30 < getRealDataRateFromRadioDataRate(m_iDataRateToApply, 0) )
-            g_pCurrentModel->video_link_profiles[i].bitrate_fixed_bps = (getRealDataRateFromRadioDataRate(m_iDataRateToApply, 0) / 100 ) * 30;
-      }
-      g_pCurrentModel->validate_radio_flags();
+      str_get_radio_frame_flags_description(m_uRadioFlagsToApply, szFlagsAfter);
+      log_line("[NegociateRadioLink] Compute settings: Radio flags will be updated from %s to %s",
+         szFlagsBefore, szFlagsAfter);
    }
-}
+   bool bUpdatedDatarates = false;
+   bool bUpdatedPowers = false;
 
-bool MenuNegociateRadio::periodicLoop()
-{
-   m_iLoopCounter++;
-   if ( -1 == m_MenuIndexCancel )
-   if ( g_TimeNow > m_uShowTime + 4000 )
+   for( int k=0; k<MODEL_MAX_STORED_QUALITIES_LINKS; k++ )
+   for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
    {
-      m_MenuIndexCancel = addMenuItem(new MenuItem(L("Cancel"), L("Aborts the autoadjustment procedure without making any changes.")));
-      invalidate();
+      if ( (m_RadioRuntimeCapabilitiesToApply.iMaxTxPowerMwLegacy[k][i] != g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwLegacy[k][i]) ||
+           (m_RadioRuntimeCapabilitiesToApply.iMaxTxPowerMwMCS[k][i] != g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwMCS[k][i]) )
+      {
+         bUpdatedPowers = true;
+         break;
+      }
    }
 
-   if ( m_bWaitingVehicleConfirmation )
-   if ( (g_TimeNow > m_uLastTimeSendCommandToVehicle + 100) && (!m_bWaitingCancelConfirmationFromUser) )
-      _send_command_to_vehicle();
-
-   if ( m_iStep == NEGOCIATE_RADIO_STEP_DATA_RATE )
+   for( int k=0; k<MODEL_MAX_STORED_QUALITIES_LINKS; k++ )
+   for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
    {
-      if ( ! m_bWaitingVehicleConfirmation )
+      if ( (fabs(m_RadioRuntimeCapabilitiesToApply.fQualitiesLegacy[k][i] - g_pCurrentModel->radioRuntimeCapabilities.fQualitiesLegacy[k][i]) > 0.03) ||
+           (fabs(m_RadioRuntimeCapabilitiesToApply.fQualitiesMCS[k][i] - g_pCurrentModel->radioRuntimeCapabilities.fQualitiesMCS[k][i]) > 0.03) )
       {
-         for(int i=0; i<hardware_get_radio_interfaces_count(); i++ )
-         {
-            if ( !hardware_radio_index_is_wifi_radio(i) )
-               continue;
-            m_TestStepsInfo[m_iCurrentTestIndex].iRadioInterfacesRXPackets[i] = g_SM_RadioStats.radio_interfaces[i].totalRxPackets;
-            m_TestStepsInfo[m_iCurrentTestIndex].iRadioInterfacesRxLostPackets[i] = g_SM_RadioStats.radio_interfaces[i].totalRxPacketsBad + g_SM_RadioStats.radio_interfaces[i].totalRxPacketsLost;
-         }
-         if ( g_TimeNow > m_uStepStartTime + 1200 )
-         {
-            m_iCountSucceededSteps++;
-            _advance_to_next_step();
-         }
-         return false;
+         bUpdatedDatarates = true;
+         break;
       }
+   }
 
-      if ( m_bWaitingVehicleConfirmation )
-      if ( (g_TimeNow > m_uStepStartTime + 3000) && (!m_bWaitingCancelConfirmationFromUser) )
-      {
-         if ( m_iCurrentTestIndex < m_iIndexFirstRadioFlagsTest )
-            m_iCountFailedSteps++;
-         _advance_to_next_step();
-         return false;
-      }
+   if ( (! bUpdatedRadioFlags) && (!bUpdatedDatarates) && (!bUpdatedPowers) )
+   {
+      log_line("[NegociateRadioLink] Compute settings: No change detected in computed radio links flags or datarates or powers.");
       return false;
    }
 
-   if ( (m_iStep == NEGOCIATE_RADIO_STEP_CANCEL) || (m_iStep == NEGOCIATE_RADIO_STEP_END) )
-   if ( m_bWaitingVehicleConfirmation )
-   if ( (g_TimeNow > m_uStepStartTime + 3000) && (!m_bWaitingCancelConfirmationFromUser) )
-   {  
-      m_bWaitingVehicleConfirmation = false;
-      menu_stack_pop_no_delete(0);
-      setModal(false);
-      m_bWaitingCancelConfirmationFromUser = true;
-      if ( (m_iCountFailedSteps >= MAX_FAILING_RADIO_NEGOCIATE_STEPS) && (m_iCountSucceededSteps < MAX_FAILING_RADIO_NEGOCIATE_STEPS/2) )
-      {
-         log_line("[NegociateRadioLink] Timing out wait for vehicle response operation with %d failed steps.", MAX_FAILING_RADIO_NEGOCIATE_STEPS );
-         addMessage2(0, L("Failed to negociate radio links."), L("You radio links quality is very poor. Please fix the physical radio links quality and try again later."));
-         warnings_add(g_pCurrentModel->uVehicleId, L("Failed to negociate radio links."), g_idIconRadio);
-      }
-      else
-      {
-         log_line("[NegociateRadioLink] Timing out wait for vehicle response operation with valid end result." );
-         addMessage2(0, L("Failed to negociate radio links."), L("You radio links quality is very poor. Please fix the physical radio links quality and try again later."));
-         warnings_add(g_pCurrentModel->uVehicleId, L("Failed to negociate radio links."), g_idIconRadio);
-      }
-      return false;
-   }
-  
-   if ( m_iStep == NEGOCIATE_RADIO_STEP_CANCEL )
-   if ( ! m_bWaitingVehicleConfirmation )
-   if ( ! m_bWaitingCancelConfirmationFromUser )
-   if ( g_TimeNow > m_uStepStartTime + 5000 )
-   {
-      log_line("[NegociateRadioLink] Timeout on step cancel with no waiting for any confirmation from vehicle.");
-      menu_stack_pop_no_delete(0);
-      setModal(false);
-      warnings_add(g_pCurrentModel->uVehicleId, L("Failed to negociate radio links."), g_idIconRadio);
-      if ( onEventPairingTookUIActions() )
-         onEventFinishedPairUIAction();
-   }
-   return false;
+   log_line("[NegociateRadioLink] Updates detected for: datarates qualities: %s, radio flags: %s, tx powers: %s",
+      bUpdatedDatarates?"yes":"no",
+      bUpdatedRadioFlags?"yes":"no",
+      bUpdatedPowers?"yes":"no");
+
+   m_uRadioFlagsToApply |= RADIO_FLAGS_FRAME_TYPE_DATA;
+
+   m_iTxPowerMwToApply = 0;
+
+   g_pCurrentModel->validateRadioSettings();
+
+   log_line("[NegociateRadioLink] Will apply datarate: auto");
+   log_line("[NegociateRadioLink] Will apply radio flags: (%s)", str_get_radio_frame_flags_description2(m_uRadioFlagsToApply));
+   log_line("[NegociateRadioLink] Current model radio link 1 datarate video: %d, radio flags: %s", g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[0], str_get_radio_frame_flags_description2(g_pCurrentModel->radioLinksParams.link_radio_flags[0]));
+
+   return true;
 }
+
 
 void MenuNegociateRadio::onReceivedVehicleResponse(u8* pPacketData, int iPacketLength)
 {
@@ -664,89 +1717,168 @@ void MenuNegociateRadio::onReceivedVehicleResponse(u8* pPacketData, int iPacketL
    if ( pPH->packet_type != PACKET_TYPE_NEGOCIATE_RADIO_LINKS )
       return;
 
+   int iRecvTestIndex = (int)(pPacketData[sizeof(t_packet_header)]);
    u8 uCommand = pPacketData[sizeof(t_packet_header) + sizeof(u8)];
-   u32 uParam1 = 0;
-   u32 uParam2 = 0;
-   int iParam1 = 0;
-   memcpy(&uParam1, pPacketData + sizeof(t_packet_header) + 2*sizeof(u8), sizeof(u32));
-   memcpy(&uParam2, pPacketData + sizeof(t_packet_header) + 2*sizeof(u8)+sizeof(u32), sizeof(u32));
-   memcpy(&iParam1, &uParam1, sizeof(int));
-   log_line("[NegociateRadioLink] Received negociate radio link conf, command %d, param1: %d, param2: %u", uCommand, iParam1, uParam2);
-      
 
-   if ( (uCommand != m_iStep) || (!m_bWaitingVehicleConfirmation) )
+   log_line("[NegociateRadioLink] Received response from vehicle to test: %d, command: %d, is canceled state: %d", iRecvTestIndex, uCommand, m_bCanceled);
+
+   if ( m_iState == NEGOCIATE_STATE_TEST_RUNNING_WAIT_VEHICLE_START_TEST_CONFIRMATION )
    {
-      if ( ! m_bWaitingVehicleConfirmation )
-         log_line("[NegociateRadioLink] Ignore received vehicle response as was not waiting for a vehicle response.");
-      else
-         log_line("[NegociateRadioLink] Ignore received vehicle response as was the wrong step.");
+      if ( m_iCurrentTestIndex != iRecvTestIndex )
+      {
+         log_line("[NegociateRadioLink] Ignore received vehicle response for wrong test %d, controller is now on test %d", iRecvTestIndex, m_iCurrentTestIndex);
+         return;
+      }
+      if ( uCommand == NEGOCIATE_RADIO_TEST_PARAMS )
+      {
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (V) Wait vehicle start test -> Test running.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+         if ( m_TestsInfo[m_iCurrentTestIndex].uTimeLastConfirmationFromVehicle == 0 )
+            m_TestsInfo[m_iCurrentTestIndex].uTimeLastConfirmationFromVehicle = g_TimeNow;
+         m_iState = NEGOCIATE_STATE_TEST_RUNNING;
+      }
       return;
    }
 
-   m_bWaitingVehicleConfirmation = false;
-
-   if ( uCommand == NEGOCIATE_RADIO_STEP_END )
+   if ( m_iState == NEGOCIATE_STATE_WAIT_VEHICLE_END_CONFIRMATION )
+   if ( uCommand == NEGOCIATE_RADIO_END_TESTS )
    {
-      log_line("[NegociateRadioLink] Saving new video radio datarate on current model: %d, radio flags: %u (%s)", m_iDataRateToApply, m_uRadioFlagsToApply, str_get_radio_frame_flags_description2(m_uRadioFlagsToApply));
-      _apply_new_settings(false);
-      g_pCurrentModel->resetVideoLinkProfilesToDataRates(m_iDataRateToApply, m_iDataRateToApply);
-      g_pCurrentModel->radioLinksParams.link_radio_flags[0] = m_uRadioFlagsToApply;
-      g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags |= MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS;
-      saveControllerModel(g_pCurrentModel);
-      send_model_changed_message_to_router(MODEL_CHANGED_GENERIC, 0);
-      g_bMustNegociateRadioLinksFlag = false;
-      m_bWaitingCancelConfirmationFromUser = false;
-      warnings_add(g_pCurrentModel->uVehicleId, L("Negociated radio links"), g_idIconRadio);
-      menu_stack_pop_no_delete(0);
-      setModal(false);
-      if ( onEventPairingTookUIActions() )
-         onEventFinishedPairUIAction();
+      log_line("[NegociateRadioLink] Received confirmation from vehicle to end tests. End state: %s", m_bCanceled?"canceled":"finished");
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (V) Wait vehicle end tests -> Finish flow.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      _onFinishedFlow();
+      return;
    }
 
-   if ( uCommand == NEGOCIATE_RADIO_STEP_CANCEL )
+   if ( m_iState == NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_RADIO_SETTINGS_CONFIRMATION )
    {
-      menu_stack_pop_no_delete(0);
-      setModal(false);
-      if ( (m_iCountFailedSteps >= MAX_FAILING_RADIO_NEGOCIATE_STEPS) && (m_iCountSucceededSteps < MAX_FAILING_RADIO_NEGOCIATE_STEPS/2) )
-      {
-         log_line("[NegociateRadioLink] Cancel negociate radio confirmation with %d failing steps.", MAX_FAILING_RADIO_NEGOCIATE_STEPS);
-         m_bWaitingCancelConfirmationFromUser = true;
-         log_line("[NegociateRadioLink] Finishing up operation with %d failed steps.", MAX_FAILING_RADIO_NEGOCIATE_STEPS);
-         addMessage2(0, L("Failed to negociate radio links."), L("You radio links quality is very poor. Please fix the physical radio links quality and try again later."));
-         warnings_add(g_pCurrentModel->uVehicleId, L("Failed to negociate radio links."), g_idIconRadio);
-      }
-      else
-      {
-         m_bWaitingCancelConfirmationFromUser = false;
-         warnings_add(g_pCurrentModel->uVehicleId, L("Negociated radio links was canceled"), g_idIconRadio);
-         if ( onEventPairingTookUIActions() )
-            onEventFinishedPairUIAction();
-      }
+      _save_new_settings_to_model();
+
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (V) Wait vehicle apply radio settings confirmation -> End all tests.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      m_iState = NEGOCIATE_STATE_END_TESTS;
+      m_iUserState = NEGOCIATE_USER_STATE_WAIT_FINISH_CONFIRMATION;
+
+      addMessage2(0, L("Finished optimizing radio links."), L("Radio links configuration was updated."));
+      warnings_add(g_pCurrentModel->uVehicleId, L("Finished optimizing radio links."), g_idIconRadio);
    }
+
+   log_line("[NegociateRadioLink] Ignored received radio test %d confirmation, command: %d, is state canceled: %d", iRecvTestIndex, uCommand, m_bCanceled);
 }
 
 void MenuNegociateRadio::onReturnFromChild(int iChildMenuId, int returnValue)
 {
    Menu::onReturnFromChild(iChildMenuId, returnValue);
-   if ( m_bWaitingCancelConfirmationFromUser )
+
+   log_line("[NegociateRadioLink] OnReturnFromChild: child menu id: %d, return value: %d, current state: %d, current user state: %d",
+      iChildMenuId, returnValue, m_iState, m_iUserState);
+
+   if ( m_iUserState == NEGOCIATE_USER_STATE_WAIT_CANCEL )
    {
-      log_line("[NegociateRadioLink] User confirmed canceled operation. Close menu.");
-      menu_stack_pop_no_delete(0);
-      //setModal(false);
-      menu_rearrange_all_menus_no_animation();
-      if ( onEventPairingTookUIActions() )
-         onEventFinishedPairUIAction();
+      log_line("[NegociateRadioLink] Canceled negociate radio links.");
+
+      m_iUserState = NEGOCIATE_USER_STATE_NONE;
+      if ( 0 == returnValue )
+         return;
+
+      ControllerSettings* pCS = get_ControllerSettings();
+      if ( (NULL != pCS) && pCS->iDeveloperMode )
+         _send_revert_flags_to_vehicle();
+
+      m_iState = NEGOCIATE_STATE_END_TESTS;
+      m_bCanceled = true;
+      m_iCurrentTestIndex = -1;
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (R) User wait cancel -> End all tests.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      return;
    }
+
+   if ( m_iUserState == NEGOCIATE_USER_STATE_WAIT_FAILED_CONFIRMATION )
+   {
+      log_line("[NegociateRadioLink] Failed negociate radio links.");
+
+      m_iUserState = NEGOCIATE_USER_STATE_NONE;
+      m_iState = NEGOCIATE_STATE_END_TESTS;
+      m_bFailed = true;
+      m_iCurrentTestIndex = -1;
+      log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (R) User wait failed confirmation -> End all tests.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      return;
+   }
+
+   if ( m_iUserState == NEGOCIATE_USER_STATE_WAIT_VIDEO_CONFIRMATION )
+   {
+      m_iUserState = NEGOCIATE_USER_STATE_NONE;
+      m_uTimeStartedVehicleOperation = g_TimeNow;
+      m_uLastTimeSentVehicleOperation = g_TimeNow;
+      g_pCurrentModel->logVideoSettingsDifferences(&m_VideoParamsToApply, &(m_VideoProfilesToApply[m_VideoParamsToApply.iCurrentVideoProfile]), false);
+      if ( handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMETERS, 0, (u8*)&m_VideoParamsToApply, sizeof(video_parameters_t), (u8*)&m_VideoProfilesToApply, MAX_VIDEO_LINK_PROFILES * sizeof(type_video_link_profile)) )
+      {
+         m_iState = NEGOCIATE_STATE_WAIT_VEHICLE_APPLY_VIDEO_SETTINGS_CONFIRMATION;
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (F) -> Wait set video settings ack.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      }
+      else
+      {
+         m_iState = NEGOCIATE_STATE_SET_VIDEO_SETTINGS;
+         log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): (F) -> Set video settings", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+      }
+      return;
+   }
+   if ( m_iUserState == NEGOCIATE_USER_STATE_WAIT_FINISH_CONFIRMATION )
+   {
+      m_iUserState = NEGOCIATE_USER_STATE_NONE;
+      return;
+   }
+
 }
 
 void MenuNegociateRadio::_onCancel()
 {
+   if ( m_iUserState == NEGOCIATE_USER_STATE_WAIT_CANCEL )
+      return;
+
+   if ( (m_iState == NEGOCIATE_STATE_END_TESTS) || (m_iState == NEGOCIATE_STATE_ENDED) )
+   {
+      _onFinishedFlow();
+      return;
+   }
+
+   m_iUserState = NEGOCIATE_USER_STATE_WAIT_CANCEL;
+   MenuConfirmation* pMenu = new MenuConfirmation("Cancel Radio Link Adjustment","Are you sure you want to cancel the radio config adjustment wizard?", 11);
+   pMenu->addTopLine("If you cancel the wizard your radio links might not be optimally configured, resulting in potential lower radio link quality.");
+   pMenu->m_yPos = 0.3;
+   add_menu_to_stack(pMenu);
+}
+
+void MenuNegociateRadio::_onFinishedFlow()
+{
+   log_line("[NegociateRadioLink] OnFinishedFlow");
+   m_iState = NEGOCIATE_STATE_ENDED;
+   log_line("[NegociateRadioLink] State (Test: (%s) %d/%d): * -> State ended.", _getTestType(m_iCurrentTestIndex), m_iCurrentTestIndex, m_iTestsCount-1);
+   _close();
+}
+
+void MenuNegociateRadio::_close()
+{
+   log_line("[NegociateRadioLink] Closing...");
    if ( -1 != m_MenuIndexCancel )
    {
       removeMenuItem(m_pMenuItems[0]);
       m_MenuIndexCancel = -1;
    }
-   _switch_to_step(NEGOCIATE_RADIO_STEP_CANCEL);
+
+   menu_rearrange_all_menus_no_animation();
+   menu_loop();
+
+   menu_stack_pop_no_delete(0);
+   setModal(false);
+   if ( m_bCanceled )
+      warnings_add(g_pCurrentModel->uVehicleId, L("Canceled optmizie radio links."), g_idIconRadio);
+   else if ( m_bFailed )
+      warnings_add(g_pCurrentModel->uVehicleId, L("Failed to optmizie radio links."), g_idIconRadio);
+   if ( onEventPairingTookUIActions() )
+      onEventFinishedPairUIAction();
+   log_line("[NegociateRadioLink] Closed.");
+
+   ControllerSettings* pCS = get_ControllerSettings();
+   if ( pCS->iDeveloperMode )
+      add_menu_to_stack(new MenuVehicleRadioRuntimeCapabilities());
+
 }
 
 void MenuNegociateRadio::onSelectItem()

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -197,7 +197,7 @@ void onMainVehicleChanged(bool bRemovePreviousVehicleState)
 void onEventReboot()
 {
    log_line("[Events] Handling event Reboot...");
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("rebooting");
    save_temp_local_stats();
    hardware_sleep_ms(50);
    //pairing_stop();
@@ -228,7 +228,8 @@ void onEventBeforePairing()
    g_uTotalLocalAlarmDevRetransmissions = 0;
    g_bHasVideoDataOverloadAlarm = false;
    g_bHasVideoTxOverloadAlarm = false;
-   
+   g_bIsTestingAdaptiveVideo = false;
+
    g_bDidAnUpdate = false;
    g_nSucceededOTAUpdates = 0;
    g_bLinkWizardAfterUpdate = false;
@@ -276,7 +277,6 @@ void onEventBeforePairing()
       hardware_enable_audio_output();
       hardware_set_audio_output_volume(pCS->iAudioOutputVolume);
    }
-   compute_controller_radio_tx_powers(g_pCurrentModel, &g_SM_RadioStats);
 
    log_current_runtime_vehicles_info();
    log_line("[Events] Current VID for vehicle runtime info[0] is (if any): %u", g_VehiclesRuntimeInfo[0].uVehicleId);
@@ -301,6 +301,8 @@ void onEventBeforePairingStop()
 {
    log_line("[Events] Handling event Before Pairing Stop...");
    log_current_runtime_vehicles_info();
+
+   ruby_stop_recording();
 
    onEventPairingDiscardAllUIActions();
    osd_remove_stats_flight_end();
@@ -337,7 +339,7 @@ void onEventPairingStopped()
    
    g_bHasVideoDataOverloadAlarm = false;
    g_bHasVideoTxOverloadAlarm = false;
-
+   g_bIsTestingAdaptiveVideo = false;
    g_bGotStatsVideoBitrate = false;
    g_bGotStatsVehicleTx = false;
    
@@ -439,6 +441,14 @@ bool _onEventCheck_NegociateRadioLinks(Model* pCurrentlyStoredModel, Model* pNew
    g_bMustNegociateRadioLinksFlag = false;
 
    if ( NULL != pNewReceivedModel )
+   if ( get_sw_version_build(pNewReceivedModel) != SYSTEM_SW_BUILD_NUMBER )
+      return false;
+
+   if ( (NULL == pNewReceivedModel) && (NULL != pCurrentlyStoredModel) )
+   if ( get_sw_version_build(pCurrentlyStoredModel) != SYSTEM_SW_BUILD_NUMBER )
+      return false;
+
+   if ( NULL != pNewReceivedModel )
    if ( pNewReceivedModel->uControllerId != g_uControllerId )
    {
       log_line("Vehicle was paired with a different controller: %u (this controller: %u)", pNewReceivedModel->uControllerId, g_uControllerId);
@@ -466,6 +476,14 @@ bool _onEventCheck_NegociateRadioLinks(Model* pCurrentlyStoredModel, Model* pNew
       log_line("Received model has not negociated radio links.");
       g_bMustNegociateRadioLinksFlag = true;
    }
+
+   if ( NULL != pNewReceivedModel )
+   if ( !(pNewReceivedModel->radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED) )
+   {
+      log_line("Received model has not computed runtime radio links capabilities.");
+      g_bMustNegociateRadioLinksFlag = true;
+   }
+
    if ( (NULL != pCurrentlyStoredModel) && (NULL != pNewReceivedModel) )
    if ( pCurrentlyStoredModel->radioInterfacesParams.interfaces_count != pNewReceivedModel->radioInterfacesParams.interfaces_count )
    {
@@ -639,6 +657,7 @@ bool _onEventCheckNewPairedModelForUIActionsToTake()
       log_line("[Events] Checking for pairing UI actions to take: already has an action in progres.");
       return true;
    }
+
    // Remove vehicle will reboot message, if present
    Menu* pTopMenu = menu_get_top_menu();
    if ( (NULL != pTopMenu) && menu_has_menu(MENU_ID_CONFIRMATION+3*1000) )
@@ -798,7 +817,7 @@ bool _onEventCheckNewPairedModelForUIActionsToTake()
    if ( ! menu_has_menu(MENU_ID_NEGOCIATE_RADIO) )
    if ( ! menu_has_menu(MENU_ID_VEHICLE_BOARD) )
    if ( ! g_bAskedForNegociateRadioLink )
-   if ( (s_pEventsLastRecvModelSettings->sw_version >> 16) > 262 )
+   if ( (s_pEventsLastRecvModelSettings->sw_version >> 16) > 288 )
    if ( ! s_bEventTookPairingUIActionNegociateRadio )
    if ( g_bMustNegociateRadioLinksFlag )
    {
@@ -831,6 +850,7 @@ bool _onEventCheckNewPairedModelForUIActionsToTake()
    }
    #endif
 
+   log_line("[Events] Checking for pairing UI actions to take: none taken.");
    return false;
 }
 
@@ -931,9 +951,9 @@ void onEventRelayModeChanged()
    if ( NULL != pModel )
    {
       bool bDifferentResolution = false;
-      if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].width != pModel->video_link_profiles[pModel->video_params.user_selected_video_link_profile].width )
+      if ( g_pCurrentModel->video_params.iVideoWidth != pModel->video_params.iVideoWidth )
          bDifferentResolution = true;
-      if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].height != pModel->video_link_profiles[pModel->video_params.user_selected_video_link_profile].height )
+      if ( g_pCurrentModel->video_params.iVideoHeight != pModel->video_params.iVideoHeight )
          bDifferentResolution = true;
 
       if ( bDifferentResolution )
@@ -944,10 +964,10 @@ void onEventRelayModeChanged()
             s_uTimeLastWarningRelayDifferentResolution = g_TimeNow;
             char szBuff[256];
             sprintf(szBuff, "The relay and relayed vehicles have different video streams resolutions (%d x %d and %d x %d). Set the same video resolution for both cameras to get best relaying performance.",
-               g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].width,
-               g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].height,      
-               pModel->video_link_profiles[pModel->video_params.user_selected_video_link_profile].width,
-               pModel->video_link_profiles[pModel->video_params.user_selected_video_link_profile].height );
+               g_pCurrentModel->video_params.iVideoWidth,
+               g_pCurrentModel->video_params.iVideoHeight,      
+               pModel->video_params.iVideoWidth,
+               pModel->video_params.iVideoHeight );
             warnings_add(g_pCurrentModel->uVehicleId, szBuff, g_idIconCamera);
          }
       }
@@ -1160,7 +1180,7 @@ bool onEventReceivedModelSettings(u32 uVehicleId, u8* pBuffer, int length, bool 
 
    pCurrentlyStoredModel->logVehicleRadioInfo();
 
-   apply_controller_radio_tx_powers(g_pCurrentModel, &g_SM_RadioStats);
+   save_ControllerInterfacesSettings();
 
    _onEventCheckModelAddNonBlockingPopupWarnings(pCurrentlyStoredModel, bUnsolicited);
 
@@ -1202,7 +1222,7 @@ bool onEventReceivedModelSettings(u32 uVehicleId, u8* pBuffer, int length, bool 
    log_line("[Events] Current controller model mode: %s", g_pCurrentModel->is_spectator?"spectator mode":"control mode");   
    log_line("[Events] Notify components to reload the new updated model. Updated model mode: %s", pCurrentlyStoredModel->is_spectator?"spectator mode":"control mode");
    send_model_changed_message_to_router(MODEL_CHANGED_SYNCHRONISED_SETTINGS_FROM_VEHICLE, 0);
-
+   
    if ( (pCurrentlyStoredModel->video_params.uVideoExtraFlags & VIDEO_FLAG_GENERATE_H265) != (oldVideoParams.uVideoExtraFlags & VIDEO_FLAG_GENERATE_H265) )
    {
       log_line("Changed video codec. New codec: %s", (pCurrentlyStoredModel->video_params.uVideoExtraFlags & VIDEO_FLAG_GENERATE_H265)?"H265":"H264");

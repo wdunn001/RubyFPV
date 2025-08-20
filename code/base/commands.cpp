@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -62,12 +62,10 @@ const char* commands_get_description(u8 command_type)
       case COMMAND_ID_SET_CAMERA_PARAMETERS: strcpy(szCommandDesc, "Set_Camera_Params"); break;
       case COMMAND_ID_SET_CURRENT_CAMERA: strcpy(szCommandDesc, "Set_Current_Camera"); break;
       case COMMAND_ID_SET_OVERCLOCKING_PARAMS: strcpy(szCommandDesc, "SetOverclockingParams"); break;
-      case COMMAND_ID_SET_VIDEO_H264_QUANTIZATION: strcpy(szCommandDesc, "Set_VideoH264_Quantization"); break;
       case COMMAND_ID_FORCE_CAMERA_TYPE: strcpy(szCommandDesc, "Set_Force_Camera_Type"); break;
       case COMMAND_ID_SET_OSD_CURRENT_LAYOUT: strcpy(szCommandDesc, "Set_Current_OSD_Layout"); break;
       case COMMAND_ID_GET_CORE_PLUGINS_INFO: strcpy(szCommandDesc, "Get_Core_Plugins_Info"); break;
       case COMMAND_ID_SET_THREADS_PRIORITIES: strcpy(szCommandDesc, "Set_Threads_Priorities"); break;
-      case COMMAND_ID_SET_CONTROLLER_TELEMETRY_OPTIONS: strcpy(szCommandDesc, "Set_Controller_Telemetry_Options"); break;
       case COMMAND_ID_GET_SIK_CONFIG: strcpy(szCommandDesc, "Get_SiK_Config"); break;
       case COMMAND_ID_SET_RADIO_LINKS_FLAGS: strcpy(szCommandDesc, "Set_Radio_Links_Flags"); break;
       case COMMAND_ID_ROTATE_RADIO_LINKS: strcpy(szCommandDesc, "Rotate_Radio_Links"); break;
@@ -75,11 +73,10 @@ const char* commands_get_description(u8 command_type)
       case COMMAND_ID_SET_RELAY_PARAMETERS: strcpy(szCommandDesc, "Set_Relay_Parameters"); break;
       case COMMAND_ID_SET_SERIAL_PORTS_INFO: strcpy(szCommandDesc, "Set_Serial_Ports_Info"); break;
       case COMMAND_ID_SET_AUDIO_PARAMS: strcpy(szCommandDesc, "Set_Audio_Params"); break;
+      case COMMAND_ID_SET_TEMPERATURE_THRESHOLD: strcpy(szCommandDesc, "Set_Temperature_Threshold"); break;
       case COMMAND_ID_RESET_ALL_TO_DEFAULTS: strcpy(szCommandDesc, "ResetToDefaults"); break;
       case COMMAND_ID_SET_TX_PIT_MODE: strcpy(szCommandDesc, "SetTxPitMode"); break;
-      case COMMAND_ID_SET_VIDEO_PARAMS: strcpy(szCommandDesc, "Set_Video_Params"); break;
-      case COMMAND_ID_UPDATE_VIDEO_LINK_PROFILES: strcpy(szCommandDesc, "Update_Video_Link_Profiles"); break;
-      case COMMAND_ID_RESET_VIDEO_LINK_PROFILE: strcpy(szCommandDesc, "Reset_Video_Link_Profile"); break;
+      case COMMAND_ID_SET_VIDEO_PARAMETERS: strcpy(szCommandDesc, "Set_Video_Params"); break;
       case COMMAND_ID_SET_TELEMETRY_PARAMETERS: strcpy(szCommandDesc, "Set_Telemetry_Params"); break;
       case COMMAND_ID_SET_TX_POWERS: strcpy(szCommandDesc, "Set_TxPowers"); break;
       case COMMAND_ID_SET_GPS_INFO: strcpy(szCommandDesc, "Set_GPS_Info"); break;
@@ -101,7 +98,6 @@ const char* commands_get_description(u8 command_type)
       case COMMAND_ID_GET_MEMORY_INFO: strcpy(szCommandDesc, "Get_Memory_Info"); break;
       case COMMAND_ID_GET_CPU_INFO: strcpy(szCommandDesc, "Get_CPU_Info"); break;
       case COMMAND_ID_SET_RC_CAMERA_PARAMS: strcpy(szCommandDesc, "Set_Camera_RC_Params"); break;
-      case COMMAND_ID_ENABLE_LIVE_LOG: strcpy(szCommandDesc, "Enable_Live_Log"); break;
       case COMMAND_ID_UPLOAD_SW_TO_VEHICLE63: strcpy(szCommandDesc, "Upload_SW_To_Vehicle_2"); break;
       case COMMAND_ID_UPLOAD_FILE_SEGMENT: strcpy(szCommandDesc, "Upload_File_Segment"); break;
       case COMMAND_ID_SET_RXTX_SYNC_TYPE: strcpy(szCommandDesc, "Set_RxTx_Sync_Type"); break;

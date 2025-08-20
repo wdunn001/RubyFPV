@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -142,7 +142,7 @@ bool _pairing_start()
 
    g_bMenuPopupUpdateVehicleShown = false;
 
-   s_uTimeToSetAffinities = g_TimeNow + 8000;
+   s_uTimeToSetAffinities = g_TimeNow + 3000;
    
    log_line("-----------------------------------------");
    log_line("Started pairing processes successfully.");
@@ -230,8 +230,6 @@ bool pairing_stop()
       hardware_led_green_set_off();
 
    _pairing_close_shared_mem();
-
-   ruby_stop_recording();
 
    handle_commands_stop_on_pairing();
 
@@ -334,21 +332,6 @@ void _pairing_open_shared_mem()
    if ( NULL == g_pSM_RadioStats )
       iAnyFailed++;
 
-// To fix
-     /*
-   ruby_signal_alive();
-   for( int i=0; i<iRetryCount; i++ )
-   {
-      if ( NULL != g_pSM_VideoLinkStats )
-         break;
-      g_pSM_VideoLinkStats = shared_mem_video_link_stats_open_for_read();
-      hardware_sleep_ms(5);
-      iAnyNewOpen++;
-   }
-   if ( NULL == g_pSM_VideoLinkStats )
-      iAnyFailed++;
-   */
-     
    ruby_signal_alive();
    for( int i=0; i<iRetryCount; i++ )
    {
@@ -374,18 +357,6 @@ void _pairing_open_shared_mem()
    if ( NULL == g_pSM_VideoInfoStatsRadioIn )
       iAnyFailed++;
    */
-
-   ruby_signal_alive();
-   for( int i=0; i<iRetryCount; i++ )
-   {
-      if ( NULL != g_pSM_VideoLinkGraphs )
-         break;
-      g_pSM_VideoLinkGraphs = shared_mem_video_link_graphs_open_for_read();
-      hardware_sleep_ms(5);
-      iAnyNewOpen++;
-   }
-   if ( NULL == g_pSM_VideoLinkGraphs )
-      iAnyFailed++;
 
    ruby_signal_alive();
    for( int i=0; i<iRetryCount; i++ )
@@ -468,18 +439,11 @@ void _pairing_close_shared_mem()
    g_pSM_RadioStats = NULL;
 
 
-// To fix
-   //shared_mem_video_link_stats_close(g_pSM_VideoLinkStats);
-   //g_pSM_VideoLinkStats = NULL;
-
    shared_mem_video_frames_stats_close(g_pSM_VideoFramesStatsOutput);
    g_pSM_VideoFramesStatsOutput = NULL;
 
    //shared_mem_video_frames_stats_radio_in_close(g_pSM_VideoInfoStatsRadioIn);
    //g_pSM_VideoInfoStatsRadioIn = NULL;
-
-   shared_mem_video_link_graphs_close(g_pSM_VideoLinkGraphs);
-   g_pSM_VideoLinkGraphs = NULL;
 
    shared_mem_video_stream_stats_rx_processors_close(g_pSM_VideoDecodeStats);
    g_pSM_VideoDecodeStats = NULL;

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -179,8 +179,7 @@ float MenuSystemAllParams::renderVehicleCamera(float xPos, float yPos, float wid
    char szTemp[1024];
 
    g_pCurrentModel->getCameraFlags(szCamera);
-   // To fix
-   //g_pCurrentModel->getVideoFlags(szVideo, g_pCurrentModel->video_params.user_selected_video_link_profile, NULL);
+   g_pCurrentModel->getVideoFlags(szVideo, g_pCurrentModel->video_params.iCurrentVideoProfile, 0,0);
    sprintf(szBuff, "Vehicle camera flags: %s", szCamera );
 
    yPos += g_pRenderEngine->drawMessageLines(xPos, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
@@ -191,26 +190,26 @@ float MenuSystemAllParams::renderVehicleCamera(float xPos, float yPos, float wid
    yPos += g_pRenderEngine->drawMessageLines(xPos, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
    yPos += MENU_TEXTLINE_SPACING * height_text;
 
-   sprintf(szBuff, "EC: %d/%d/%d", g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].iBlockPackets, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].iBlockECs, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].video_data_length);
+   sprintf(szBuff, "EC: %d/%d/%d", g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].iBlockDataPackets, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].iBlockECs, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].video_data_length);
 
    g_pRenderEngine->drawMessageLines(xPos, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
 
    strcpy(szTemp, "[N/A]");
-   if ( g_pCurrentModel->video_params.user_selected_video_link_profile == VIDEO_PROFILE_BEST_PERF )
+   if ( g_pCurrentModel->video_params.iCurrentVideoProfile == VIDEO_PROFILE_HIGH_PERF )
       strcpy(szTemp, "[HP]");
-   if ( g_pCurrentModel->video_params.user_selected_video_link_profile == VIDEO_PROFILE_HIGH_QUALITY )
+   if ( g_pCurrentModel->video_params.iCurrentVideoProfile == VIDEO_PROFILE_HIGH_QUALITY )
       strcpy(szTemp, "[HQ]");
-   if ( g_pCurrentModel->video_params.user_selected_video_link_profile == VIDEO_PROFILE_USER )
+   if ( g_pCurrentModel->video_params.iCurrentVideoProfile == VIDEO_PROFILE_USER )
       strcpy(szTemp, "[USR]");
 
    snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "S: %s/%d/%d/%d", szTemp, 
-              (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS)?1:0,
+              (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS)?1:0,
               0,
-              (((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags)>>8)&0xFF)*5);
+              (((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags)>>8)&0xFF)*5);
    yPos += g_pRenderEngine->drawMessageLines(xPos+ 0.16*m_sfScaleFactor, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
    yPos += MENU_TEXTLINE_SPACING * height_text;
 
-   snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "H264: %d/%d/%d", g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264quantization, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264profile, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].h264level);
+   snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "H264: %d/%d/%d", g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].h264quantization, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].h264profile, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].h264level);
    yPos += g_pRenderEngine->drawMessageLines(xPos, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
    yPos += MENU_TEXTLINE_SPACING * height_text;
 
@@ -257,7 +256,7 @@ float MenuSystemAllParams::renderVehicleRC(float xPos, float yPos, float width, 
       strcpy(szTelemetryType, "LTM");
    if ( g_pCurrentModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_TRANSPARENT )
       strcpy(szTelemetryType, "Transp.");
-   sprintf(szBuff, "  %s / rate %d / duplex: in: %s / out: %s", szTelemetryType, g_pCurrentModel->telemetry_params.update_rate, g_pCurrentModel->telemetry_params.bControllerHasInputTelemetry?"yes":"no", g_pCurrentModel->telemetry_params.bControllerHasOutputTelemetry?"yes":"no");
+   sprintf(szBuff, "  %s / rate %d", szTelemetryType, g_pCurrentModel->telemetry_params.update_rate);
 
    yPos += g_pRenderEngine->drawMessageLines(xPos, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
    yPos += MENU_TEXTLINE_SPACING * height_text;
@@ -501,7 +500,7 @@ float MenuSystemAllParams::renderDeveloperFlags(float xPos, float yPos, float wi
    g_pRenderEngine->setColors(get_Color_MenuText());
 
    if ( NULL != g_pCurrentModel )
-      sprintf(szBuff, "LiveLog: %d, RSFS: %d, RTW: %d ms", (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_LIVE_LOG)?1:0, (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_RADIO_SILENCE_FAILSAFE)?1:0, (( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & 0xFF00 ) >> 8 ) * 5);
+      sprintf(szBuff, "LiveLog: %d, RSFS: %d, RTW: %d ms", (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_LIVE_LOG)?1:0, (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_RADIO_SILENCE_FAILSAFE)?1:0, (( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & 0xFF00 ) >> 8 ) * 5);
    else
       sprintf(szBuff, "No vehicle selected.");
    yPos += g_pRenderEngine->drawMessageLines(xPos, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
@@ -540,10 +539,6 @@ float MenuSystemAllParams::renderControllerParams(float xPos, float yPos, float 
    g_pRenderEngine->setColors(get_Color_MenuText());
 
    sprintf(szBuff, "USB Tethering: Video: %s", pCS->iVideoForwardUSBType?"yes":"no");
-   yPos += g_pRenderEngine->drawMessageLines(xPos, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
-   yPos += MENU_TEXTLINE_SPACING * height_text;
-
-   sprintf(szBuff, "Telemetry Export: Out: %s, In: %s", pCS->iTelemetryOutputSerialPortIndex==-1?"No":"Yes", pCS->iTelemetryInputSerialPortIndex==-1?"No":"Yes");
    yPos += g_pRenderEngine->drawMessageLines(xPos, yPos, szBuff, MENU_TEXTLINE_SPACING, width, g_idFontMenuSmall);
    yPos += MENU_TEXTLINE_SPACING * height_text;
 

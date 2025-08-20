@@ -52,13 +52,6 @@ extern shared_mem_video_stream_stats_rx_processors g_SM_VideoDecodeStats;
 extern shared_mem_radio_rx_queue_info* g_pSM_RadioRxQueueInfo;
 extern shared_mem_radio_rx_queue_info g_SM_RadioRxQueueInfo;
 
-// To fix
-//extern shared_mem_video_link_stats_and_overwrites* g_pSM_VideoLinkStats;
-//extern shared_mem_video_link_stats_and_overwrites g_SM_VideoLinkStats;
-
-extern shared_mem_video_link_graphs* g_pSM_VideoLinkGraphs;
-extern shared_mem_video_link_graphs g_SM_VideoLinkGraphs;
-
 extern shared_mem_dev_video_bitrate_history g_SM_DevVideoBitrateHistory;
 
 extern t_shared_mem_i2c_controller_rc_in* g_pSM_RCIn; // SBUS/IBUS RC In

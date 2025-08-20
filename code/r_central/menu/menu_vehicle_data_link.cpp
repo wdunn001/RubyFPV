@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -191,7 +191,7 @@ void MenuVehicleDataLink::onSelectItem()
          u8 uCurrentUsage = new_info.serial_port_supported_and_usage[iSerialPort-1] & 0xFF;
          if ( uCurrentUsage != SERIAL_PORT_USAGE_DATA_LINK )
          {
-            if ( (uCurrentUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) || (uCurrentUsage == SERIAL_PORT_USAGE_MSP_OSD) )
+            if ( uCurrentUsage == SERIAL_PORT_USAGE_TELEMETRY )
             {
                MenuConfirmation* pMC = new MenuConfirmation("Telemetry Link Disabled", "The serial port was used by your telemetry link. It was reasigned to the auxiliary data link.",1, true);
                pMC->m_yPos = 0.3;

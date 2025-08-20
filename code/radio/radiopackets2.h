@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -74,7 +74,7 @@
 // bit 4 - chained flag: has more radio packets in the same buffer, just after this packet
 // bit 5 - has extra data after the regular packet data
 // bit 6 - packet is encrypted (everything after packet_flags field is encrypted)
-// bit 7 - can TX after this one (to be used by the controller when it receives this packet)
+// bit 7 - is a high priority packet
 
 #define PACKET_FLAGS_MASK_MODULE 0b0111
 #define PACKET_FLAGS_MASK_STREAM_PACKET_IDX 0x0FFFFFFF
@@ -85,8 +85,11 @@
 // Deprecated in 9.7 (inclusive)
 // #define _FLAGS_BIT_EXTRA_DATA       ((u8)(1<<5))
 #define PACKET_FLAGS_BIT_HAS_ENCRYPTION   ((u8)(1<<6))
-#define PACKET_FLAGS_BIT_CAN_START_TX     ((u8)(1<<7))
+#define PACKET_FLAGS_BIT_HIGH_PRIORITY    ((u8)(1<<7))
 
+#define PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK ((u16)0x3F)
+#define PACKET_FLAGS_EXTENDED_BIT_HAS_DATA_AFTER_VIDEO  (((u16)1)<<6)
+#define PACKET_FLAGS_EXTENDED_BIT_END_OF_TRANSMISSION_FRAME  (((u16)1)<<7)
 #define PACKET_FLAGS_EXTENDED_BIT_SEND_ON_HIGH_CAPACITY_LINK_ONLY  (((u16)1)<<8)
 #define PACKET_FLAGS_EXTENDED_BIT_SEND_ON_LOW_CAPACITY_LINK_ONLY  (((u16)1)<<9)
 #define PACKET_FLAGS_EXTENDED_BIT_REQUIRE_ACK  (((u16)1)<<10)
@@ -124,7 +127,10 @@ typedef struct
                           // monotonically increassing, to detect missing/lost packets on each stream
 
    u16 packet_flags_extended;  // Added in 7.4: it replaced (length of all headers)
-             // byte 0: version: higher 4 bits: major version, lower 4 bits: minor version
+             // byte 0:
+             //    bit 0..5: end of transmission frame in [n] packets
+             //    bit 6: has data packets after video frame
+             //    bit 7: end of transmission frame
              // byte 1:
              //    bit 0: 1: send on high capacity links only;
              //    bit 1: 1: sent on low capacity links only;
@@ -145,6 +151,8 @@ typedef struct
 //   u8 controller local radio link id
 //   u8 relay flags for the receiving side (for who receives this ping) // added in v.7.7
 //   u8 relay mode for the receiving side (for who receives this ping) // added in v.7.7
+//   u8 ping flags
+//       bit 0: OSD plugins require full telemetry
 
 
 #define PACKET_TYPE_RUBY_PING_CLOCK_REPLY 4
@@ -173,10 +181,19 @@ typedef struct
 //        1 byte - segment size
 //        N bytes - segment data
 
+
 #define PACKET_TYPE_RUBY_PAIRING_REQUEST 7
 // Sent by controller when it has link with vehicle for first time. So that vehicle has controller id.
+// For 11.1 or older:
 // Has an optional u32 param after header: count of retires;
 // Has an optional u32 param after header: (bool) bDeveloperMode
+// Has an optional u32 param: controller board type
+//
+// For 11.2 or newer:
+//
+// Has an optional u32 param after header: count of retires;
+// Has an optional u32 param after header: uDeveloperFlags
+// Has an optional u32 param: controller board type
 
 #define PACKET_TYPE_RUBY_PAIRING_CONFIRMATION 8
 // Sent by vehicle to controller.
@@ -252,9 +269,6 @@ typedef struct
 //   u8: number of video packets requested
 //   (u32+u8)*n = each (video block index + video packet index) requested 
 
-#define PACKET_TYPE_VIDEO_ACK 21
-// uExtraData in header contains the acknoledged video frame id
-
 #define PACKET_TYPE_VIDEO_DATA 22
 
 #define VIDEO_STREAM_INFO_FLAG_NONE 0
@@ -317,12 +331,9 @@ typedef struct
 typedef struct
 {
    u16 uVideoDataLength;
-   u8  uFrameAndNALFlags;
-      // bit 0,1  how many packets until we reach the actual end-of-frame
-      // bit 2  end of frame
-      // bit 3  has P nal
-      // bit 4  has I nal
-      // bit 5  has other nal   
+   u8  uVideoImportantFlags; // See VIDEO_IMPORTANT_FLAG_x defines
+     // bit 0: EndOfFrame
+     // bit 1: Has data after EOF
 } __attribute__((packed)) t_packet_header_video_segment_important;
 
 typedef struct
@@ -368,7 +379,7 @@ typedef struct
 #define PACKET_TYPE_RUBY_TELEMETRY_EXTENDED 30   // Ruby telemetry, extended version
 // Contains:
 // t_packet_header
-// t_packet_header_ruby_telemetry_extended_v4
+// t_packet_header_ruby_telemetry_extended_v5
 // t_packet_header_ruby_telemetry_extended_extra_info
 // t_packet_header_ruby_telemetry_extended_extra_info_retransmissions
 // extraData (0 or more, as part of the packet, after headers)
@@ -377,9 +388,9 @@ typedef struct
 #define PACKET_TYPE_FC_TELEMETRY_EXTENDED 32 // FC telemetry + FC message
 #define PACKET_TYPE_FC_RC_CHANNELS 34
 #define PACKET_TYPE_RC_TELEMETRY 33
-// To fix
-#define PACKET_TYPE_RUBY_TELEMETRY_VIDEO_LINK_DEV_STATS 35 // has a shared_mem_video_link_stats_and_overwrites structure as data
-#define PACKET_TYPE_RUBY_TELEMETRY_VIDEO_LINK_DEV_GRAPHS 36 // has a shared_mem_video_link_graphs structure as data
+
+// Deprecated in 11.1 #define PACKET_TYPE_RUBY_TELEMETRY_VIDEO_LINK_DEV_STATS 35 // has a shared_mem_video_link_stats_and_overwrites structure as data
+// Deprecated in 11.1 #define PACKET_TYPE_RUBY_TELEMETRY_VIDEO_LINK_DEV_GRAPHS 36 // has a shared_mem_video_link_graphs structure as data
 
 #define PACKET_TYPE_RUBY_TELEMETRY_VEHICLE_TX_HISTORY 37 // has a t_packet_header_vehicle_tx_gap_history structure
 #define PACKET_TYPE_RUBY_TELEMETRY_VEHICLE_RX_CARDS_STATS 38
@@ -513,7 +524,7 @@ typedef struct // introduced in version 10.4
    int last_sent_datarate_bps[MAX_RADIO_INTERFACES][2]; // in bps, positive, negative: mcs rates; 0: never, index 0 - video, index 1 - data
    int last_recv_datarate_bps[MAX_RADIO_INTERFACES]; // in bps, positive, negative: mcs rates, 0: never
    u8  uplink_rssi_dbm[MAX_RADIO_INTERFACES]; // 200 offset. that is: rssi_dbm = 200 + dbm (dbm is negative);
-   u8  uplink_noise_dbm[MAX_RADIO_INTERFACES]; // as negative value. (that is: 20 is -20dbm)
+   u8  uplink_rssi_snr[MAX_RADIO_INTERFACES]; // 0 for negative, 0xFF for missing
    u8  uplink_link_quality[MAX_RADIO_INTERFACES]; // 0...100
    u8  uplink_rc_rssi;      // 0...100, 255 - not available
    u8  uplink_mavlink_rc_rssi; // 0...100, 255 - not available
@@ -524,6 +535,49 @@ typedef struct // introduced in version 10.4
       // bits 0..3 : structure version (0 for now, first one, starting at v3)
    u8 extraSize; // Extra info as part of the packet, after headers, can be retransmission info
 } __attribute__((packed)) t_packet_header_ruby_telemetry_extended_v4;
+
+
+typedef struct // introduced in version 11.2
+{
+   u16 uRubyFlags;    // see above
+   u8  rubyVersion;  // version x.y 4bits each (high bits: major, low bits: minor)
+   u32 uVehicleId; // to which vehicle this telemetry refers to
+   u8  vehicle_type;
+         // semantic changed in version 8.0
+         // bit 0...4 - vehicle type: car, drone, plane, etc
+         // bit 5..7 - firmware type: Ruby, OpenIPC, etc
+   u8  vehicle_name[MAX_VEHICLE_NAME_LENGTH];
+   u8  radio_links_count;
+   u32 uRadioFrequenciesKhz[MAX_RADIO_INTERFACES]; // lowest 31 bits: frequency. highest bit: 0 - regular link, 1 - relay link
+   u8  uRelayLinks; // each bit tells if radio link N is a relay link
+   u32 downlink_tx_video_bitrate_bps; // The transmitted video bitrate by vehicle
+   u32 downlink_tx_video_all_bitrate_bps; // Total transmitted video bitrate (+EC + headers) by vehicle
+   u32 downlink_tx_data_bitrate_bps;
+
+   u16 downlink_tx_video_packets_per_sec;
+   u16 downlink_tx_data_packets_per_sec;
+   u16 downlink_tx_compacted_packets_per_sec;
+
+   u8  temperatureC;
+   u8  cpu_load;
+   u16 cpu_mhz;
+   u8  throttled;
+
+   int last_sent_datarate_bps[MAX_RADIO_INTERFACES][2]; // in bps, positive, negative: mcs rates; 0: never, index 0 - video, index 1 - data
+   int last_recv_datarate_bps[MAX_RADIO_INTERFACES]; // in bps, positive, negative: mcs rates, 0: never
+   u8  uplink_rssi_dbm[MAX_RADIO_INTERFACES]; // 200 offset. that is: rssi_dbm = 200 + dbm (dbm is negative);
+   u8  uplink_rssi_snr[MAX_RADIO_INTERFACES]; // 0 for negative, 0xFF for missing
+   u8  uplink_link_quality[MAX_RADIO_INTERFACES]; // 0...100
+   u8  uplink_rc_rssi;      // 0...100, 255 - not available
+   u8  uplink_mavlink_rc_rssi; // 0...100, 255 - not available
+   u8  uplink_mavlink_rx_rssi; // 0...100, 255 - not available
+   
+   int iTxPowers[MAX_RADIO_INTERFACES]; // current Tx powers, per radio link, in mW
+   u16 txTimePerSec; // miliseconds
+   u16 uExtraRubyFlags; // see above
+      // bits 0..3 : structure version (0 for now, first one, starting at v3)
+   u8 extraSize; // Extra info as part of the packet, after headers, can be retransmission info
+} __attribute__((packed)) t_packet_header_ruby_telemetry_extended_v5;
 
 
 // Flags for structure t_packet_header_ruby_telemetry_extended_extra_info 
@@ -641,6 +695,7 @@ typedef struct
 #define MSP_FLAGS_FC_TYPE_BETAFLIGHT 1
 #define MSP_FLAGS_FC_TYPE_INAV 2
 #define MSP_FLAGS_FC_TYPE_ARDUPILOT 3
+#define MSP_FLAGS_FC_TYPE_PITLAB 4
 
 typedef struct
 {
@@ -730,27 +785,29 @@ byte 4: command type:
 #define PACKET_TYPE_TEST_RADIO_LINK_COMMAND_END    4
 #define PACKET_TYPE_TEST_RADIO_LINK_COMMAND_ENDED  5
 
-#define PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL 60
+
+#define FLAG_ADAPTIVE_VIDEO_BITRATE 1
+#define FLAG_ADAPTIVE_VIDEO_EC 2
+#define FLAG_ADAPTIVE_VIDEO_DATARATE 4
+#define FLAG_ADAPTIVE_VIDEO_KEYFRAME 8
+#define FLAG_ADAPTIVE_VIDEO_DR_BOOST 16
+#define FLAG_ADAPTIVE_IN_TEST_MODE 128
+
+#define PACKET_TYPE_VIDEO_ADAPTIVE_VIDEO_PARAMS 60
 // From controller to vehicle. Contains:
 // u32 - request id, monotonically increasing
-// u8 - adaptive video level to switch to (video profile): HQ,MQ,LQ etc
-// u8 - video stream index
+// u8  - flags, see above
+// u8  - video stream index
+// u32 - video bitrate, 0 for default
+// u16 - ec (low byte: ec, high byte: data), 0 or 0xFFFF for default
+// int - radio datarate, 0 for default
+// int - keyframe_ms (0 or negative: auto)
+// u8  - datarate boost, 0xFF for none
 
-#define PACKET_TYPE_VIDEO_SWITCH_TO_ADAPTIVE_VIDEO_LEVEL_ACK 61
+#define PACKET_TYPE_VIDEO_ADAPTIVE_VIDEO_PARAMS_ACK 61
 // From vehicle to controller. Contains:
-// u32 - request id
-// u8 - adaptive video level switched to (video profile): HQ,MQ,LQ etc, or 0xFF if not changed
+// u32 - request id ack
 
-#define PACKET_TYPE_VIDEO_SWITCH_VIDEO_KEYFRAME_TO_VALUE 64
-// From controller to vehicle.
-// u8 request id, monotonically increasing
-// u32 deisred keyframe milisec value
-// u8 video stream index
-
-#define PACKET_TYPE_VIDEO_SWITCH_VIDEO_KEYFRAME_TO_VALUE_ACK 65
-// From vehicle to controller.
-// u8 request id
-// u32 new milisec value
 
 #define PACKET_TYPE_SIK_CONFIG 70
 //
@@ -763,22 +820,29 @@ byte 4: command type:
 // u8+: data response
 
 #define PACKET_TYPE_NEGOCIATE_RADIO_LINKS 72
+#define NEGOCIATE_RADIO_TEST_PARAMS 1
+#define NEGOCIATE_RADIO_END_TESTS 2
+#define NEGOCIATE_RADIO_KEEP_ALIVE 3
+#define NEGOCIATE_RADIO_APPLY_PARAMS 255
 //
-// u8: uType
-//       0: send to vehicle
-//       1: confirmation from vehicle
+// u8   uTestIndex
+// u8:  uCommand
 //
-// u8: uCommand:
-//       1: change video datarate (uParam1 is an (int) datarate bps or negative mcs; uParam2 are radio flags)
-//       254: end and update (uParam1 is an (int) datarate bps or negative mcs, uParam2 are radio flags)
-//       255: end no change (revert to original)
-// u32: uParam1
-// u32: uParam2
-#define NEGOCIATE_RADIO_STEP_DATA_RATE 1
-#define NEGOCIATE_RADIO_STEP_END 254
-#define NEGOCIATE_RADIO_STEP_CANCEL 255
+// Command 1: test radio params
+//    u8:  vehicle radio link to test/apply to
+//    int: radio datarate to test/apply
+//    u32: radio flags to test/apply
+//    int: tx power (mw) to test/apply
+//
+// Command 2: end tests
+//    u8:  1 - canceled; 0 - finished normally
 
-
+// Command 255: apply radio params
+//    u8:  vehicle radio link to test/apply to
+//    int: radio datarate to test/apply
+//    u32: radio flags to test/apply
+//    int: tx power (mw) to test/apply
+//    when sending to vehicle, has also a type_radio_runtime_capabilities_parameters structure at the end
 
 #define PACKET_TYPE_OTA_UPDATE_STATUS 75
 //
@@ -805,11 +869,10 @@ void radio_packet_init(t_packet_header* pPH, u8 component, u8 packet_type, u32 u
 void radio_packet_compute_crc(u8* pBuffer, int length);
 int radio_packet_check_crc(u8* pBuffer, int length);
 
-int radio_packet_type_is_high_priority(u8 uPacketFlags, u8 uPacketType);
-
-void radio_populate_ruby_telemetry_v4_from_ruby_telemetry_v3(t_packet_header_ruby_telemetry_extended_v4* pV4, t_packet_header_ruby_telemetry_extended_v3* pV3);
+void radio_populate_ruby_telemetry_v5_from_ruby_telemetry_v3(t_packet_header_ruby_telemetry_extended_v5* pV5, t_packet_header_ruby_telemetry_extended_v3* pV3);
+void radio_populate_ruby_telemetry_v5_from_ruby_telemetry_v4(t_packet_header_ruby_telemetry_extended_v5* pV5, t_packet_header_ruby_telemetry_extended_v4* pV4);
 
 #ifdef __cplusplus
-}  
+}
 #endif
 

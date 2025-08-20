@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -498,14 +498,15 @@ void Menu::resetRenderXPos()
 
 void Menu::onAddToStack()
 {
- 
+  log_line("[Menu] (loop %d) Menu (%s) was added to stack, menu id: %d",
+     menu_get_loop_counter()%1000, m_szTitle, m_MenuId);
 }
 
 void Menu::onShow()
 {
    if ( m_bDisableStacking )
       m_RenderXPos = m_xPos;
-   log_line("[Menu] (loop %u) [%s] on show (id: %d, title: %s, ptr: 0x%X): xPos: %.2f, xRenderPos: %.2f",
+   log_line("[Menu] (loop %u) [%s] onShow (id: %d, title: %s, ptr: 0x%X): xPos: %.2f, xRenderPos: %.2f",
       menu_get_loop_counter()%1000, m_bFirstShow? "first show":"not first show", 
       m_MenuId, m_szTitle, this, m_xPos, m_RenderXPos);
 
@@ -530,9 +531,10 @@ void Menu::onShow()
    }
    if ( m_SelectedIndex >= m_ItemsCount )
       m_SelectedIndex = -1;
-   log_line("[Menu] onShow: set selected item index to: %d (out of %d items)", m_SelectedIndex, m_ItemsCount);
+   log_line("[Menu] onShow (%s): set selected item index to: %d (out of %d items)", m_szTitle, m_SelectedIndex, m_ItemsCount);
    onFocusedItemChanged();
    m_bInvalidated = true;
+   log_line("[Menu] onShow (%s): finished handling onShow event.", m_szTitle);
 }
 
 bool Menu::periodicLoop()
@@ -919,17 +921,17 @@ float Menu::RenderFrameAndTitle()
 
    g_pRenderEngine->setColors(get_Color_MenuBg());
    g_pRenderEngine->setStroke(0,0,0,0);
-   g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos, m_RenderWidth + fExtraWidth, m_RenderHeight, MENU_ROUND_MARGIN*m_sfMenuPaddingY);
+   g_pRenderEngine->drawRoundRectMenu(m_RenderXPos, m_RenderYPos, m_RenderWidth + fExtraWidth, m_RenderHeight, MENU_ROUND_MARGIN*m_sfMenuPaddingY);
 
    g_pRenderEngine->setColors(get_Color_MenuBgTitle());
    g_pRenderEngine->setStroke(0,0,0,0);
-   g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos, m_RenderWidth + fExtraWidth, m_RenderHeaderHeight, MENU_ROUND_MARGIN*m_sfMenuPaddingY);
+   g_pRenderEngine->drawRoundRectMenu(m_RenderXPos, m_RenderYPos, m_RenderWidth + fExtraWidth, m_RenderHeaderHeight, MENU_ROUND_MARGIN*m_sfMenuPaddingY);
 
    if ( 0 != m_szCurrentTooltip[0] )
    {
       g_pRenderEngine->setColors(get_Color_MenuBgTooltip());
       g_pRenderEngine->setStroke(0,0,0,0);
-      g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos + m_RenderHeight - m_RenderFooterHeight, m_RenderWidth + fExtraWidth, m_RenderFooterHeight, MENU_ROUND_MARGIN*m_sfMenuPaddingY);
+      g_pRenderEngine->drawRoundRectMenu(m_RenderXPos, m_RenderYPos + m_RenderHeight - m_RenderFooterHeight, m_RenderWidth + fExtraWidth, m_RenderFooterHeight, MENU_ROUND_MARGIN*m_sfMenuPaddingY);
    }
 
    // Draw outlines
@@ -1433,7 +1435,7 @@ void Menu::updateScrollingOnSelectionChange()
 
 int Menu::onBack()
 {
-   log_line("[Menu] (loop %u): id %d-%d, name [%s], on back",
+   log_line("[Menu] (loop %u): onBack: id %d-%d, name [%s]",
        menu_get_loop_counter()%1000, m_MenuId%1000, m_MenuId/1000, m_szTitle);
 
    for( int i=0; i<m_ItemsCount; i++ )
@@ -1441,6 +1443,7 @@ int Menu::onBack()
       if ( ! m_pMenuItems[i]->isHidden() )
       if ( m_pMenuItems[i]->isSelectable() && m_pMenuItems[i]->isEditing() )
       {
+         log_line("[Menu] menu id %d, end edit item %d", m_MenuId, m_SelectedIndex);
          m_pMenuItems[i]->endEdit(true);
          onItemValueChanged(i);
          onItemEndEdit(i);
@@ -1461,16 +1464,23 @@ int Menu::onBack()
    return 0;
 }
 
+void Menu::onVehicleCommandFinished(u32 uCommandId, u32 uCommandType, bool bSucceeded)
+{
+   log_line("[Menu] (loop %u): id %d-%d, name [%s], vehicle command finished: command type: %s, succeeded? %s",
+       menu_get_loop_counter()%1000, m_MenuId%1000, m_MenuId/1000, m_szTitle,
+       commands_get_description(uCommandType), bSucceeded?"yes":"no");
+}
+
 void Menu::onSelectItem()
 {
-   log_line("MenuBase:onSelectItem: menu id: %d, selected item index: %d", m_MenuId, m_SelectedIndex);
+   log_line("[Menu] (loop %d) onSelectItem: menu id: %d, selected item index: %d", menu_get_loop_counter()%1000, m_MenuId, m_SelectedIndex);
    if ( (m_MenuId%1000) == MENU_ID_SIMPLE_MESSAGE ) // simple message menu? just pop it and return.
    {
-      log_line("MenuBase:onSelectItem: it's a simple message (MENU_ID_SIMPLE_MESSAGE), just pop it.");
+      log_line("[Menu] onSelectItem: it's a simple message (MENU_ID_SIMPLE_MESSAGE), just pop it.");
       menu_stack_pop(0);
       return;
    }
-   if ( m_SelectedIndex < 0 || m_SelectedIndex >= m_ItemsCount )
+   if ( (m_SelectedIndex < 0) || (m_SelectedIndex >= m_ItemsCount) )
       return;
    if ( m_pMenuItems[m_SelectedIndex]->isHidden() )
       return;
@@ -1479,16 +1489,27 @@ void Menu::onSelectItem()
 
    if ( m_pMenuItems[m_SelectedIndex]->isEditable() )
    {
+      log_line("[Menu] (loop %d) Selected editable menu item.", menu_get_loop_counter()%1000);
       MenuItem* pSelectedItem = m_pMenuItems[m_SelectedIndex];
       if ( pSelectedItem->isEditing() )
       {
-         log_line("[Menu] End edit item %d", m_SelectedIndex);
-         pSelectedItem->endEdit(false);
-         onItemEndEdit(m_SelectedIndex);
+         if ( pSelectedItem->isEndEditOnBackOnly() )
+         {
+            // On press ok, move to next edit char, not end edit.
+            // beginEdit() will move to next char if already editing.
+            log_line("[Menu] (loop %d) Continue edit item %d", menu_get_loop_counter()%1000, m_SelectedIndex);
+            pSelectedItem->beginEdit();
+         }
+         else
+         {
+            log_line("[Menu] (loop %d) End edit item %d", menu_get_loop_counter()%1000, m_SelectedIndex);
+            pSelectedItem->endEdit(false);
+            onItemEndEdit(m_SelectedIndex);
+         }
       }
       else
       {
-         log_line("[Menu] Begin edit item %d", m_SelectedIndex);
+         log_line("[Menu] (loop %d) Begin edit item %d", menu_get_loop_counter()%1000, m_SelectedIndex);
          pSelectedItem->beginEdit();
       }
    }
@@ -1502,7 +1523,7 @@ void Menu::onSelectItem()
       }
       else
       {
-         log_line("[Menu] Selected menu item %d", m_SelectedIndex);
+         log_line("[Menu] (loop %d) Selected menu item %d", menu_get_loop_counter()%1000, m_SelectedIndex);
          m_pMenuItems[m_SelectedIndex]->onClick();
       }
    }
@@ -2154,11 +2175,13 @@ bool Menu::_generate_upload_archive(char* szArchiveName)
    if ( 0 != pthread_create(&pThread, NULL, &_thread_generate_upload, szArchiveName) )
    {
       render_commands_set_progress_percent(-1, true);
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("upload generate failed");
       g_bUpdateInProgress = false;
       addMessage(L("There was an error generating software upload file."));
       return false;
    }
+   else
+      pthread_detach(pThread);
    s_iThreadGenerateUploadCounter++;
 
    // Wait for the thread to finish
@@ -2172,7 +2195,7 @@ bool Menu::_generate_upload_archive(char* szArchiveName)
       if ( checkCancelUpload() )
       {
          render_commands_set_progress_percent(-1, true);
-         ruby_resume_watchdog();
+         ruby_resume_watchdog("upload canceled");
          g_bUpdateInProgress = false;
          return false;
       }
@@ -2198,7 +2221,7 @@ bool Menu::_generate_upload_archive(char* szArchiveName)
    if ( s_bThreadGenerateUploadError )
    {
       render_commands_set_progress_percent(-1, true);
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("upload thread error");
       g_bUpdateInProgress = false;
       return false;
    }
@@ -2220,7 +2243,7 @@ bool Menu::uploadSoftware()
 {
    log_line("Menu: Start upload procedure for vehicle software version %d.%d (mode: %s)...", ((g_pCurrentModel->sw_version)>>8) & 0xFF, ((g_pCurrentModel->sw_version) & 0xFF), g_pCurrentModel->is_spectator?"spectator mode":"control mode");
 
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("uploading software to vehicle");
    render_commands_init();
    g_bUpdateInProgress = true;
    render_commands_set_progress_percent(0, true);
@@ -2238,7 +2261,7 @@ bool Menu::uploadSoftware()
    if ( ! _generate_upload_archive(szArchiveToUpload) )
    {
       render_commands_set_progress_percent(-1, true);
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("upload failed");
       g_bUpdateInProgress = false;
       if ( s_bThreadGenerateUploadError )
          addMessage2(0, L("Vehicle update binary files are missing or update procedure changed. Please update (again) your controller."), s_szThreadGenerateUploadErrorString);
@@ -2258,7 +2281,7 @@ bool Menu::uploadSoftware()
    if ( ! _uploadVehicleUpdate(szArchiveToUpload) )
    {
       render_commands_set_progress_percent(-1, true);
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("upload failed");
       g_bUpdateInProgress = false;
       addMessage(L("There was an error updating your vehicle."));
       return false;
@@ -2359,7 +2382,7 @@ bool Menu::uploadSoftware()
    }
    if ( bProcessingFailed )
    {
-      ruby_resume_watchdog();
+      ruby_resume_watchdog("upload processing failed");
       g_bUpdateInProgress = false;
       send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_UPDATE_STOPED,0);
       if ( 0 != szProcessingError[0] )
@@ -2426,7 +2449,7 @@ bool Menu::uploadSoftware()
    g_bAskedForNegociateRadioLink = false;
    g_bUpdateInProgress = false;
    send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_UPDATE_STOPED,0);
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("update finished");
 
    log_line("Finished software upload procedure.");
    return true;
@@ -2440,13 +2463,63 @@ MenuItemSelect* Menu::createMenuItemCardModelSelector(const char* szTitle)
    for( int i=1; i<50; i++ )
    {
       const char* szDesc = str_get_radio_card_model_string(i);
-      if ( NULL != szDesc && 0 != szDesc[0] )
+      if ( (NULL != szDesc) && (0 != szDesc[0]) )
       if ( NULL == strstr(szDesc, "NONAME") )
       if ( NULL == strstr(szDesc, "Generic") )
          pItem->addSelection(szDesc);
    }
    pItem->setIsEditable();
    return pItem;
+}
+
+void Menu::setSelectionForCardModelSelector(MenuItemSelect* pItemSelect, int iCardModel)
+{
+   if ( NULL == pItemSelect )
+      return;
+   if ( iCardModel < 0 )
+      iCardModel = -iCardModel;
+   pItemSelect->setSelectedIndex(1);
+   if ( 0 == iCardModel )
+      return;
+   for( int i=1; i<50; i++ )
+   {
+      const char* szDesc = str_get_radio_card_model_string(i);
+      if ( NULL != szDesc && 0 != szDesc[0] )
+      if ( NULL == strstr(szDesc, "NONAME") )
+      if ( NULL == strstr(szDesc, "Generic") )
+      if ( i == iCardModel )
+      {
+         pItemSelect->setSelectedIndex(i+1);
+         return;
+      }
+   }
+}
+
+u32 Menu::getSelectedCardForCardModelSelector(MenuItemSelect* pItemSelect)
+{
+   if ( NULL == pItemSelect )
+      return 0xFF;
+   int iSelectedIndex = pItemSelect->getSelectedIndex();
+
+   if ( 0 == iSelectedIndex )
+      return 0xFF;
+   if ( 1 == iSelectedIndex )
+      return 0;
+
+   int iSelection = 2;
+   for( int i=1; i<50; i++ )
+   {
+      const char* szDesc = str_get_radio_card_model_string(i);
+      if ( NULL != szDesc && 0 != szDesc[0] )
+      if ( NULL == strstr(szDesc, "NONAME") )
+      if ( NULL == strstr(szDesc, "Generic") )
+      {
+         if ( iSelection == iSelectedIndex )
+            return (u32)i;
+         iSelection++;
+      }
+   }
+   return 0;
 }
 
 MenuItemSelect* Menu::createMenuItemTxPowers(const char* szTitle, bool bAddAutoOption, bool bBooster2W, bool bBooster4W, int iMaxUsablePowerMw)
@@ -2920,92 +2993,6 @@ void Menu::addMessageNeedsVehcile(const char* szMessage, int iConfirmationId)
    pm->m_bDisableStacking = true;
    add_menu_to_stack(pm);
 }
-
-char* Menu::addMessageVideoBitrate(Model* pModel)
-{
-   static char s_szMenuObjectsVideoBitrateWarning[256];
-
-   s_szMenuObjectsVideoBitrateWarning[0] = 0;
-   if ( menu_has_menu(MENU_ID_SIMPLE_MESSAGE) )
-      return s_szMenuObjectsVideoBitrateWarning;
-   if ( NULL == pModel )
-      return s_szMenuObjectsVideoBitrateWarning;
-
-   int iProfile = pModel->video_params.user_selected_video_link_profile;
-   u32 uMaxVideoRadioDataRate = utils_get_max_radio_datarate_for_profile(pModel, iProfile);
-   u32 uMaxVideoRate = utils_get_max_allowed_video_bitrate_for_profile(pModel, iProfile);
-   if ( pModel->video_link_profiles[iProfile].bitrate_fixed_bps <= uMaxVideoRate )
-      return s_szMenuObjectsVideoBitrateWarning;
-
-   Menu* pm = new Menu(MENU_ID_SIMPLE_MESSAGE, L("Video Bitrate Warning"), NULL);
-   pm->m_xPos = m_xPos-0.05; pm->m_yPos = m_yPos+0.05;
-   pm->m_Width = 0.5;
-   pm->m_bDisableStacking = true;
-
-   char szLine1[256];
-   char szLine2[256];
-   char szMaxRadioVideo[64];
-   char szBRVideo[256];
-   char szBRRadio[256];
-
-   str_format_bitrate(pModel->video_link_profiles[iProfile].bitrate_fixed_bps, szBRVideo);
-   str_format_bitrate(uMaxVideoRate, szBRRadio);
-   str_format_bitrate(uMaxVideoRadioDataRate, szMaxRadioVideo);
-   snprintf(szLine1, 255, "Your current video bitrate of %s is bigger than %d%% of your maximum safe allowed current radio links datarates capacity of %s.",
-       szBRVideo, DEFAULT_VIDEO_LINK_LOAD_PERCENT,szMaxRadioVideo);
-   strcpy(szLine2, "Lower your set video bitrate or increase the radio datarates on your radio links, otherways you will experience delays in the video stream.");
-   
-   strcpy(s_szMenuObjectsVideoBitrateWarning, szLine1);
-   // If a custom data rate was set for this video profile and it's too small, show warning
-
-   if ( 0 != pModel->video_link_profiles[iProfile].radio_datarate_video_bps )
-   {
-      uMaxVideoRate = getRealDataRateFromRadioDataRate(pModel->video_link_profiles[iProfile].radio_datarate_video_bps, 0);
-      if ( uMaxVideoRate < pModel->video_link_profiles[iProfile].bitrate_fixed_bps )
-      {
-          str_format_bitrate(uMaxVideoRate, szBRRadio);
-          snprintf(szLine1, 255, "You set a custom radio datarate for this video profile of %s which is smaller than what is optimum for your desired video bitrate %s.", szBRRadio, szBRVideo );
-          snprintf(szLine2, 255, "Disable the custom radio datarate for this video profile or decrease the desired video bitrate. Should be lower than %d%% of the set radio datarate.", DEFAULT_VIDEO_LINK_MAX_LOAD_PERCENT);
-          strcpy(s_szMenuObjectsVideoBitrateWarning, szLine1);
-      }
-   }
-
-   /*
-/////////////////////////
-   // First get the maximum radio datarate set on radio links
-
-   for( int i=0; i<pModel->radioLinksParams.links_count; i++ )
-   {
-      if ( ! (pModel->radioLinksParams.link_capabilities_flags[i] & RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY) )
-      if ( getRealDataRateFromRadioDataRate(pModel->radioLinksParams.link_datarate_video_bps[i], 0) < 5000000)
-         continue;
-
-      if ( 0 == uMaxRadioDataRateBPS )
-         uMaxRadioDataRateBPS = getRealDataRateFromRadioDataRate(pModel->radioLinksParams.link_datarate_video_bps[i], 0);
-
-      if ( 0 == iMaxRadioDataRate )
-         iMaxRadioDataRate = pModel->radioLinksParams.link_datarate_video_bps[i];
-   }
-
-   // If the video profile has a set radio datarate, use it
-
-   if ( 0 != pModel->video_link_profiles[iProfile].radio_datarate_video_bps )
-   {
-      uMaxRadioDataRateBPS = getRealDataRateFromRadioDataRate(pModel->video_link_profiles[iProfile].radio_datarate_video_bps, 0);
-      iMaxRadioDataRate = pModel->video_link_profiles[iProfile].radio_datarate_video_bps;
-   }
-   */
-///////////////////
-   
-   pm->addTopLine(szLine1);
-   pm->addTopLine(szLine2);
-   
-   pm->m_fAlfaWhenInBackground = 1.0;
-   add_menu_to_stack(pm);
-
-   return s_szMenuObjectsVideoBitrateWarning;
-}
-
 
 void Menu::addUnsupportedMessageOpenIPC(const char* szMessage)
 {

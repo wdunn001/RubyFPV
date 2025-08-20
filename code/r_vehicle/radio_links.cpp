@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -102,7 +102,7 @@ int radio_links_open_rxtx_radio_interfaces()
       if ( (pRadioHWInfo->iRadioType == RADIO_TYPE_ATHEROS) ||
            (pRadioHWInfo->iRadioType == RADIO_TYPE_RALINK) )
       {
-         int nRateTx = g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iRadioLinkId];
+         int nRateTx = g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[iRadioLinkId];
          radio_utils_set_datarate_atheros(g_pCurrentModel, i, nRateTx, 0);
       }
 
@@ -352,7 +352,7 @@ bool radio_links_apply_settings(Model* pModel, int iRadioLink, type_radio_links_
            (pRadioHWInfo->iRadioType != RADIO_TYPE_RALINK) )
          continue;
 
-      int nRateTx = pRadioLinkParamsNew->link_datarate_video_bps[iRadioLink];
+      int nRateTx = pRadioLinkParamsNew->downlink_datarate_video_bps[iRadioLink];
       update_atheros_card_datarate(pModel, i, nRateTx, g_pProcessStats);
       g_TimeNow = get_current_timestamp_ms();
    }

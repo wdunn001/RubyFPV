@@ -8,7 +8,7 @@
 
 //  [packet header][video segment header][video seg header important][video data][000]
 //  | pPH          | pPHVS               | pPHVSImp                  |pActualVideoData
-//  | pRawData ptr                       | pVideoData ptr
+//  | pRawData ptr                       | pVideoData ptr (all this is part of EC)
 //                                       [  <- video block packet size ->            ]
 //                                                                   [-vid size-]
 
@@ -33,10 +33,10 @@ class VideoTxPacketsBuffer
       bool init(Model* pModel);
       bool uninit();
       void discardBuffer();
+      void setCustomECScheme(u16 uECScheme);
       void updateVideoHeader(Model* pModel);
-      void updateCurrentKFValue();
-      void fillVideoPacketsFromCSI(u8* pVideoData, int iDataSize, bool bEndOfFrame);
-      bool fillVideoPacketsFromRTSPPacket(u8* pVideoRawData, int iRawDataSize, bool bSingle, bool bEnd, u32 uNALType);
+      void fillVideoPacketsFromCSI(u8* pVideoData, int iDataSize, bool bEndOfFrame, int iHasPendingDataPacketsToSend);
+      bool fillVideoPacketsFromRTSPPacket(u8* pVideoRawData, int iRawDataSize, bool bSingle, bool bEnd, u32 uNALType, int iHasPendingDataPacketsToSend);
       int hasPendingPacketsToSend();
       int sendAvailablePackets(int iMaxCountToSend);
       void resendVideoPacket(u32 uRetransmissionId, u32 uVideoBlockIndex, u32 uVideoBlockPacketIndex);
@@ -50,8 +50,8 @@ class VideoTxPacketsBuffer
    protected:
 
       void _checkAllocatePacket(int iBufferIndex, int iPacketIndex);
-      void _fillVideoPacketHeaders(int iBufferIndex, int iPacketIndex, bool bIsECPacket, int iRawVideoDataSize, u32 uNALPresenceFlags, bool bEndOfTransmissionFrame);
-      void _addNewVideoPacket(u8* pRawVideoData, int iRawVideoDataSize, u32 uNALPresenceFlags, bool bEndOfTransmissionFrame);
+      void _fillVideoPacketHeaders(int iBufferIndex, int iPacketIndex, bool bIsECPacket, int iRawVideoDataSize, u32 uNALPresenceFlags, bool bEndOfTransmissionFrame, int iCountPacketsToEOF, int iCountDataPacketsAfter);
+      void _addNewVideoPacket(u8* pRawVideoData, int iRawVideoDataSize, u32 uNALPresenceFlags, bool bEndOfTransmissionFrame, int iCountPacketsToEOF, int iCountDataPacketsAfter);
       bool _sendPacket(int iBufferIndex, int iPacketIndex, u32 uRetransmissionId);
       static int m_siVideoBuffersInstancesCount;
       bool m_bInitialized;
@@ -71,10 +71,13 @@ class VideoTxPacketsBuffer
       u32 m_uNextBlockPacketSize;
       u32 m_uNextBlockDataPackets;
       u32 m_uNextBlockECPackets;
+      u32 m_uLastAppliedECSchemeDataPackets;
+      u32 m_uLastAppliedECSchemeECPackets;
+      u16 m_uCustomECScheme; // low byte: ec, high byte: data, 0 or 0xFFFF for default
       t_packet_header m_PacketHeader;
       t_packet_header_video_segment m_PacketHeaderVideo;
       t_packet_header_video_segment_important m_PacketHeaderVideoImportant;
-      t_packet_header_video_segment* m_pLastPacketHeaderVideoFilldedIn;
+      t_packet_header_video_segment* m_pLastPacketHeaderVideoFilledIn;
       t_packet_header_video_segment_important* m_pLastPacketHeaderVideoImportantFilledIn;
       int m_iUsableRawVideoDataSize;
 
@@ -84,7 +87,7 @@ class VideoTxPacketsBuffer
       int m_iCurrentBufferPacketIndexToSend;
       u8 m_TempVideoBuffer[MAX_PACKET_TOTAL_SIZE];
       int m_iTempVideoBufferFilledBytes;
-      u32 m_uTempBufferNALPresenceFlags;
+      u32 m_uTempNALPresenceFlags;
       type_tx_video_packet_info m_VideoPackets[MAX_RXTX_BLOCKS_BUFFER][MAX_TOTAL_PACKETS_IN_BLOCK];
       int m_iCountReadyToSend;
 

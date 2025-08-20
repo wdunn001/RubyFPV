@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -189,7 +189,6 @@ MenuControllerVideo::MenuControllerVideo(void)
    if ( hardware_has_audio_volume() )
    {
       m_pItemsSlider[1] = new MenuItemSlider(L("Audio Output Volume"), L("Sets the audio output volume"), 10,100,50, 0.1);
-      m_pItemsSlider[1]->setStep(1);
       m_IndexAudioVolume = addMenuItem(m_pItemsSlider[1]);
    }
    m_IndexAudioTest = addMenuItem(new MenuItem(L("Audio Test"), L("Test local audio output on your HDMI display/output speakers.")));

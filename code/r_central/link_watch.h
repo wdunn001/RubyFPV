@@ -2,7 +2,6 @@
 
 void link_watch_init();
 void link_watch_reset();
-void link_watch_mark_started_video_processing();
 
 void link_watch_remove_popups();
 

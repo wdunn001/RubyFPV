@@ -23,14 +23,14 @@ typedef struct
 {
    u32 timeLastLogWrongRxPacket;
    int lastReceivedDBM;
-   int lastReceivedNoiseDBM;
+   int lastReceivedDBMNoise;
+   int lastReceivedSNR;
    int lastReceivedDataRate;
    u32 uTimeLastCapture;
 }
 type_uplink_rx_info_stats;
 
 extern bool g_bQuit;
-extern bool g_bDebug;
 extern bool g_bRouterReady;
 
 extern Model* g_pCurrentModel;
@@ -54,7 +54,6 @@ extern u16 s_countTXDataPacketsOutTemp;
 extern u16 s_countTXCompactedPacketsOutTemp;
 
 // Router
-extern bool g_bDeveloperMode;
 extern type_u32_couters g_CoutersMainLoop;
 
 extern u32 s_debugVideoBlocksInCount;
@@ -84,14 +83,12 @@ extern bool g_bHasFastUplinkFromController;
 extern bool g_bHasSlowUplinkFromController;
 extern bool g_bHadEverLinkToController;
 extern bool g_bHasSentVehicleSettingsAtLeastOnce;
+extern bool g_bOSDPluginsNeedTelemetryStreams;
 
 extern u32 g_uControllerId;
 
 extern t_packet_header_ruby_telemetry_extended_extra_info_retransmissions g_PHTE_Retransmissions;
 extern t_packet_header_vehicle_tx_history g_PHVehicleTxStats;
-//To fix
-//extern shared_mem_video_link_stats_and_overwrites g_SM_VideoLinkStats;
-extern shared_mem_video_link_graphs g_SM_VideoLinkGraphs;
 extern shared_mem_dev_video_bitrate_history g_SM_DevVideoBitrateHistory;
 
 //extern shared_mem_video_frames_stats g_VideoInfoStatsCameraOutput;

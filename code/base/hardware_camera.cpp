@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -246,6 +246,7 @@ u32 _hardware_detect_camera_type()
          }
          else
          {
+            pthread_detach(pth);
             while ( s_bThreadToDetectCameraIsRunning )
             {
                hardware_sleep_ms(20);

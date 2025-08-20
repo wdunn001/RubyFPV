@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -74,6 +74,8 @@ static int s_iBootCount = 0;
 static bool g_bDebug = false;
 static bool g_bIsFirstBoot = false;
 static bool s_isVehicle = false;
+static bool s_bIgnoreDrivers = false;
+
 bool s_bQuit = false;
 Model modelVehicle;
 
@@ -317,6 +319,8 @@ void _check_files()
 
 void _check_update_drivers_on_update()
 {
+   if ( s_bIgnoreDrivers )
+      return;
    #if defined (HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
    char szOutput[4098];
    bool bNeedsInstall = false;
@@ -730,6 +734,17 @@ int _step_process_cmd_line(int argc, char* argv[])
    g_bDebug = false;
    if ( strcmp(argv[argc-1], "-debug") == 0 )
       g_bDebug = true;
+   if ( argc >= 2 )
+   if ( strcmp(argv[argc-2], "-debug") == 0 )
+      g_bDebug = true;
+
+   s_bIgnoreDrivers = false;
+   if ( strcmp(argv[argc-1], "-ignoredrivers") == 0 )
+      s_bIgnoreDrivers = true;
+   if ( argc >= 2 )
+   if ( strcmp(argv[argc-2], "-ignoredrivers") == 0 )
+      s_bIgnoreDrivers = true;
+
    return 0;
 }
 
@@ -858,6 +873,11 @@ int _step_check_file_system()
    int readWriteRetryCount = 0;
    FILE* fd = NULL;
    
+   #if defined (HW_PLATFORM_RADXA)
+   hw_execute_bash_command("date -s 'next year'", NULL);
+   hw_execute_bash_command("date -s 'next year'", NULL);
+   #endif
+
    while ( ! readWriteOk )
    {
       printf("Ruby: Trying to access files...\n");
@@ -1227,7 +1247,8 @@ void  _step_load_init_radios()
    hardware_load_radio_info_into_buffers(&iHwRadiosCountPrev, &iHwRadiosSupportedCountPrev, &sRadioInfoPrev[0]);
    log_line("Loaded previous radio configuration.");
    
-   hardware_radio_load_radio_modules(1);
+   if ( ! s_bIgnoreDrivers )
+      hardware_radio_load_radio_modules(1);
      
    hardware_sleep_ms(500);
 
@@ -1300,7 +1321,8 @@ void  _step_load_init_radios()
       if ( iWifiIndexToTry >= iMaxWifiCardsToDetect )
       {
          iWifiIndexToTry = 0;
-         hardware_radio_load_radio_modules(1);
+         if ( ! s_bIgnoreDrivers )
+            hardware_radio_load_radio_modules(1);
          hardware_sleep_ms(1000);
       }
    }
@@ -1327,7 +1349,7 @@ void  _step_load_init_radios()
          sprintf(szComm, "cat /sys/class/net/wlan%d/device/uevent", i);
          hw_execute_bash_command_raw(szComm, szOutput);
          removeNewLines(szOutput);
-         log_line("Network wlan0 info: [%s]", szOutput);
+         log_line("Network wlan%d info: [%s]", i, szOutput);
       }
    }
 
@@ -1470,6 +1492,18 @@ int main(int argc, char *argv[])
    printf("\nRuby: Start (v %d.%d b.%d) r%d\n", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR/10, SYSTEM_SW_BUILD_NUMBER, s_iBootCount);
    fflush(stdout);
 
+   if ( g_bDebug )
+   {
+      printf("\nRuby: Start in debug mode\n");
+      fflush(stdout);
+   }
+
+   if ( s_bIgnoreDrivers )
+   {
+      printf("\nRuby: Ignore drivers instalation\n");
+      fflush(stdout);    
+   }
+
    if ( _step_check_file_system() < 0 )
    {
       #if defined HW_PLATFORM_OPENIPC_CAMERA
@@ -1495,7 +1529,7 @@ int main(int argc, char *argv[])
    szOutput[0] = 0;
 
    if ( g_bIsFirstBoot )
-      do_first_boot_pre_initialization();
+      do_first_boot_pre_initialization(s_bIgnoreDrivers);
 
    _step_load_init_devices();
 
@@ -1902,7 +1936,7 @@ int main(int argc, char *argv[])
          if ( modelVehicle.radioInterfacesParams.interface_link_id[i] >= 0 )
          if ( modelVehicle.radioInterfacesParams.interface_link_id[i] < modelVehicle.radioLinksParams.links_count )
          {
-            int dataRateMb = modelVehicle.radioLinksParams.link_datarate_video_bps[modelVehicle.radioInterfacesParams.interface_link_id[i]];
+            int dataRateMb = modelVehicle.radioLinksParams.downlink_datarate_video_bps[modelVehicle.radioInterfacesParams.interface_link_id[i]];
             if ( dataRateMb > 0 )
                dataRateMb = dataRateMb / 1000 / 1000;
             if ( dataRateMb > 0 )
@@ -1972,6 +2006,9 @@ int main(int argc, char *argv[])
    }
    else
    {
+      sprintf(szComm, "rm -rf %s%s 2>&1 1>/dev/null", FOLDER_RUBY_TEMP, FILE_TEMP_CONTROLLER_PAUSE_WATCHDOG);
+      hw_execute_bash_command_silent(szComm, NULL);
+
       #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
 
       u32 uControllerId = controller_utils_getControllerId();
@@ -1980,7 +2017,6 @@ int main(int argc, char *argv[])
       #if defined(HW_PLATFORM_RASPBERRY)
       hw_execute_bash_command_silent("con2fbmap 1 0", NULL);
       //execute_bash_command_silent("printf \"\\033c\"", NULL);
-      //hw_launch_process("./ruby_controller");
       #endif
 
       if ( hardware_radio_has_sik_radios() )
@@ -2023,7 +2059,7 @@ int main(int argc, char *argv[])
          {
             log_line("Current model radio link %d is a SiK radio link. Use it to configure controller.", iSiKRadioLinkIndex+1);
             uFreq = modelVehicle.radioLinksParams.link_frequency_khz[iSiKRadioLinkIndex];
-            uDataRate = modelVehicle.radioLinksParams.link_datarate_data_bps[iSiKRadioLinkIndex],
+            uDataRate = modelVehicle.radioLinksParams.downlink_datarate_data_bps[iSiKRadioLinkIndex],
             uECC = (modelVehicle.radioLinksParams.link_radio_flags[iSiKRadioLinkIndex] & RADIO_FLAGS_SIK_ECC)?1:0;
             uLBT = (modelVehicle.radioLinksParams.link_radio_flags[iSiKRadioLinkIndex] & RADIO_FLAGS_SIK_LBT)?1:0;
             uMCSTR = (modelVehicle.radioLinksParams.link_radio_flags[iSiKRadioLinkIndex] & RADIO_FLAGS_SIK_MCSTR)?1:0;

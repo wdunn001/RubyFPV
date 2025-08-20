@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -263,6 +263,7 @@ void vehicle_launch_audio_capture(Model* pModel)
       s_bAudioCaptureIsStarted = false;
       return;
    }
+   pthread_detach(s_pThreadAudioCapture);
    log_line("Created thread for audio capture.");
    #endif
 

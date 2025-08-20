@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -58,7 +58,6 @@ MenuVehicleExpert::MenuVehicleExpert(void)
    m_IndexIONiceRouter = addMenuItem(m_pItemsSelect[0]);
 
    m_pItemsSlider[1] = new MenuItemSlider("Core I/O Priority", "Sets the I/O priority value, 1 is highest priority, 7 is lowest priority.", 1,7,4, fSliderWidth);
-   m_pItemsSlider[1]->setStep(1);
    m_IndexIONiceRouterValue = addMenuItem(m_pItemsSlider[1]);
 
    m_pItemsSlider[2] = new MenuItemSlider("Video Module Priority", "Sets the priority for the video TX/RX pipeline. Higher values means higher priority.", 0,15,9, fSliderWidth);
@@ -71,7 +70,6 @@ MenuVehicleExpert::MenuVehicleExpert(void)
    m_IndexIONice = addMenuItem(m_pItemsSelect[1]);
 
    m_pItemsSlider[3] = new MenuItemSlider("Video I/O Priority", "Sets the I/O priority value, 1 is highest priority, 7 is lowest priority.", 1,7,4, fSliderWidth);
-   m_pItemsSlider[3]->setStep(1);
    m_IndexIONiceValue = addMenuItem(m_pItemsSlider[3]);
 
    m_pItemsSlider[4] = new MenuItemSlider("Telemetry Module Priority",  "Sets the priority for the telemetry module. Higher values means higher priority.", 0,16, 5, fSliderWidth);
@@ -134,7 +132,6 @@ MenuVehicleExpert::MenuVehicleExpert(void)
    m_IndexVoltageEnabled = addMenuItem(m_pItemsSelect[4]);
 
    m_pItemsSlider[9] = new MenuItemSlider("Overvoltage (steps)", "Sets the overvoltage value, in 0.025V increments. Requires a reboot.", 1,8,4, fSliderWidth);
-   m_pItemsSlider[9]->setStep(1);
    m_IndexVoltage = addMenuItem(m_pItemsSlider[9]);
 
    addMenuItem(new MenuItemSection("Other Settings"));

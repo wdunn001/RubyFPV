@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -143,9 +143,7 @@ bool telemetry_detect_serial_port_to_use()
           continue;
        if ( ! pPortInfo->iSupported )
           continue;
-       if ( (pPortInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) ||
-            (pPortInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY_LTM) ||
-            (pPortInfo->iPortUsage == SERIAL_PORT_USAGE_MSP_OSD) )
+       if ( pPortInfo->iPortUsage == SERIAL_PORT_USAGE_TELEMETRY )
        {
           s_iCurrentTelemetrySerialPortIndex = i;
           s_iCurrentTelemetrySerialPortSpeed = (int)pPortInfo->lPortSpeed;
@@ -331,18 +329,20 @@ bool _telemetry_must_send_raw_telemetry_to_controller()
    if ( NULL == g_pCurrentModel )
       return false;
 
-   if ( (g_pCurrentModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_MAVLINK) ||
-        (g_pCurrentModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_LTM) )
-   {
-      bool bMustSendFullTelemetryPackets = false;
-      if ( (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_SEND_FULL_TELEMETRY_TO_CONTROLLER) ||
-           (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_SEND_FULL_TELEMETRY_TO_CONTROLLER_PLUGINS) )
-        bMustSendFullTelemetryPackets = true;
-      if ( g_pCurrentModel->telemetry_params.bControllerHasInputTelemetry || g_pCurrentModel->telemetry_params.bControllerHasOutputTelemetry )
-         bMustSendFullTelemetryPackets = true;
-      return bMustSendFullTelemetryPackets;
-   }
-   return false;
+   if ( g_pCurrentModel->telemetry_params.fc_telemetry_type == TELEMETRY_TYPE_NONE )
+      return false;
+
+   bool bMustSendFullTelemetryPackets = false;
+
+   if ( g_bOSDPluginsNeedTelemetryStreams )
+      bMustSendFullTelemetryPackets = true;
+
+   if ( (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_FULL_BIDIRECTIONAL) ||
+        (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_SEND_FULL_TELEMETRY_TO_CONTROLLER) ||
+        (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_SEND_FULL_TELEMETRY_TO_CONTROLLER_PLUGINS) )
+     bMustSendFullTelemetryPackets = true;
+
+   return bMustSendFullTelemetryPackets;
 }
 
 void _telemetry_addSerialDataToFCTelemetryBuffer(u8* pData, int dataLength)
@@ -463,4 +463,9 @@ void telemetry_periodic_loop()
    if ( (telemetryBufferFromFCFilledBytes >= RAW_TELEMETRY_MIN_SEND_LENGTH) || 
        ( (telemetryBufferFromFCFilledBytes > 0) && (g_TimeNow >= telemetryBufferFromFCLastSendTime + RAW_TELEMETRY_SEND_TIMEOUT) ) )
       _send_raw_telemetry_packet_to_controller();
+}
+
+bool telemetry_will_send_full_telemetry_to_controller()
+{
+   return _telemetry_must_send_raw_telemetry_to_controller();
 }

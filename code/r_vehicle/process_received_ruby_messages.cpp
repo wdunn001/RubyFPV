@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -49,8 +49,7 @@
 #include "processor_tx_video.h"
 #include "events.h"
 #include "test_link_params.h"
-#include "video_source_csi.h"
-#include "video_source_majestic.h"
+#include "video_sources.h"
 #include "adaptive_video.h"
 #include "ruby_rt_vehicle.h"
 #include "negociate_radio.h"
@@ -62,7 +61,7 @@ int _process_received_ping_messages(int iInterfaceIndex, u8* pPacketBuffer)
    t_packet_header* pPH = (t_packet_header*)pPacketBuffer;
    
    if ( pPH->packet_type == PACKET_TYPE_RUBY_PING_CLOCK )
-   if ( pPH->total_length >= sizeof(t_packet_header) + 4*sizeof(u8) )
+   if ( pPH->total_length >= sizeof(t_packet_header) + 5*sizeof(u8) )
    {
       u8 uLocalRadioLinkId = (u8) g_pCurrentModel->radioInterfacesParams.interface_link_id[iInterfaceIndex];
       
@@ -76,8 +75,10 @@ int _process_received_ping_messages(int iInterfaceIndex, u8* pPacketBuffer)
       memcpy( &uTargetRelayCapabilitiesFlags, pPacketBuffer + sizeof(t_packet_header)+2*sizeof(u8), sizeof(u8));
       memcpy( &uTargetRelayMode, pPacketBuffer + sizeof(t_packet_header)+3*sizeof(u8), sizeof(u8));
 
+      log_line("Recv Ping id %d for vehiclke link %d", uPingId, uLocalRadioLinkId+1);
       t_packet_header PH;
       radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_RUBY_PING_CLOCK_REPLY, STREAM_ID_DATA);
+      PH.packet_flags |= PACKET_FLAGS_BIT_HIGH_PRIORITY;
       PH.vehicle_id_src = g_pCurrentModel->uVehicleId;
       PH.vehicle_id_dest = pPH->vehicle_id_src;
       PH.total_length = sizeof(t_packet_header) + 3*sizeof(u8) + sizeof(u32);
@@ -88,7 +89,7 @@ int _process_received_ping_messages(int iInterfaceIndex, u8* pPacketBuffer)
       memcpy(packet+sizeof(t_packet_header)+sizeof(u8)+sizeof(u32), &uSenderLocalRadioLinkId, sizeof(u8));
       memcpy(packet+sizeof(t_packet_header)+2*sizeof(u8)+sizeof(u32), &uLocalRadioLinkId, sizeof(u8));
 
-      if ( radio_packet_type_is_high_priority(PH.packet_flags, PH.packet_type) )
+      if ( PH.packet_flags & PACKET_FLAGS_BIT_HIGH_PRIORITY )
          send_packet_to_radio_interfaces(packet, PH.total_length, -1);
       else
          packets_queue_inject_packet_first(&g_QueueRadioPacketsOut, packet);
@@ -100,11 +101,31 @@ int _process_received_ping_messages(int iInterfaceIndex, u8* pPacketBuffer)
          saveCurrentModel();
          onEventRelayModeChanged(uOldRelayMode, uTargetRelayMode, "ping");
       }
+
+      u8 uPingFlags = pPacketBuffer[sizeof(t_packet_header) + 4 * sizeof(u8)];
+      bool bOSDTelem = false;
+      if ( uPingFlags & 0x01 )
+         bOSDTelem = true;
+      if ( g_bOSDPluginsNeedTelemetryStreams != bOSDTelem )
+      {
+         g_bOSDPluginsNeedTelemetryStreams = bOSDTelem;
+         log_line("Set flag that OSD plugins require full telmetry: %s", g_bOSDPluginsNeedTelemetryStreams?"on":"off");
+
+         radio_packet_init(&PH, PACKET_COMPONENT_LOCAL_CONTROL, PACKET_TYPE_LOCAL_CONTROL_OSD_PLUGINS_NEED_TELEMETRY, STREAM_ID_DATA);
+         PH.vehicle_id_src = g_pCurrentModel->uVehicleId;
+         PH.vehicle_id_dest = g_bOSDPluginsNeedTelemetryStreams?0x01:0x00;
+         PH.total_length = sizeof(t_packet_header);
+
+         memcpy(packet, (u8*)&PH, sizeof(t_packet_header));
+        
+         // Forward to other components
+         ruby_ipc_channel_send_message(s_fIPCRouterToTelemetry, packet, PH.total_length);
+      }
    }
    return 0;
 }
 
-int process_received_ruby_message(int iInterfaceIndex, u8* pPacketBuffer)
+int process_received_ruby_message_from_controller(int iInterfaceIndex, u8* pPacketBuffer)
 {
    t_packet_header* pPH = (t_packet_header*)pPacketBuffer;
 
@@ -122,30 +143,38 @@ int process_received_ruby_message(int iInterfaceIndex, u8* pPacketBuffer)
 
    if ( pPH->packet_type == PACKET_TYPE_RUBY_PAIRING_REQUEST )
    {
+      bool bUpdated = false;
       u32 uResendCount = 0;
-      u32 uDeveloperMode = 0;
+      u32 uDeveloperFlags = 0xFFFFFFFF;
+      u32 uOldDeveloperFlags = 0xFFFFFFFF;
+      u32 uControllerBoardType = g_pCurrentModel->uControllerBoardType;
       if ( pPH->total_length >= sizeof(t_packet_header) + sizeof(u32) )
          memcpy(&uResendCount, pPacketBuffer + sizeof(t_packet_header), sizeof(u32));
       if ( pPH->total_length >= sizeof(t_packet_header) + 2*sizeof(u32) )
       {
-         memcpy(&uDeveloperMode, pPacketBuffer + sizeof(t_packet_header) + sizeof(u32), sizeof(u32));
-         log_line("Current developer mode: %s, received pairing request developer mode: %s",
-            g_bDeveloperMode?"on":"off", uDeveloperMode?"on":"off");
-         if ( g_bDeveloperMode != (bool) uDeveloperMode )
-         {
-            radio_tx_set_dev_mode();
-            radio_rx_set_dev_mode();
-            radio_set_debug_flag();
-            g_bDeveloperMode = (bool)uDeveloperMode;
-            if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-               video_source_majestic_request_update_program(MODEL_CHANGED_DEBUG_MODE);
-         }
+         memcpy(&uDeveloperFlags, pPacketBuffer + sizeof(t_packet_header) + sizeof(u32), sizeof(u32));
+         uOldDeveloperFlags = g_pCurrentModel->uDeveloperFlags;
+         g_pCurrentModel->uDeveloperFlags = uDeveloperFlags;
+         bUpdated = true;
       }
       else
-         log_line("No developer mode flag in the pairing request.");
-      log_line("Received pairing request from controller (received resend count: %u). CID: %u, VID: %u. Developer mode now: %s",
-         uResendCount, pPH->vehicle_id_src, pPH->vehicle_id_dest, g_bDeveloperMode?"yes":"no");
-      log_line("Current controller ID: %u", g_uControllerId);
+         log_line("No developer flags in the pairing request.");
+
+      if ( pPH->total_length >= sizeof(t_packet_header) + 3*sizeof(u32) )
+      {
+         memcpy(&uControllerBoardType, pPacketBuffer + sizeof(t_packet_header) + 2*sizeof(u32), sizeof(u32));
+         log_line("Pairing request: received controller board type: %s", str_get_hardware_board_name(uControllerBoardType));
+         if ( g_pCurrentModel->uControllerBoardType != uControllerBoardType )
+         {
+            log_line("Pairing request: controller board type has been updated.");
+            g_pCurrentModel->uControllerBoardType = uControllerBoardType;
+            bUpdated = true;
+         }
+      }
+
+      log_line("Pairing request: Current controller ID: %u", g_uControllerId);
+      log_line("Pairing request: Received pairing request from controller (received resend count: %u). CID: %u, VID: %u. Developer mode before: %s",
+         uResendCount, pPH->vehicle_id_src, pPH->vehicle_id_dest, (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
       if ( (NULL != g_pCurrentModel) && (g_uControllerId != pPH->vehicle_id_src) )
       {
          log_line("Update controller ID to this one: %u", pPH->vehicle_id_src);
@@ -153,7 +182,7 @@ int process_received_ruby_message(int iInterfaceIndex, u8* pPacketBuffer)
          g_uControllerId = pPH->vehicle_id_src;
          g_pCurrentModel->uControllerId = g_uControllerId;
          g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags &= ~(MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS);
-         saveCurrentModel();
+         g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab = 0;
          char szFile[128];
          strcpy(szFile, FOLDER_CONFIG);
          strcat(szFile, FILE_CONFIG_CONTROLLER_ID);
@@ -165,23 +194,11 @@ int process_received_ruby_message(int iInterfaceIndex, u8* pPacketBuffer)
          }
 
          radio_duplicate_detection_remove_data_for_vid(uOldControllerId);
-
-         /*
-         u32 uRefreshIntervalMs = 100;
-         switch ( g_pCurrentModel->m_iRadioInterfacesGraphRefreshInterval )
-         {
-            case 0: uRefreshIntervalMs = 10; break;
-            case 1: uRefreshIntervalMs = 20; break;
-            case 2: uRefreshIntervalMs = 50; break;
-            case 3: uRefreshIntervalMs = 100; break;
-            case 4: uRefreshIntervalMs = 200; break;
-            case 5: uRefreshIntervalMs = 500; break;
-         }
-         */
          radio_stats_remove_received_info_for_vid(&g_SM_RadioStats, uOldControllerId);
+         bUpdated = true;
       }
       else
-         log_line("Controller ID has not changed.");
+         log_line("Pairinig request: controller ID has not changed.");
 
       g_bReceivedPairingRequest = true;
 
@@ -191,9 +208,12 @@ int process_received_ruby_message(int iInterfaceIndex, u8* pPacketBuffer)
       {
          u32 uOldRelayMode = g_pCurrentModel->relay_params.uCurrentRelayMode;
          g_pCurrentModel->relay_params.uCurrentRelayMode = RELAY_MODE_MAIN | RELAY_MODE_IS_RELAY_NODE;
-         saveCurrentModel();
          onEventRelayModeChanged(uOldRelayMode, g_pCurrentModel->relay_params.uCurrentRelayMode, "stop");
+         bUpdated = true;
       }
+
+      if ( bUpdated )
+         saveCurrentModel();
 
       t_packet_header PH;
       radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_RUBY_PAIRING_CONFIRMATION, STREAM_ID_DATA);
@@ -209,6 +229,9 @@ int process_received_ruby_message(int iInterfaceIndex, u8* pPacketBuffer)
       packets_queue_add_packet(&g_QueueRadioPacketsOut, packet);
 
       send_radio_config_to_controller();
+
+      if ( (uDeveloperFlags != 0xFFFFFFFF) )
+         checkDeveloperFlagsChanges(uOldDeveloperFlags, uDeveloperFlags);
 
       // Forward to other components
       ruby_ipc_channel_send_message(s_fIPCRouterToCommands, pPacketBuffer, pPH->total_length);

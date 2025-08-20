@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -120,6 +120,7 @@ void start_pipes_to_router()
    }
    else
    {
+      pthread_detach(s_pThreadIPC);
       s_bThreadInitOk = true;
       log_line("[Router COMM] Created IPC receiving thread.");
    }
@@ -143,6 +144,29 @@ void stop_pipes_to_router()
    s_fIPCFromRouter = -1;
    s_bIPCRouterHasReadErrors = false;
    log_line("[Router COMM] Stopped IPC to/from router.");
+}
+
+void send_pause_adaptive_to_router(u32 uTimeToPauseMs)
+{
+   if ( 0 == uTimeToPauseMs )
+      log_line("Sending global adaptive resume to router.");
+   else
+      log_line("Sending global adaptive pause to router, for %u ms", uTimeToPauseMs);
+   send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, uTimeToPauseMs);
+}
+
+void send_reset_adaptive_state_to_router(u32 uVehicleId)
+{
+   log_line("Sending adaptive reset state to router, for VID %u", uVehicleId);
+   t_packet_header PH;
+   radio_packet_init(&PH, PACKET_COMPONENT_LOCAL_CONTROL, PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, STREAM_ID_DATA);
+   PH.vehicle_id_src = uVehicleId;
+   PH.vehicle_id_dest = 0xFFFFFFFF;
+   PH.total_length = sizeof(t_packet_header);
+
+   u8 buffer[MAX_PACKET_TOTAL_SIZE];
+   memcpy(buffer, (u8*)&PH, sizeof(t_packet_header));
+   send_packet_to_router(buffer, PH.total_length);
 }
 
 int send_model_changed_message_to_router(u32 uChangeType, u8 uExtraParam)
@@ -272,6 +296,13 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
    if ( pPH->total_length == ((u16)sizeof(t_packet_header)+(u16)sizeof(t_packet_header_ruby_telemetry_extended_v4) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions)) )
       iTelemetryVersion = 4;
 
+   if ( pPH->total_length == ((u16)sizeof(t_packet_header)+(u16)sizeof(t_packet_header_ruby_telemetry_extended_v5)) )
+      iTelemetryVersion = 5;
+   if ( pPH->total_length == ((u16)sizeof(t_packet_header)+(u16)sizeof(t_packet_header_ruby_telemetry_extended_v5) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info)) )
+      iTelemetryVersion = 5;
+   if ( pPH->total_length == ((u16)sizeof(t_packet_header)+(u16)sizeof(t_packet_header_ruby_telemetry_extended_v5) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions)) )
+      iTelemetryVersion = 5;
+
    if ( iTelemetryVersion == 0 )
    {
       log_softerror_and_alarm("Received unknown ruby telemetry version from vehicle id %u", pPH->vehicle_id_src);
@@ -308,7 +339,7 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
    if ( 3 == iTelemetryVersion )
    {
       t_packet_header_ruby_telemetry_extended_v3* pPHRTE = (t_packet_header_ruby_telemetry_extended_v3*)(pPacketBuffer+sizeof(t_packet_header));
-      radio_populate_ruby_telemetry_v4_from_ruby_telemetry_v3(&(pRuntimeInfo->headerRubyTelemetryExtended), pPHRTE);
+      radio_populate_ruby_telemetry_v5_from_ruby_telemetry_v3(&(pRuntimeInfo->headerRubyTelemetryExtended), pPHRTE);
 
       int dx = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v3);
       int totalLength = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v3);
@@ -338,15 +369,51 @@ void _process_received_ruby_telemetry_extended(u8* pPacketBuffer)
          memcpy(&(pRuntimeInfo->headerRubyTelemetryExtraInfoRetransmissions), pPacketBuffer + dx, sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions));
       }
    }
+
    // v4 ruby telemetry
    if ( 4 == iTelemetryVersion )
    {
       t_packet_header_ruby_telemetry_extended_v4* pPHRTE = (t_packet_header_ruby_telemetry_extended_v4*)(pPacketBuffer+sizeof(t_packet_header));
-
-      memcpy(&(pRuntimeInfo->headerRubyTelemetryExtended), pPacketBuffer+sizeof(t_packet_header), sizeof(t_packet_header_ruby_telemetry_extended_v4) );
+      radio_populate_ruby_telemetry_v5_from_ruby_telemetry_v4(&(pRuntimeInfo->headerRubyTelemetryExtended), pPHRTE);
 
       int dx = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v4);
       int totalLength = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v4);
+   
+      if ( pPHRTE->uRubyFlags & FLAG_RUBY_TELEMETRY_HAS_EXTENDED_INFO )
+      {
+         t_packet_header_ruby_telemetry_extended_extra_info* pPHRTExtraInfo = (t_packet_header_ruby_telemetry_extended_extra_info*)(pPacketBuffer + dx);
+         dx += sizeof(t_packet_header_ruby_telemetry_extended_extra_info);
+         totalLength += sizeof(t_packet_header_ruby_telemetry_extended_extra_info);
+         
+         if ( ! pRuntimeInfo->bGotRubyTelemetryExtraInfo )
+         {
+            pRuntimeInfo->bGotRubyTelemetryExtraInfo = true;
+            log_line("Start receiving Ruby telemetry extra info from router for vehicle id %u.", pRuntimeInfo->uVehicleId);
+            log_current_runtime_vehicles_info();
+         }
+         memcpy(&(pRuntimeInfo->headerRubyTelemetryExtraInfo), pPHRTExtraInfo, sizeof(t_packet_header_ruby_telemetry_extended_extra_info));
+      }
+
+      if ( pPHRTE->extraSize > 0 )
+      if ( pPHRTE->extraSize == sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions) )
+      if ( pPH->total_length == (totalLength + sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions)) )
+      {
+          if ( ! pRuntimeInfo->bGotRubyTelemetryExtraInfoRetransmissions )
+            log_line("Start receiving Ruby telemetry retransmissions extra info from router for vehicle id %u.", pRuntimeInfo->uVehicleId);
+         pRuntimeInfo->bGotRubyTelemetryExtraInfoRetransmissions = true;
+         memcpy(&(pRuntimeInfo->headerRubyTelemetryExtraInfoRetransmissions), pPacketBuffer + dx, sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions));
+      }
+   }
+
+   // v5 ruby telemetry
+   if ( 5 == iTelemetryVersion )
+   {
+      t_packet_header_ruby_telemetry_extended_v5* pPHRTE = (t_packet_header_ruby_telemetry_extended_v5*)(pPacketBuffer+sizeof(t_packet_header));
+
+      memcpy(&(pRuntimeInfo->headerRubyTelemetryExtended), pPacketBuffer+sizeof(t_packet_header), sizeof(t_packet_header_ruby_telemetry_extended_v5) );
+
+      int dx = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v5);
+      int totalLength = sizeof(t_packet_header) + sizeof(t_packet_header_ruby_telemetry_extended_v5);
    
       if ( pPHRTE->uRubyFlags & FLAG_RUBY_TELEMETRY_HAS_EXTENDED_INFO )
       {
@@ -572,12 +639,7 @@ int _process_received_message_from_router(u8* pPacketBuffer)
       return -1;
 
    t_packet_header* pPH = (t_packet_header*) pPacketBuffer;
-   
-   if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) != PACKET_COMPONENT_LOCAL_CONTROL )
-   if ( (0 == pPH->vehicle_id_src) || (MAX_U32 == pPH->vehicle_id_src) )
-      log_softerror_and_alarm("Received invalid radio packet: Invalid source vehicle id: %u (vehicle id dest: %u, packet type: %s)",
-         pPH->vehicle_id_src, pPH->vehicle_id_dest, str_get_packet_type(pPH->packet_type));
-   
+
    // Do not process all telemetry packets while searching. Only required ones.
 
    if ( g_bSearching )
@@ -587,7 +649,6 @@ int _process_received_message_from_router(u8* pPacketBuffer)
         (pPH->packet_type != PACKET_TYPE_LOCAL_CONTROLL_VIDEO_DETECTED_ON_SEARCH) &&
         (pPH->packet_type != PACKET_TYPE_LOCAL_CONTROL_UPDATED_RADIO_TX_POWERS) ) 
       return 0;
-
 
    if ( pPH->packet_type == PACKET_TYPE_FIRST_PAIRING_DONE )
    {
@@ -619,6 +680,95 @@ int _process_received_message_from_router(u8* pPacketBuffer)
       return 0;
    }
 
+   if ( (! g_bSearching) && g_bFirstModelPairingDone )
+   if ( (NULL == g_pCurrentModel) || (0 == g_uActiveControllerModelVID) ||
+     ((0 == getControllerModelsCount()) && (0 == getControllerModelsSpectatorCount())) )
+   {
+      log_softerror_and_alarm("Ignore message from station as there is no active model and no searching.");
+      return 0;
+   }
+
+   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_VIDEO_RECORDING )
+   {
+      u8 uCmd = pPacketBuffer[sizeof(t_packet_header)];
+      if ( 0 == uCmd )
+      {
+         if ( g_bIsVideoRecording )
+         {
+             if ( hardware_is_running_on_runcam_vrx() )
+                hardware_led_red_set_on();
+             else
+                hardware_led_green_set_off();
+
+             notification_add_recording_end();
+             warnings_add(0, L("Video file processing complete."), g_idIconCamera, get_Color_IconNormal());
+             warnings_add(0, L("Video recording stopped"), g_idIconCamera, get_Color_IconNormal());
+         }
+         g_bIsVideoRecording = false;
+         g_bIsVideoProcessing = false;
+         g_uVideoRecordingStartTime = 0;
+      }
+      else if ( 1 == uCmd )
+      {
+         if ( ! g_bIsVideoRecording )
+         {
+            g_uVideoRecordingStartTime = g_TimeNow;
+            notification_add_recording_start();
+
+            Preferences* p = get_Preferences();
+            if ( (p->iRecordingLedAction == 2) || (hardware_is_running_on_runcam_vrx()) )
+            {
+               if ( hardware_is_running_on_runcam_vrx() )
+                  hardware_led_red_set_blinking(MAX_U32);
+               else
+                  hardware_led_green_set_blinking(MAX_U32);
+            }
+            else if ( p->iRecordingLedAction == 1 )
+               hardware_led_green_set_on();
+         }
+         g_bIsVideoRecording = true;
+         g_bIsVideoProcessing = false;
+      }
+      else if ( 2 == uCmd )
+      {
+         g_bIsVideoProcessing = true;
+      }
+      else if ( (0xFF == uCmd) && (pPH->total_length >= (int)(sizeof(t_packet_header) + 3*sizeof(u8))) )
+      {
+         u8 uType = pPacketBuffer[sizeof(t_packet_header)+1];
+         char* pMsg = (char*)(pPacketBuffer + sizeof(t_packet_header) + 2*sizeof(u8));
+         pPacketBuffer[pPH->total_length-1] = 0;
+         if ( uType == 0 )
+            warnings_add(0, L(pMsg), g_idIconCamera, get_Color_IconNormal());
+         else if ( uType == 1 )
+            warnings_add(0, L(pMsg), g_idIconCamera, get_Color_IconWarning());
+         else
+            warnings_add(0, L(pMsg), g_idIconCamera, get_Color_IconError());
+      }
+      return 0;
+   }
+
+   if ( pPH->packet_type == PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE )
+   {
+      u32 uVehicleId = pPH->vehicle_id_src;
+      int iAdaptivePaused = pPH->vehicle_id_dest;
+
+      if ( 0 == uVehicleId )
+      {
+         log_line("Received message that router has globally %s adaptive video.", iAdaptivePaused?"paused":"resumed");
+         g_bAdaptiveVideoIsPaused = iAdaptivePaused?true:false;
+      }
+      else
+      {
+         log_line("Received message that router has %s adaptive video for vehicle id %u", iAdaptivePaused?"paused":"resumed", uVehicleId);
+         t_structure_vehicle_info* pVehicleRTInfo = get_vehicle_runtime_info_for_vehicle_id(uVehicleId);
+         if ( NULL == pVehicleRTInfo )
+            log_softerror_and_alarm("Received message from router about unknown VID %u", uVehicleId);
+         else
+            pVehicleRTInfo->bIsAdaptiveVideoPaused = iAdaptivePaused?true:false;
+      }
+      return 0;
+   }
 
    if ( pPH->packet_type == PACKET_TYPE_RUBY_PAIRING_CONFIRMATION )
    {
@@ -761,8 +911,18 @@ int _process_received_message_from_router(u8* pPacketBuffer)
 
          if ( bSucceeded )
          {
+            u32 uCurrentProfileVideoBitrate = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps;
             reloadCurrentModel();
             g_pCurrentModel = getCurrentModel();
+            if ( uCurrentProfileVideoBitrate != g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps )
+            {
+               Menu* pm = new Menu(MENU_ID_SIMPLE_MESSAGE, L("Video bitrate updated"),NULL);
+               pm->m_xPos = 0.32; pm->m_yPos = 0.4;
+               pm->m_Width = 0.36;
+               pm->m_bDisableStacking = true;
+               pm->addTopLine(L("Your video bitrate was adjusted to accomodate the new radio links configuration."));
+               add_menu_to_stack(pm);
+            }
          }
          else
          {
@@ -891,11 +1051,11 @@ int _process_received_message_from_router(u8* pPacketBuffer)
       
       memcpy(&(pRuntimeInfo->headerFCTelemetry), (u8*)&PHFCT, sizeof(t_packet_header_fc_telemetry) );
       
-      t_packet_header_ruby_telemetry_extended_v4 PHRTE;
+      t_packet_header_ruby_telemetry_extended_v5 PHRTE;
       if ( pRuntimeInfo->bGotRubyTelemetryInfo )
-         memcpy((u8*)&PHRTE, &(pRuntimeInfo->headerRubyTelemetryExtended), sizeof(t_packet_header_ruby_telemetry_extended_v4));
+         memcpy((u8*)&PHRTE, &(pRuntimeInfo->headerRubyTelemetryExtended), sizeof(t_packet_header_ruby_telemetry_extended_v5));
       else
-         memset((u8*)&PHRTE, 0, sizeof(t_packet_header_ruby_telemetry_extended_v4));
+         memset((u8*)&PHRTE, 0, sizeof(t_packet_header_ruby_telemetry_extended_v5));
 
       PHRTE.uVehicleId = pPH->vehicle_id_src;
       PHRTE.rubyVersion = pPHRTS->rubyVersion;
@@ -905,7 +1065,7 @@ int _process_received_message_from_router(u8* pPacketBuffer)
       for( int i=0; i<PHRTE.radio_links_count; i++ )
          PHRTE.uRadioFrequenciesKhz[i] = pPHRTS->uRadioFrequenciesKhz[i];
 
-      memcpy(&(pRuntimeInfo->headerRubyTelemetryExtended), (u8*)&PHRTE, sizeof(t_packet_header_ruby_telemetry_extended_v4) );
+      memcpy(&(pRuntimeInfo->headerRubyTelemetryExtended), (u8*)&PHRTE, sizeof(t_packet_header_ruby_telemetry_extended_v5) );
       
       return 0;
    }
@@ -1371,7 +1531,7 @@ int _process_received_message_from_router(u8* pPacketBuffer)
          memcpy(&(g_pCurrentModel->relay_params), pPacketBuffer + sizeof(t_packet_header), sizeof(type_relay_parameters));
          memcpy(&(g_pCurrentModel->radioInterfacesParams), pPacketBuffer + sizeof(t_packet_header) + sizeof(type_relay_parameters), sizeof(type_radio_interfaces_parameters));
          memcpy(&(g_pCurrentModel->radioLinksParams), pPacketBuffer + sizeof(t_packet_header) + sizeof(type_relay_parameters) + sizeof(type_radio_interfaces_parameters), sizeof(type_radio_links_parameters));
-         g_pCurrentModel->updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+         g_pCurrentModel->validateRadioSettings();
          
          warnings_add(pPH->vehicle_id_src, "Radio configuration has changed on the vehicle. Updating controller radio configuration.", g_idIconRadio);
          hardware_load_radio_info();
@@ -1441,8 +1601,9 @@ int try_read_messages_from_router(u32 uMaxMiliseconds)
          if ( ! radio_packet_check_crc(pResult, pPH->total_length) )
              log_softerror_and_alarm("[Router COMM] Received invalid message (invalid CRC) from router. Ignoring it.");
          else
+         {
              _process_received_message_from_router(pResult);
-
+         }
          if ( iCountMessagesProcessed > MAX_ROUTER_MESSAGES/3 )
          {
             log_softerror_and_alarm("Processing too many messages from router (%d messages)", iCountMessagesProcessed);

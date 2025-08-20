@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -142,7 +142,8 @@ void MenuController::addItems()
 
    m_IndexPlugins = addMenuItem(new MenuItem(L("Manage Plugins"), L("Configure, add and remove controller software plugins.")));
    m_IndexUpdate = addMenuItem(new MenuItem(L("Update Software"), L("Updates software on this controller using a USB memory stick.")));
-   m_IndexReboot = addMenuItem(new MenuItem(L("Restart Controller"), L("Restarts the controller.")));
+   //m_IndexReboot = addMenuItem(new MenuItem(L("Restart Controller"), L("Restarts the controller.")));
+   m_IndexReboot = -1;
 }
 
 void MenuController::Render()
@@ -298,7 +299,7 @@ void MenuController::onSelectItem()
       return;
    }
 
-   if ( m_IndexReboot == m_SelectedIndex )
+   if ( (-1 != m_IndexReboot) && (m_IndexReboot == m_SelectedIndex) )
    {
       if ( g_VehiclesRuntimeInfo[g_iCurrentActiveVehicleRuntimeInfoIndex].bGotFCTelemetry )
       if ( g_VehiclesRuntimeInfo[g_iCurrentActiveVehicleRuntimeInfoIndex].headerFCTelemetry.uFCFlags & FC_TELE_FLAGS_ARMED )

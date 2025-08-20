@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -135,8 +135,6 @@ int r_start_rx_rc(int argc, char *argv[])
    log_arguments(argc, argv);
 
    if ( strcmp(argv[argc-1], "-debug") == 0 )
-      g_bDebug = true;
-   if ( g_bDebug )
       log_enable_stdout();
 
    
@@ -216,6 +214,7 @@ int r_start_rx_rc(int argc, char *argv[])
 
    while (!g_bQuit) 
    {
+      g_uLoopCounter++;
       hardware_sleep_ms(iSleepIntervalMS);
       if ( iSleepIntervalMS < 50 )
          iSleepIntervalMS += 10;
@@ -301,14 +300,14 @@ int r_start_rx_rc(int argc, char *argv[])
          if ( pPH->packet_type == PACKET_TYPE_RUBY_PAIRING_REQUEST )
          {
             if ( pPH->total_length >= sizeof(t_packet_header) + 2*sizeof(u32) )
-            {
-               u32 uDeveloperMode = 0;
-               memcpy(&uDeveloperMode, &(s_BufferRCFromRouter[sizeof(t_packet_header) + sizeof(u32)]), sizeof(u32));
-               g_bDeveloperMode = (bool)uDeveloperMode;
-            }
+               memcpy(&sModelVehicle.uDeveloperFlags, &(s_BufferRCFromRouter[sizeof(t_packet_header) + sizeof(u32)]), sizeof(u32));
+
+            if ( pPH->total_length >= sizeof(t_packet_header) + 3*sizeof(u32) )
+               memcpy(&sModelVehicle.uControllerBoardType, &(s_BufferRCFromRouter[sizeof(t_packet_header) + 2*sizeof(u32)]), sizeof(u32));
+
             g_uControllerId = pPH->vehicle_id_src;
             log_line("Received pairing request from router. CID: %u, VID: %u. Developer mode: %s. Updating local model.",
-               pPH->vehicle_id_src, pPH->vehicle_id_dest, g_bDeveloperMode?"yes":"no");
+               pPH->vehicle_id_src, pPH->vehicle_id_dest, (sModelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
             sModelVehicle.uControllerId = pPH->vehicle_id_src;
             if ( sModelVehicle.relay_params.isRelayEnabledOnRadioLinkId >= 0 )
             if ( sModelVehicle.relay_params.uRelayedVehicleId != 0 )
@@ -320,13 +319,16 @@ int r_start_rx_rc(int argc, char *argv[])
          {
             u8 changeType = (pPH->vehicle_id_src >> 8 ) & 0xFF;
 
-            if ( (changeType == MODEL_CHANGED_DEBUG_MODE) )
+            if ( (changeType == MODEL_CHANGED_DEVELOPER_FLAGS) )
             {
-               u8 uExtraParam = (pPH->vehicle_id_src >> 16 ) & 0xFF;
-               log_line("Received notification that developer mode changed from %s to %s",
-                 g_bDeveloperMode?"yes":"no",
-                 uExtraParam?"yes":"no");
-               g_bDeveloperMode = (bool)uExtraParam;
+               log_line("Received request from router to reload model.");
+               char szFile2[MAX_FILE_PATH_SIZE];
+               strcpy(szFile2, FOLDER_CONFIG);
+               strcat(szFile2, FILE_CONFIG_CURRENT_VEHICLE_MODEL);
+               sModelVehicle.loadFromFile(szFile2, true);
+
+               log_line("Received notification that developer flags changed. New dev flags: %s",
+                 str_get_developer_flags(sModelVehicle.uDeveloperFlags));
             }
             else if ( changeType == MODEL_CHANGED_GENERIC ||
                  changeType == MODEL_CHANGED_SWAPED_RADIO_INTERFACES )

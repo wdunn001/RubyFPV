@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -95,7 +95,10 @@ int main(int argc, char *argv[])
 
    hardware_detectBoardAndSystemType();
 
-   hw_launch_process("./ruby_central");
+   //hw_launch_process("./ruby_central");
+   hw_execute_ruby_process(NULL, "ruby_central", NULL, NULL);
+   
+   log_line("Executed central process.");
    
    for( int i=0; i<5; i++ )
       hardware_sleep_ms(800);

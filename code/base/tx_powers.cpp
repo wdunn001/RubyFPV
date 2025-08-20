@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -57,9 +57,14 @@ static int s_iTxUIPowerLevelsMw[] =
 { 1, 5, 10, 25, 50, 75, 100,
   150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000};
 
+//--------------------------------------------------------------
+// Power measurements should be done at 5700 Mhz, MCS-2 datarate,
+// on this raw power levels:
+
 static int s_iTxRawPowerLevelMeasurementsValues[] =
    { 1,  10,  20,   30,   40,   45,   50,   53,   56,   60,   63,   68,   70};
 //------------------------------------------------------------------------
+// Results:
 
 static int s_iTxInfo722N[] =
    { 1,   1,   2,    3,   10,   25,   35,   60,   80,   90,    0,    0,    0};

@@ -34,8 +34,9 @@ typedef u32 __le32;
 #define SYSTEM_NAME "Ruby"
 // dword[3...0]: BB.BB.MM.mm  (BB.BB: build number (highest bytes), MM: major ver, mm: minor ver (lowest byte)) 
 #define SYSTEM_SW_VERSION_MAJOR 11
-#define SYSTEM_SW_VERSION_MINOR 10
-#define SYSTEM_SW_BUILD_NUMBER  286
+#define SYSTEM_SW_VERSION_MINOR 20
+#define SYSTEM_SW_BUILD_NUMBER  293
+//#define SYSTEM_IS_PRERELEASE 1
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define le16_to_cpu(x) (x)
@@ -72,6 +73,11 @@ typedef struct
 extern "C" {
 #endif 
 
+extern u32 g_TimeNow;
+extern u32 g_TimeStart;
+extern u32 g_TimeNowMicros;
+extern u32 g_uLoopCounter;
+
 u32 revert_word(u32 input);
 
 void reset_counters(type_u32_couters* pCounters);
@@ -105,6 +111,9 @@ void log_disable_stdout();
 void log_enable_stdout();
 void log_only_errors();
 void log_enable_full();
+void log_force_full_log();
+void log_regular_mode();
+
 void log_format_time(u32 miliseconds, char* szOutTime);
 void log_line(const char* format, ...);
 void log_line_forced_to_file(const char* format, ...);

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -103,7 +103,7 @@ static void * _reinit_sik_thread_func(void *ignored_argument)
                if ( (iRadioLink >= 0) && (iRadioLink < g_pCurrentModel->radioLinksParams.links_count) )
                {
                   uFreqKhz = g_pCurrentModel->radioLinksParams.link_frequency_khz[iRadioLink];
-                  uDataRate = g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iRadioLink];
+                  uDataRate = g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iRadioLink];
                   uTxPower = g_pCurrentModel->radioInterfacesParams.interface_raw_power[g_SiKRadiosState.iMustReconfigureSiKInterfaceIndex];
                   uECC = (g_pCurrentModel->radioLinksParams.link_radio_flags[iRadioLink] & RADIO_FLAGS_SIK_ECC)? 1:0;
                   uLBT = (g_pCurrentModel->radioLinksParams.link_radio_flags[iRadioLink] & RADIO_FLAGS_SIK_LBT)? 1:0;
@@ -241,46 +241,12 @@ int _check_reinit_sik_interfaces()
       g_SiKRadiosState.bConfiguringSiKThreadWorking = false;
       return 0;
    }
+   pthread_detach(pThreadSiKReinit);
    log_line("[Router] Created thread to reinit SiK radio interfaces.");
    if ( 0 == g_SiKRadiosState.iThreadRetryCounter )
       send_alarm_to_controller(ALARM_ID_GENERIC_STATUS_UPDATE, ALARM_FLAG_GENERIC_STATUS_RECONFIGURING_RADIO_INTERFACE, 0, 10);
    g_SiKRadiosState.iThreadRetryCounter++;
    return 1;
-}
-
-
-void _check_for_debug_raspi_messages()
-{
-   /*
-   if ( g_TimeNow < s_uTimeLastCheckForRaspiDebugMessages + 2000 )
-      return;
-   s_uTimeLastCheckForRaspiDebugMessages = g_TimeNow;
-
-   if( access( "tmp.cmd", R_OK ) == -1 )
-      return;
-
-   int iCommand = 0;
-   int iParam = 0;
-
-   hardware_sleep_ms(20);
-
-   FILE* fd = fopen("tmp.cmd", "r");
-   if ( NULL == fd )
-      return;
-   if ( 2 != fscanf(fd, "%d %d", &iCommand, &iParam) )
-   {
-      iCommand = 0;
-      iParam = 0;
-   } 
-
-   fclose(fd);
-   hw_execute_bash_command_silent("rm -rf tmp.cmd", NULL);
-
-   if ( iCommand > 0 )
-   if ( g_pCurrentModel->hasCamera() )
-   if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      video_source_csi_send_control_message((u8)iCommand, (u8)iParam);
-   */
 }
 
 void _trigger_alarm_free_space(int iFreeSpaceKb)
@@ -448,13 +414,13 @@ void _send_radio_stats_to_controller()
          continue;
       if ( g_pCurrentModel->radioLinkIsSiKRadio(iLinkId) )
       {
-         g_SM_RadioStats.radio_interfaces[i].lastRecvDataRate = g_pCurrentModel->radioLinksParams.link_datarate_data_bps[iLinkId];
+         g_SM_RadioStats.radio_interfaces[i].lastRecvDataRate = g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[iLinkId];
          g_SM_RadioStats.radio_interfaces[i].lastRecvDataRateData = g_SM_RadioStats.radio_interfaces[i].lastRecvDataRateData;
          g_SM_RadioStats.radio_interfaces[i].lastRecvDataRateVideo = 0;
       }
-      else if ( g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iLinkId] < 0 )
+      else if ( g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[iLinkId] < 0 )
       {
-         g_SM_RadioStats.radio_interfaces[i].lastRecvDataRate = g_pCurrentModel->radioLinksParams.link_datarate_video_bps[iLinkId];
+         g_SM_RadioStats.radio_interfaces[i].lastRecvDataRate = g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[iLinkId];
          g_SM_RadioStats.radio_interfaces[i].lastRecvDataRateData = g_SM_RadioStats.radio_interfaces[i].lastRecvDataRateData;
          g_SM_RadioStats.radio_interfaces[i].lastRecvDataRateVideo = g_SM_RadioStats.radio_interfaces[i].lastRecvDataRateVideo;
       }
@@ -483,11 +449,12 @@ void _send_radio_stats_to_controller()
    
    PH.packet_flags_extended |= PACKET_FLAGS_EXTENDED_BIT_SEND_ON_HIGH_CAPACITY_LINK_ONLY;
    PH.packet_flags_extended &= (~PACKET_FLAGS_EXTENDED_BIT_SEND_ON_LOW_CAPACITY_LINK_ONLY);
+
+   uType = 0xFF;
+   uCardIndex = g_pCurrentModel->radioInterfacesParams.interfaces_count;
+   PH.total_length = sizeof(t_packet_header) + 2*sizeof(u8) + g_pCurrentModel->radioInterfacesParams.interfaces_count * sizeof(shared_mem_radio_stats_radio_interface);
    if ( PH.total_length <= MAX_PACKET_PAYLOAD )
    {
-      uType = 0xFF;
-      uCardIndex = g_pCurrentModel->radioInterfacesParams.interfaces_count;
-      PH.total_length = sizeof(t_packet_header) + 2*sizeof(u8) + g_pCurrentModel->radioInterfacesParams.interfaces_count * sizeof(shared_mem_radio_stats_radio_interface);
       memcpy(packet, (u8*)&PH, sizeof(t_packet_header));
       memcpy(packet + sizeof(t_packet_header), (u8*)&uType, sizeof(u8));
       memcpy(packet + sizeof(t_packet_header)+sizeof(u8), (u8*)&uCardIndex, sizeof(u8));
@@ -602,6 +569,7 @@ void _periodic_loop_check_ping()
 
    t_packet_header PH;
    radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_RUBY_PING_CLOCK, STREAM_ID_DATA);
+   PH.packet_flags |= PACKET_FLAGS_BIT_HIGH_PRIORITY;
    PH.vehicle_id_src = g_pCurrentModel->uVehicleId;
    PH.vehicle_id_dest = g_pCurrentModel->relay_params.uRelayedVehicleId;
    PH.total_length = sizeof(t_packet_header) + 4*sizeof(u8);
@@ -642,7 +610,7 @@ void _update_videobitrate_history_data()
 /*   g_SM_DevVideoBitrateHistory.uCurrentTargetVideoBitrate = g_SM_VideoLinkStats.overwrites.currentSetVideoBitrate;
   
    g_SM_DevVideoBitrateHistory.history[iIndex].uVideoQuantization = g_SM_VideoLinkStats.overwrites.currentH264QUantization;
-   if ( (0 == get_video_capture_start_program_time()) || (g_TimeNow < get_video_capture_start_program_time() + 3000) )
+   if ( (0 == video_sources_get_capture_start_time()) || (g_TimeNow < video_sources_get_capture_start_time() + 3000) )
       g_SM_DevVideoBitrateHistory.history[iIndex].uVideoQuantization = 0xFF;
 
    g_SM_DevVideoBitrateHistory.history[iIndex].uMinVideoDataRateMbps = get_last_tx_minimum_video_radio_datarate_bps()/1000/1000;
@@ -704,14 +672,14 @@ void _periodic_update_radio_stats()
       if ( NULL != g_pCurrentModel )
       if ( g_pCurrentModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG2_SHOW_VEHICLE_RADIO_INTERFACES_STATS )
           bSend = true;
-
-      static u32 sl_uLastTimeSentRadioInterfacesStats = 0;
       u32 uSendInterval = g_SM_RadioStats.refreshIntervalMs;
       if ( g_SM_RadioStats.graphRefreshIntervalMs < (int)uSendInterval )
          uSendInterval = g_SM_RadioStats.graphRefreshIntervalMs;
 
       if ( uSendInterval < 100 )
          uSendInterval = 100;
+
+      static u32 sl_uLastTimeSentRadioInterfacesStats = 0;
       if ( g_TimeNow >= sl_uLastTimeSentRadioInterfacesStats + uSendInterval )
       if ( bSend )
       {
@@ -807,7 +775,7 @@ void _update_tx_out_stats()
         
 
       if ( ! g_bVideoPaused )
-      if ( g_bDeveloperMode )
+      if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE )
       if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_SEND_BACK_VEHICLE_TX_GAP )
       {
          t_packet_header PH;
@@ -921,7 +889,6 @@ int periodicLoop()
    s_debugFramesCount++;
 
    _check_reinit_sik_interfaces();
-   _check_for_debug_raspi_messages();
    _check_free_storage_space();
 
    if ( test_link_is_in_progress() )
@@ -937,11 +904,10 @@ int periodicLoop()
 
    int iMaxRxQuality = 0;
    for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
+   {
       if ( g_SM_RadioStats.radio_interfaces[i].rxQuality > iMaxRxQuality )
          iMaxRxQuality = g_SM_RadioStats.radio_interfaces[i].rxQuality;
-        
-   if ( g_SM_VideoLinkGraphs.vehicleRXQuality[0] == 255 || (iMaxRxQuality < g_SM_VideoLinkGraphs.vehicleRXQuality[0]) )
-      g_SM_VideoLinkGraphs.vehicleRXQuality[0] = iMaxRxQuality;
+   }
 
    _update_tx_out_stats();
    if ( _update_debug_stats() )

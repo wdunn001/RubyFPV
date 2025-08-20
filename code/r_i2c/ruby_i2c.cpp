@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -52,7 +52,6 @@
 
 
 bool g_bQuit = false;
-u32 g_TimeNow = 0;
 u32 g_TimeLastReloadCheck = 0;
 u32 g_TimeLastINARead = 0;
 u32 g_TimeLastRCInRead = 0;
@@ -1020,6 +1019,7 @@ int main(int argc, char *argv[])
 
    while ( !g_bQuit )
    {
+      g_uLoopCounter++;
       hardware_sleep_ms(g_SleepTime);
       if ( g_bQuit )
          break;

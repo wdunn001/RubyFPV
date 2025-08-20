@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -58,7 +58,6 @@ Model* g_pCurrentModel = NULL;
 int g_iBootCount = 0;
 
 bool gbQuit = false;
-bool g_bDebug = false;
 int niceValue = 10;
 
 void _store_error(const char* szErrorMsg)
@@ -128,8 +127,6 @@ bool store_video()
       snprintf(szComm, 511, "nice -n %d mv %s %s%s", niceValue, szFileInVideo, FOLDER_RUBY_TEMP, FILE_TEMP_VIDEO_FILE);
       hw_execute_bash_command(szComm, NULL);
 
-      sprintf(szComm, "umount %s", FOLDER_TEMP_VIDEO_MEM);
-      hw_execute_bash_command(szComm, NULL);
       strcpy(szFileInVideo, FOLDER_RUBY_TEMP);
       strcat(szFileInVideo, FILE_TEMP_VIDEO_FILE);
    }
@@ -337,8 +334,6 @@ int main(int argc, char *argv[])
    }
 
    if ( strcmp(argv[argc-1], "-debug") == 0 )
-      g_bDebug = true;
-   if ( g_bDebug )
       log_enable_stdout();
    
    char szComm[1024];

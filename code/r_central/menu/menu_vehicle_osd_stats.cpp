@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -58,8 +58,6 @@ MenuVehicleOSDStats::MenuVehicleOSDStats(void)
    m_IndexTelemetryStats = -1;
    m_IndexAudioDecodeStats = -1;
    m_IndexDevStatsVehicleTx = -1;
-   m_IndexDevStatsVehicleVideo = -1;
-   m_IndexDevStatsVehicleVideoGraphs = -1;
    m_IndexSnapshot = -1;
    m_IndexStatsVideoH264FramesInfo = -1;
 
@@ -226,13 +224,6 @@ MenuVehicleOSDStats::MenuVehicleOSDStats(void)
    m_pItemsSelect[9]->setIsEditable();
    m_IndexVideoRefreshInterval = addMenuItem(m_pItemsSelect[9]);
 
-   //m_pItemsSelect[16] = new MenuItemSelect("    Adaptive video graph", "Shows a live graph of adaptive video link changes.");  
-   //m_pItemsSelect[16]->addSelection("Off");
-   //m_pItemsSelect[16]->addSelection("On");
-   //m_pItemsSelect[16]->setUseMultiViewLayout();
-   //m_IndexStatsAdaptiveVideoGraph = addMenuItem(m_pItemsSelect[16]);
-   m_IndexStatsAdaptiveVideoGraph = -1;
-
    if ( pCS->iDeveloperMode )
    {
       m_pItemsSelect[13] = new MenuItemSelect(L("    Show snapshot on retransmissions"), L("Shows a snapshot of buffers and state when a video block is discarded."));  
@@ -292,20 +283,6 @@ MenuVehicleOSDStats::MenuVehicleOSDStats(void)
       m_pItemsSelect[24]->setUseMultiViewLayout();
       m_pItemsSelect[24]->setTextColor(get_Color_Dev());
       m_IndexShowControllerAdaptiveInfoStats = addMenuItem(m_pItemsSelect[24]);
-
-      m_pItemsSelect[14] = new MenuItemSelect(L("Video: Vehicle's Video Link Stats"), L("Shows statistics (generated on the vehicle side) about the vehicle video link state params."));
-      m_pItemsSelect[14]->addSelection(L("Off"));
-      m_pItemsSelect[14]->addSelection(L("On"));
-      m_pItemsSelect[14]->setUseMultiViewLayout();
-      m_pItemsSelect[14]->setTextColor(get_Color_Dev());
-      m_IndexDevStatsVehicleVideo = addMenuItem(m_pItemsSelect[14]);
-
-      m_pItemsSelect[15] = new MenuItemSelect(L("Video: Vehicle's Video Link Stats Graphs"), L("Shows graphs (generated on the vehicle side) about the vehicle video link state params."));
-      m_pItemsSelect[15]->addSelection(L("Off"));
-      m_pItemsSelect[15]->addSelection(L("On"));
-      m_pItemsSelect[15]->setUseMultiViewLayout();
-      m_pItemsSelect[15]->setTextColor(get_Color_Dev());
-      m_IndexDevStatsVehicleVideoGraphs = addMenuItem(m_pItemsSelect[15]);
    }
 
    addSeparator();
@@ -371,15 +348,15 @@ void MenuVehicleOSDStats::valuesToUI()
    else
       m_pItemsSelect[2]->setSelection(3);
 
-   if ( pCS->nGraphRadioRefreshInterval <= 10 )
+   if ( g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs <= 10 )
       m_pItemsSelect[8]->setSelection(0);
-   else if ( pCS->nGraphRadioRefreshInterval <= 20 )
+   else if ( g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs <= 20 )
       m_pItemsSelect[8]->setSelection(1);
-   else if ( pCS->nGraphRadioRefreshInterval <= 50 )
+   else if ( g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs <= 50 )
       m_pItemsSelect[8]->setSelection(2);
-   else if ( pCS->nGraphRadioRefreshInterval <= 100 )
+   else if ( g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs <= 100 )
       m_pItemsSelect[8]->setSelection(3);
-   else if ( pCS->nGraphRadioRefreshInterval <= 200 )
+   else if ( g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs <= 200 )
       m_pItemsSelect[8]->setSelection(4);
    else
       m_pItemsSelect[8]->setSelection(5);
@@ -474,8 +451,6 @@ void MenuVehicleOSDStats::valuesToUI()
    {
       m_pItemsSelect[4]->setEnabled(true);
       m_pItemsSelect[9]->setEnabled(true);
-      if ( -1 != m_IndexStatsAdaptiveVideoGraph )
-         m_pItemsSelect[16]->setEnabled(true);
       if ( pCS->iDeveloperMode )
       {
          if ( -1 != m_IndexSnapshot )
@@ -488,8 +463,6 @@ void MenuVehicleOSDStats::valuesToUI()
    {
       m_pItemsSelect[4]->setEnabled(false);
       m_pItemsSelect[9]->setEnabled(false);
-      if ( -1 != m_IndexStatsAdaptiveVideoGraph )
-         m_pItemsSelect[16]->setEnabled(false);
       //if ( pCS->iDeveloperMode )
       {
          if ( -1 != m_IndexSnapshot )
@@ -507,9 +480,6 @@ void MenuVehicleOSDStats::valuesToUI()
       m_pItemsSelect[4]->setSelectedIndex(1);
    if ( g_pCurrentModel->osd_params.osd_flags[iScreenIndex] & OSD_FLAG_EXTENDED_VIDEO_DECODE_STATS )
       m_pItemsSelect[4]->setSelectedIndex(3);
-
-   if ( -1 != m_IndexStatsAdaptiveVideoGraph )
-      m_pItemsSelect[16]->setSelection((g_pCurrentModel->osd_params.osd_flags2[iScreenIndex] & OSD_FLAG2_SHOW_ADAPTIVE_VIDEO_GRAPH)?1:0);
 
    m_pItemsSelect[5]->setSelection((g_pCurrentModel->osd_params.osd_flags[iScreenIndex] & OSD_FLAG_SHOW_EFFICIENCY_STATS)?1:0);
    m_pItemsSelect[6]->setSelection((g_pCurrentModel->osd_params.osd_flags2[iScreenIndex] & OSD_FLAG2_SHOW_STATS_RC)?1:0);
@@ -552,9 +522,6 @@ void MenuVehicleOSDStats::valuesToUI()
          else
             m_pItemsSelect[22]->setEnabled(false);
       }
-      m_pItemsSelect[14]->setSelectedIndex(pP->iDebugShowVehicleVideoStats);
-      m_pItemsSelect[15]->setSelectedIndex(pP->iDebugShowVehicleVideoGraphs);
-
       m_pItemsSelect[24]->setSelectedIndex( (g_pCurrentModel->osd_params.osd_flags3[iScreenIndex] & OSD_FLAG3_SHOW_CONTROLLER_ADAPTIVE_VIDEO_INFO)?1:0);
    }
 
@@ -700,22 +667,18 @@ void MenuVehicleOSDStats::onSelectItem()
    if ( m_IndexRadioRefreshInterval == m_SelectedIndex )
    {
       if ( 0 == m_pItemsSelect[8]->getSelectedIndex() )
-         pCS->nGraphRadioRefreshInterval = 10;
+         params.iRadioInterfacesGraphRefreshIntervalMs = 10;
       if ( 1 == m_pItemsSelect[8]->getSelectedIndex() )
-         pCS->nGraphRadioRefreshInterval = 20;
+         params.iRadioInterfacesGraphRefreshIntervalMs = 20;
       if ( 2 == m_pItemsSelect[8]->getSelectedIndex() )
-         pCS->nGraphRadioRefreshInterval = 50;
+         params.iRadioInterfacesGraphRefreshIntervalMs = 50;
       if ( 3 == m_pItemsSelect[8]->getSelectedIndex() )
-         pCS->nGraphRadioRefreshInterval = 100;
+         params.iRadioInterfacesGraphRefreshIntervalMs = 100;
       if ( 4 == m_pItemsSelect[8]->getSelectedIndex() )
-         pCS->nGraphRadioRefreshInterval = 200;
+         params.iRadioInterfacesGraphRefreshIntervalMs = 200;
       if ( 5 == m_pItemsSelect[8]->getSelectedIndex() )
-         pCS->nGraphRadioRefreshInterval = 500;
-      save_ControllerSettings();
-      invalidate();
-      valuesToUI();
-      send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_CONTROLLER_CHANGED, PACKET_COMPONENT_LOCAL_CONTROL);
-      return;
+         params.iRadioInterfacesGraphRefreshIntervalMs = 500;
+      sendToVehicle = true;
    }
 
    if ( m_IndexRadioRxHistoryController == m_SelectedIndex )
@@ -814,15 +777,6 @@ void MenuVehicleOSDStats::onSelectItem()
       else if ( 3 == m_pItemsSelect[4]->getSelectedIndex() )
          params.osd_flags[iScreenIndex] |= OSD_FLAG_EXTENDED_VIDEO_DECODE_STATS;
       params.osd_layout_preset[iScreenIndex] = OSD_PRESET_CUSTOM;
-      sendToVehicle = true;
-   }
-
-   if ( (-1 != m_IndexStatsAdaptiveVideoGraph) && (m_IndexStatsAdaptiveVideoGraph == m_SelectedIndex) )
-   {
-      if ( 0 == m_pItemsSelect[16]->getSelectedIndex() )
-         params.osd_flags2[iScreenIndex] &= ~OSD_FLAG2_SHOW_ADAPTIVE_VIDEO_GRAPH;
-      else
-         params.osd_flags2[iScreenIndex] |= OSD_FLAG2_SHOW_ADAPTIVE_VIDEO_GRAPH;
       sendToVehicle = true;
    }
 
@@ -981,7 +935,7 @@ void MenuVehicleOSDStats::onSelectItem()
          g_pCurrentModel->uDeveloperFlags &= (~DEVELOPER_FLAGS_BIT_SEND_BACK_VEHICLE_TX_GAP);
       else
          g_pCurrentModel->uDeveloperFlags |= DEVELOPER_FLAGS_BIT_SEND_BACK_VEHICLE_TX_GAP;
-      if ( ! handle_commands_send_developer_flags(pCS->iDeveloperMode, g_pCurrentModel->uDeveloperFlags) )
+      if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI();  
       return;    
    }
@@ -1000,26 +954,6 @@ void MenuVehicleOSDStats::onSelectItem()
       pP->iDebugShowFullRXStats = m_pItemsSelect[12]->getSelectedIndex();
       save_Preferences();
       valuesToUI();
-      return;
-   }
-
-   if ( m_IndexDevStatsVehicleVideo == m_SelectedIndex )
-   {
-      pP->iDebugShowVehicleVideoStats = m_pItemsSelect[14]->getSelectedIndex();
-      save_Preferences();
-      valuesToUI();
-      if ( NULL != g_pCurrentModel )
-         g_pCurrentModel->b_mustSyncFromVehicle = true;
-      return;
-   }
-   
-   if ( m_IndexDevStatsVehicleVideoGraphs == m_SelectedIndex )
-   {
-      pP->iDebugShowVehicleVideoGraphs = m_pItemsSelect[15]->getSelectedIndex();
-      save_Preferences();
-      valuesToUI();
-      if ( NULL != g_pCurrentModel )
-         g_pCurrentModel->b_mustSyncFromVehicle = true;
       return;
    }
 

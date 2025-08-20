@@ -42,8 +42,8 @@
 // param: byte 1..4: 3 bytes of interface capabilities flags
 
 #define COMMAND_ID_SET_RADIO_CARD_MODEL 11
-// param: low byte: card index, second byte: card model (if 0xFF, then autodetect it again)
-// response has the new card model in command_response_param
+// param: low byte: card index, second byte: user set card model (if 0xFF, then autodetect it again)
+// response has the new card model in command_response_param if autodetect was requested
 
 #define COMMAND_ID_SET_MODEL_FLAGS 12
 // param u32 new model flags
@@ -117,21 +117,19 @@ typedef struct
 #define COMMAND_ID_SET_FUNCTIONS_TRIGGERS_PARAMS 35    // version 5.6
 // A model type_functions_parameters structure parameters
 
-#define COMMAND_ID_SET_CONTROLLER_TELEMETRY_OPTIONS 36
-// Param has: bit 0: controller telemetry output, bit 1: controller telemetry input
+// Deprecated in 11.2 #define COMMAND_ID_SET_CONTROLLER_TELEMETRY_OPTIONS 36
 
 #define COMMAND_ID_SET_RELAY_PARAMETERS 37
 // Param is a type_relay_parameters structure
 
-#define COMMAND_ID_SET_VIDEO_PARAMS 39
-// a video_parameters_t structure
+#define COMMAND_ID_SET_VIDEO_PARAMETERS 39
+// video params and video profiles (MAX_VIDEO_LINK_PROFILES)
 
-#define COMMAND_ID_RESET_VIDEO_LINK_PROFILE 41
+// DEPRECATED 41
 
-#define COMMAND_ID_UPDATE_VIDEO_LINK_PROFILES 43
-// bytes: type_video_link_profile * MAX_VIDEO_PROFILES
+// DEPRECATED 43
 
-#define COMMAND_ID_SET_VIDEO_H264_QUANTIZATION 45
+// DEPRECATED 45
 // param: 0 - auto, value: quantization
 
 #define COMMAND_ID_SWAP_RADIO_INTERFACES 46
@@ -140,6 +138,9 @@ typedef struct
 
 #define COMMAND_ID_SET_RADIO_LINKS_FLAGS 48
 // param: uGlobalRadioLinksFlags from type_radio_links_parameters
+
+#define COMMAND_ID_SET_TEMPERATURE_THRESHOLD 49
+// param: temperature in C
 
 #define COMMAND_ID_SET_ALARMS_PARAMS 50
 // an type_alarms_parameters structure as input
@@ -173,12 +174,13 @@ typedef struct
 // contains the model file
 
 #define COMMAND_ID_GET_ALL_PARAMS_ZIP 100
+// 11.1 or older:
 // param:
 //  byte 0:
 //    bit 0: set developer mode on/off: 1/0
 //    bit 1: enable telemetry output;
 //    bit 2: enable telemetry input;
-//    bit 3: enable developer vehicle video link stats
+//    bit 3: (deprecated) enable developer vehicle video link stats
 //    bit 4: enable developer vehicle video link graphs
 //    bit 5: request sending of full mavlink/ltm telemetry packets
 //    bit 6: send back response in small segments (150 bytes each, for low rate radio links)
@@ -189,6 +191,9 @@ typedef struct
 //    wifi guard delay (0..100)
 //  byte 3:
 //    bit 0..3: radio interfaces graph refresh interval: 1...6, same translation to miliseconds as for nGraphRadioRefreshInterval: 10,20,50,100,200,500 ms
+//
+// 11.2 or newer
+//    no params or extra params
 //
 // Response has one of two types:
 //   * the zip model settings, if single packet mode was set (more than 150 bytes)
@@ -223,11 +228,10 @@ typedef struct
 
 #define COMMAND_ID_DEBUG_GET_TOP 201
 
-#define COMMAND_ID_ENABLE_LIVE_LOG 203
+// Deprecated in 11.2 #define COMMAND_ID_ENABLE_LIVE_LOG 203
 // param - 0/1 to enable live log
 
 #define COMMAND_ID_SET_DEVELOPER_FLAGS 205
-// u32 param - 0/1 enable developer mode
 // u32 param - developer flags
 // extra params (optional):
 // u32 - radio rx loop timeout interval

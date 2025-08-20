@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -76,13 +76,6 @@ shared_mem_video_stream_stats_rx_processors g_SM_VideoDecodeStats;
 
 shared_mem_radio_rx_queue_info* g_pSM_RadioRxQueueInfo = NULL;
 shared_mem_radio_rx_queue_info g_SM_RadioRxQueueInfo;
-
-//To fix
-//shared_mem_video_link_stats_and_overwrites* g_pSM_VideoLinkStats = NULL;
-//shared_mem_video_link_stats_and_overwrites g_SM_VideoLinkStats;
-
-shared_mem_video_link_graphs* g_pSM_VideoLinkGraphs = NULL;
-shared_mem_video_link_graphs g_SM_VideoLinkGraphs;
 
 shared_mem_dev_video_bitrate_history g_SM_DevVideoBitrateHistory;
 

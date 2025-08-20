@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -38,6 +38,7 @@
 #include "../base/ctrl_settings.h"
 #include "../base/ctrl_interfaces.h"
 #include "../common/string_utils.h"
+#include "../common/strings_loc.h"
 
 #include "shared_vars.h"
 #include "link_watch.h"
@@ -64,8 +65,6 @@
 extern bool s_bDebugOSDShowAll;
 
 u32 s_TimeLastProcessesCheck = 0;
-u32 s_TimeLastVideoProcessingCheck = 0;
-u32 s_TimeLastVideoMemoryFreeCheck = 0;
 u32 s_TimeSecondsCheck = 0;
 u32 s_TimeLastWarningRCHID = 0;
 u32 s_TimeLastAlarmRadioLinkBehind = 0;
@@ -100,10 +99,7 @@ void link_watch_reset()
    s_CountTelemetryLostCount = 0;
 
    s_bLinkWatchShownSwitchVehicleMenu = false;
-   g_bVideoLost = false;
-   
-   s_TimeLastVideoMemoryFreeCheck = 0;
-   link_watch_mark_started_video_processing();
+   g_bIsVideoLost = false;
 
    if ( NULL != g_pPopupLooking )
    {
@@ -146,11 +142,6 @@ bool link_is_reconfiguring_radiolink()
 u32 link_get_last_reconfiguration_end_time()
 {
    return s_TimeLastRadioLinkReconfigEnd;
-}
-
-void link_watch_mark_started_video_processing()
-{
-   s_TimeLastVideoProcessingCheck = g_TimeNow;
 }
 
 void link_watch_remove_popups()
@@ -235,6 +226,7 @@ void link_watch_loop_popup_looking()
    }
    else
    {
+      log_line("Active language: %d", getActiveLanguage());
       log_line("Will add `looking for` popup for VID %u, firmware type: %s", g_pCurrentModel->uVehicleId, str_format_firmware_type(g_pCurrentModel->getVehicleFirmwareType()));
       idIcon = osd_getVehicleIcon( g_pCurrentModel->vehicle_type );
       if ( g_pCurrentModel->radioLinksParams.links_count < 2 )
@@ -437,7 +429,7 @@ void link_watch_check_link_lost()
 
    // Link is lost
 
-   if ( g_bVideoRecordingStarted && (!g_bVideoProcessing) )
+   if ( g_bIsVideoRecording )
    if ( NULL != g_pPopupLinkLost )
    {
       Preferences* pP = get_Preferences();
@@ -760,8 +752,6 @@ int link_watch_loop_processes()
          bool bNeedsRestart = false;
          int failureCountMax = 4;
 
-         if ( g_bVideoProcessing )
-            failureCountMax = 8;
          if ( (int)s_CountProcessRouterFailures > failureCountMax )
          {
             log_error_and_alarm("Router process has failed. Current router PIDS: [%s].", hw_process_get_pids_inline("ruby_rt_station"));
@@ -952,7 +942,7 @@ int link_watch_loop_processes()
                if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] >= 0 )
                if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] < g_pCurrentModel->radioLinksParams.links_count )
                {
-                  int dataRateMb = g_pCurrentModel->radioLinksParams.link_datarate_video_bps[g_pCurrentModel->radioInterfacesParams.interface_link_id[i]];
+                  int dataRateMb = g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[g_pCurrentModel->radioInterfacesParams.interface_link_id[i]];
                   if ( dataRateMb > 0 )
                      dataRateMb = dataRateMb / 1000 / 1000;
                   if ( dataRateMb > 0 )
@@ -985,83 +975,6 @@ int link_watch_loop_processes()
    }
 
    return 0;
-}
-
-
-void link_watch_loop_recording()
-{
-   if ( g_bSearching )
-      return;
-
-   char szFile[MAX_FILE_PATH_SIZE];
-
-   if ( g_TimeNow < s_TimeLastVideoProcessingCheck + 1000 )
-      return;
-   s_TimeLastVideoProcessingCheck = g_TimeNow;
-
-   if ( g_bVideoRecordingStarted )
-   {
-      Preferences *p = get_Preferences();
-      if ( p->iVideoDestination == prefVideoDestination_Mem )
-      {
-         if ( g_TimeNow > s_TimeLastVideoMemoryFreeCheck + 4000 )
-         {
-            s_TimeLastVideoMemoryFreeCheck = g_TimeNow;
-            char szComm[1024];
-            char szBuff[2048];
-            char szTemp[64];
-            sprintf(szComm, "df %s | sed -n 2p", FOLDER_TEMP_VIDEO_MEM);
-            hw_execute_bash_command_raw(szComm, szBuff);
-            long lu, lf, lt;
-            sscanf(szBuff, "%s %ld %ld %ld", szTemp, &lt, &lu, &lf);
-            log_line("DBG free mem disk: %d kb", lf );
-            if ( lf/1000 < 20 )
-            {
-               warnings_add(0, "Recording buffers are full. Stopping recording", g_idIconCamera);
-               ruby_stop_recording();
-            }
-         }
-      }
-   }
-
-   if ( g_bVideoProcessing )
-   {
-      char szPIDs[1024];
-      bool procRunning = false;
-      hw_process_get_pids("ruby_video_proc", szPIDs);
-      removeTrailingNewLines(szPIDs);
-      if ( strlen(szPIDs) > 2 )
-         procRunning = true;
-      if ( ! procRunning )
-      {
-         log_line("Video processing process finished.");
-         g_bVideoProcessing = false;
-         strcpy(szFile, FOLDER_RUBY_TEMP);
-         strcat(szFile, FILE_TEMP_VIDEO_FILE_PROCESS_ERROR);
-         if ( access(szFile, R_OK) != -1 )
-         {
-            warnings_add(0, L("Video file processing failed."), g_idIconCamera, get_Color_IconWarning());
-
-            char szBuff[256];
-            char * line = NULL;
-            size_t len = 0;
-            ssize_t read;
-            FILE* fd = fopen(szFile, "r");
-
-            while ( (NULL != fd) && ((read = getline(&line, &len, fd)) != -1))
-            {
-              if ( read > 0 )
-                 warnings_add(0, line, g_idIconCamera, get_Color_IconWarning());
-            }
-            if ( NULL != fd )
-               fclose(fd);
-            sprintf(szBuff, "rm -rf %s%s 2>/dev/null", FOLDER_RUBY_TEMP, FILE_TEMP_VIDEO_FILE_PROCESS_ERROR);
-            hw_execute_bash_command(szBuff, NULL );
-         }
-         else
-             warnings_add(0, L("Video file processing complete."), g_idIconCamera, get_Color_IconNormal());
-      }
-   }
 }
 
 void link_watch_rc()
@@ -1133,7 +1046,7 @@ void link_watch_loop()
 
    if ( NULL == g_pCurrentModel || g_bSearching )
    {
-      g_bVideoLost = false;
+      g_bIsVideoLost = false;
       link_watch_remove_popups();
       return;
    }
@@ -1141,7 +1054,7 @@ void link_watch_loop()
 
    if ( ! pairing_isStarted() )
    {
-      g_bVideoLost = false;
+      g_bIsVideoLost = false;
       return;
    }
 
@@ -1152,7 +1065,6 @@ void link_watch_loop()
    link_watch_loop_throttled();
    link_watch_loop_video();
    link_watch_loop_processes();
-   link_watch_loop_recording();
    link_watch_rc();
 }
 

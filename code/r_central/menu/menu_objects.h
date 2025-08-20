@@ -117,6 +117,7 @@
 #define MENU_ID_CONTROLLER_UPDATE 129
 #define MENU_ID_CONTROLLER_UPDATE_NET 130
 #define MENU_ID_VEHICLE_RADIO_PIT 131
+#define MENU_ID_VEHICLE_RADIO_RUNTIME_CAPS 132
 
 
 #define MAX_MENU_ITEMS 150
@@ -215,6 +216,7 @@ class Menu
      virtual void onAddToStack();
      virtual void onShow();
      virtual int  onBack();
+     virtual void onVehicleCommandFinished(u32 uCommandId, u32 uCommandType, bool bSucceeded);
      virtual void onSelectItem();
      virtual void onMoveUp(bool bIgnoreReversion);
      virtual void onMoveDown(bool bIgnoreReversion);
@@ -252,7 +254,6 @@ class Menu
      void updateScrollingOnSelectionChange();
      bool checkIsArmed();
      void addMessageNeedsVehcile(const char* szMessage, int iConfirmationId);
-     char* addMessageVideoBitrate(Model* pModel);
      void addUnsupportedMessageOpenIPC(const char* szMessage);
      void addUnsupportedMessageOpenIPCGoke(const char* szMessage);
      void addUnsupportedMessageOpenIPCSigmaster(const char* szMessage);
@@ -262,6 +263,9 @@ class Menu
      bool checkCancelUpload();
 
      MenuItemSelect* createMenuItemCardModelSelector(const char* szTitle);
+     void setSelectionForCardModelSelector(MenuItemSelect* pItemSelect, int iCardModel);
+     u32 getSelectedCardForCardModelSelector(MenuItemSelect* pItemSelect);
+
      MenuItemSelect* createMenuItemTxPowers(const char* szTitle, bool bAddAutoOption, bool bBooster2W, bool bBooster4W, int iMaxUsablePowerMw);
      void selectMenuItemTxPowersValue(MenuItemSelect* pMenuItem, bool bHasAutoOption, bool bBooster2W, bool bBooster4W, int* piCardsCurrentPowerLevelsMw, int iNumCards, int iMaxUsablePowerMw);
 

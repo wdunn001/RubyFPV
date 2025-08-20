@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -303,6 +303,7 @@ Popup::Popup(const char* title, float x, float y, float timeoutSec)
    m_fBottomMargin = 0.0;
    m_RenderWidth = 0;
    m_RenderHeight = 0;
+   m_bShowTimeoutBar = false;
    m_bBelowMenu = false;
    m_bTopmost = false;
    m_uIdFont = g_idFontMenu;
@@ -356,6 +357,7 @@ Popup::Popup(const char* title, float x, float y, float maxWidth, float timeoutS
    m_fBottomMargin = 0.0;
    m_RenderWidth = 0;
    m_RenderHeight = 0;
+   m_bShowTimeoutBar = false;
    m_bBelowMenu = false;
    m_bTopmost = false;
    m_uIdFont = g_idFontMenu;
@@ -404,6 +406,7 @@ Popup::Popup(bool bCentered, const char* title, float timeoutSec)
    m_fBottomMargin = 0.0;
    m_RenderWidth = 0;
    m_RenderHeight = 0;
+   m_bShowTimeoutBar = false;
    m_bBelowMenu = false;
    m_bTopmost = false;
    m_uIdFont = g_idFontMenu;
@@ -610,6 +613,11 @@ void Popup::refresh()
 void Popup::setRenderBelowMenu(bool bBelowMenu)
 {
    m_bBelowMenu = bBelowMenu;
+}
+
+void Popup::showTimeoutProgress()
+{
+   m_bShowTimeoutBar = true;
 }
 
 void Popup::setCentered()
@@ -893,6 +901,7 @@ void Popup::Render()
    colorBg[3] = colorBg[3] * m_fBackgroundAlpha;
    if ( colorBg[3] > 1.0 )
       colorBg[3] = 1.0;
+   
    if ( m_fBackgroundAlpha < 0.99 )
       g_pRenderEngine->setColors(colorBg);
    else
@@ -904,6 +913,26 @@ void Popup::Render()
    float fDeltaWidthIcons = computeIconsSizes();
    if ( ! m_bNoBackground )
       g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos, m_RenderWidth + fDeltaWidthIcons, m_RenderHeight, POPUP_ROUND_MARGIN);
+
+
+   if ( m_bShowTimeoutBar )
+   if ( (m_fTimeoutSeconds > 0.001) && (m_uTimeoutEndTime != 0) )
+   if ( g_TimeNow <= m_uTimeoutEndTime )
+   {
+      float fBarPercentage = 1.0 - (float)(m_uTimeoutEndTime - g_TimeNow)/(1000.0*m_fTimeoutSeconds);
+      if ( fBarPercentage < 0.001 )
+         fBarPercentage = 0.001;
+      if ( fBarPercentage > 1.0 )
+         fBarPercentage = 1.0;
+
+      float fBarHeight = height_text*0.5;
+
+      g_pRenderEngine->setFill(0,0,0,0);
+      g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos + m_RenderHeight - fBarHeight, m_RenderWidth + fDeltaWidthIcons, fBarHeight, POPUP_ROUND_MARGIN);
+
+      g_pRenderEngine->setColors(get_Color_PopupText());
+      g_pRenderEngine->drawRoundRect(m_RenderXPos, m_RenderYPos + m_RenderHeight - fBarHeight, fBarPercentage * (m_RenderWidth + fDeltaWidthIcons), fBarHeight, POPUP_ROUND_MARGIN);
+   }
 
    float xTextStart = m_RenderXPos+m_fPaddingX;
    float yTextStart = m_RenderYPos+m_fPaddingY;

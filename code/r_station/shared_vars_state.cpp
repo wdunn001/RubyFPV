@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -34,6 +34,7 @@
 #include "../base/base.h"
 #include "../radio/radiolink.h"
 #include "shared_vars.h"
+#include "ruby_rt_station.h"
 #include "timers.h"
 
 type_global_state_station g_State;
@@ -44,6 +45,10 @@ void resetVehicleRuntimeInfo(int iIndex)
       return;
 
    log_line("Reset vehicle runtime info for vehicle runtime index %d, VID: %u", iIndex, g_State.vehiclesRuntimeInfo[iIndex].uVehicleId);
+
+   if ( (0 != g_State.vehiclesRuntimeInfo[iIndex].uVehicleId) && (MAX_U32 != g_State.vehiclesRuntimeInfo[iIndex].uVehicleId) )
+   if ( g_State.vehiclesRuntimeInfo[iIndex].bIsAdaptiveVideoActive )
+      send_adaptive_video_paused_to_central(g_State.vehiclesRuntimeInfo[iIndex].uVehicleId, true);
 
    g_State.vehiclesRuntimeInfo[iIndex].uVehicleId = 0;
    resetPairingStateForVehicleRuntimeInfo(iIndex);
@@ -74,15 +79,37 @@ void resetVehicleRuntimeInfo(int iIndex)
    g_State.vehiclesRuntimeInfo[iIndex].uAverageCommandRoundtripMiliseconds = MAX_U32;
    g_State.vehiclesRuntimeInfo[iIndex].uMaxCommandRoundtripMiliseconds = MAX_U32;
    g_State.vehiclesRuntimeInfo[iIndex].uMinCommandRoundtripMiliseconds = MAX_U32;
+
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeLastDequeuedFrameData = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeLastFrameStart = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uCurrentFrameId = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].iLastVideoDatarateBPS = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].bIsReceivingFrameData = false;
+   g_State.vehiclesRuntimeInfo[iIndex].bIsFrameEndDetected = false;
+   g_State.vehiclesRuntimeInfo[iIndex].bIsFrameEnded = false;
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeStartWindowTxData = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeEndWindowTxData = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uTimeLastTxData = 0;
    
    g_State.vehiclesRuntimeInfo[iIndex].bIsDoingRetransmissions = false;
-   g_State.vehiclesRuntimeInfo[iIndex].bIsDoingAdaptive = false;
-   g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoProfileToSet = 0xFF;
-   g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoProfileToSetRequestedBy = 0;
-   g_State.vehiclesRuntimeInfo[iIndex].uLastTimeSentVideoProfileRequest = 0;
-   g_State.vehiclesRuntimeInfo[iIndex].uLastTimeRecvVideoProfileAck = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].bIsAdaptiveVideoActive = false;
+   g_State.vehiclesRuntimeInfo[iIndex].uAdaptiveVideoActivationTime = g_TimeNow;
+   g_State.vehiclesRuntimeInfo[iIndex].bDidFirstTimeAdaptiveHandshake = false;
+   g_State.vehiclesRuntimeInfo[iIndex].uAdaptiveVideoLastCheckTime = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uAdaptiveVideoRequestId = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uAdaptiveVideoAckId = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uLastTimeSentAdaptiveVideoRequest = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uLastTimeRecvAdaptiveVideoAck = 0;
 
-   g_State.vehiclesRuntimeInfo[iIndex].uPendingKeyFrameToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uCurrentAdaptiveVideoTargetVideoBitrateBPS = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uCurrentAdaptiveVideoECScheme = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].iCurrentAdaptiveVideoKeyFrameMsTarget = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uCurrentDRBoost = 0xFF;
+   g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoBitrateToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uPendingECSchemeToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].uPendingDRBoostToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].iPendingKeyFrameMsToSet = 0;
+   g_State.vehiclesRuntimeInfo[iIndex].iAdaptiveLevelNow = 0;
 }
 
 
@@ -95,6 +122,7 @@ void resetPairingStateForVehicleRuntimeInfo(int iIndex)
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestId = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestTime = g_TimeNow;
    g_State.vehiclesRuntimeInfo[iIndex].uPairingRequestInterval = 200;
+   g_State.vehiclesRuntimeInfo[iIndex].bDidFirstTimeAdaptiveHandshake = false;
    g_TimeLastVideoParametersOrProfileChanged = g_TimeNow;
 }
 

@@ -14,6 +14,7 @@ char* str_format_binary_number(u32 uNumber);
 
 void str_getDataRateDescription(int dataRateBPS, int iHT40, char* szOutput);
 void str_getDataRateDescriptionNoSufix(int dataRateBPS, char* szOutput);
+char* str_format_datarate_inline(int dataRateBPS);
 char* str_format_bitrate_inline(int iBitrateBPS);
 void str_format_bitrate(int bitrate_bps, char* szBuffer);
 void str_format_bitrate_no_sufix(int bitrate_bps, char* szBuffer);
@@ -43,8 +44,9 @@ void str_get_radio_capabilities_description(u32 flags, char* szOutput);
 void str_get_radio_frame_flags_description(u32 radioFlags, char* szOutput);
 char* str_get_radio_frame_flags_description2(u32 radioFlags);
 
+char* str_format_adaptive_video_flags(u8 uFlags);
+char* str_format_video_profile_flags(u32 uVideoProfileFlags);
 char* str_format_video_encoding_flags(u32 uVideoProfileEncodingFlags);
-char* str_format_video_frame_and_nal_flags(u32 uFrameAndNALFlags);
 char* str_get_video_profile_name(u32 videoProfileId);
 char* str_get_decode_h264_profile_name(u8 uH264Profile, u8 uH264ProfileConstrains, u8 uH264Level);
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -34,6 +34,7 @@
 #include "hardware_cam_maj.h"
 #include "hardware_camera.h"
 #include "hw_procs.h"
+#include "hardware_files.h"
 #include "../common/string_utils.h"
 #include <math.h>
 #include <pthread.h>
@@ -104,6 +105,40 @@ volatile bool s_bMajThreadSetAudioVolumeRunning = false;
 pthread_t s_ThreadMajSetAudioBitrate;
 volatile bool s_bMajThreadSetAudioBitrateRunning = false;
 
+
+int hardware_camera_maj_validate_config()
+{
+   if ( (access("/etc/majestic.yaml", R_OK) != -1) && (hardware_file_get_file_size("/etc/majestic.yaml") > 200) )
+   {
+      log_line("[HwCamMajestic] majestic config file is ok.");
+      if ( access("/etc/majestic.yaml.org", R_OK == -1) || (hardware_file_get_file_size("/etc/majestic.yaml.org") < 200) )
+      {
+         log_softerror_and_alarm("[HwCamMajestic] Failed to find majestic backup config file. Restore it.");
+         hw_execute_bash_command("cp -rf /etc/majestic.yaml /etc/majestic.yaml.org", NULL);
+         if ( access("/etc/majestic.yaml.org", R_OK == -1) || (hardware_file_get_file_size("/etc/majestic.yaml.org") < 200) )
+            log_softerror_and_alarm("[HwCamMajestic] Failed to restore majestic backup config file.");
+      }
+      else
+         log_line("[HwCamMajestic] majestic backup config file is ok.");
+      return 0;
+   }
+  
+   
+   log_softerror_and_alarm("[HwCamMajestic] Invalid majestic config file. Restore it...");
+   if ( access("/etc/majestic.yaml.org", R_OK == -1) || (hardware_file_get_file_size("/etc/majestic.yaml.org") < 200) )
+   {
+      log_error_and_alarm("[HwCamMajestic] Invalid majestic config file and no backup present. Abort start.");
+      return -1;
+   }
+   hw_execute_bash_command("cp -rf /etc/majestic.yaml.org /etc/majestic.yaml", NULL);
+   if ( access("/etc/majestic.yaml", R_OK == -1) || (hardware_file_get_file_size("/etc/majestic.yaml") < 200) )
+   {
+      log_error_and_alarm("[HwCamMajestic] Failed to restore majestic config file. Abort start.");
+      return -1;
+   }
+   log_line("[HwCamMajestic] Restored majestic config file from backup.");
+   return 0;
+}
    
 void* _thread_majestic_log_entry(void *argument)
 {
@@ -121,6 +156,7 @@ void* _thread_majestic_log_entry(void *argument)
 
 void hardware_camera_maj_add_log(const char* szLog, bool bAsync)
 {
+   /*
    if ( NULL == szLog )
       return;
    if ( !bAsync )
@@ -141,12 +177,7 @@ void hardware_camera_maj_add_log(const char* szLog, bool bAsync)
    hw_init_worker_thread_attrs(&attr);
    pthread_create(&s_ThreadMajLogEntry, &attr, &_thread_majestic_log_entry, pszLog);
    pthread_attr_destroy(&attr);
-}
-
-int hardware_camera_maj_init()
-{
-   s_iPIDMajestic = hw_process_exists("majestic");
-   return s_iPIDMajestic;
+   */
 }
 
 int hardware_camera_maj_get_current_pid()
@@ -304,7 +335,7 @@ void _hardware_camera_maj_set_image_params()
    sprintf(szComm, "cli -s .image.hue %d", s_CurrentMajesticCamSettings.hue);
    hw_execute_bash_command_raw(szComm, NULL);
 
-   if ( s_CurrentMajesticCamSettings.uFlags & CAMERA_FLAG_OPENIPC_3A_SIGMASTAR )
+   if ( s_CurrentMajesticCamSettings.uFlags & CAMERA_FLAG_OPENIPC_3A_FPV )
       hw_execute_bash_command_raw("cli -s .fpv.enabled true", NULL);
    else
       hw_execute_bash_command_raw("cli -s .fpv.enabled false", NULL);
@@ -337,7 +368,7 @@ void _hardware_camera_maj_set_image_params()
    }
 
    hardware_camera_maj_set_irfilter_off(s_CurrentMajesticCamSettings.uFlags & CAMERA_FLAG_IR_FILTER_OFF, false);
-   hardware_camera_maj_add_log("Applied settings. Signal majestic...", false);
+   hardware_camera_maj_add_log("Applied settings. Signal majestic to reload it's settings...", false);
    hw_execute_bash_command_raw("killall -1 majestic", NULL);
 }
 
@@ -396,7 +427,7 @@ void _hardware_cam_maj_set_nal_size()
    
    int iVideoProfile = s_iCurrentMajesticVideoProfile;
    if ( -1 == iVideoProfile )
-      iVideoProfile = s_pCurrentMajesticModel->video_params.user_selected_video_link_profile;
+      iVideoProfile = s_pCurrentMajesticModel->video_params.iCurrentVideoProfile;
 
    int iNALSize = s_pCurrentMajesticModel->video_link_profiles[iVideoProfile].video_data_length;
    iNALSize -= 6; // NAL delimitator+header (00 00 00 01 [aa] [bb])
@@ -434,7 +465,7 @@ void hardware_camera_maj_update_nal_size(Model* pModel, bool bAsync)
    s_pCurrentMajesticModel = pModel;
    int iVideoProfile = s_iCurrentMajesticVideoProfile;
    if ( (-1 == iVideoProfile) && (NULL != s_pCurrentMajesticModel) )
-      iVideoProfile = s_pCurrentMajesticModel->video_params.user_selected_video_link_profile;
+      iVideoProfile = s_pCurrentMajesticModel->video_params.iCurrentVideoProfile;
 
    int iNALSize = s_pCurrentMajesticModel->video_link_profiles[iVideoProfile].video_data_length;
    iNALSize -= 6; // NAL delimitator+header (00 00 00 01 [aa] [bb])
@@ -472,6 +503,8 @@ void hardware_camera_maj_update_nal_size(Model* pModel, bool bAsync)
       log_softerror_and_alarm("[HwCamMajestic] Can't create thread. Set NAL size manualy.");
       _hardware_cam_maj_set_nal_size();
    }
+   else
+      pthread_detach(s_ThreadMajSetNALSize);
    //pthread_attr_destroy(&attr);
 }
 
@@ -479,6 +512,17 @@ void hardware_camera_maj_update_nal_size(Model* pModel, bool bAsync)
 void _hardware_camera_maj_set_all_params()
 {
    char szComm[128];
+
+   hw_execute_bash_command_raw("cli -s .watchdog.enabled false", NULL);
+   hw_execute_bash_command_raw("cli -s .system.logLevel info", NULL);
+   hw_execute_bash_command_raw("cli -s .rtsp.enabled false", NULL);
+   hw_execute_bash_command_raw("cli -s .video1.enabled false", NULL);
+   hw_execute_bash_command_raw("cli -s .video0.enabled true", NULL);
+   hw_execute_bash_command_raw("cli -s .video0.rcMode cbr", NULL);
+   hw_execute_bash_command_raw("cli -s .isp.slowShutter disabled", NULL);
+
+   if ( NULL != s_pCurrentMajesticModel )
+      hardware_set_oipc_gpu_boost(s_pCurrentMajesticModel->processesPriorities.iFreqGPU);
 
    if ( s_CurrentMajesticVideoParams.iH264Slices <= 1 )
    {
@@ -496,7 +540,7 @@ void _hardware_camera_maj_set_all_params()
    else
       hw_execute_bash_command_raw("cli -s .video0.codec h264", NULL);
 
-   sprintf(szComm, "cli -s .video0.fps %d", s_pCurrentMajesticModel->video_link_profiles[s_iCurrentMajesticVideoProfile].fps);
+   sprintf(szComm, "cli -s .video0.fps %d", s_pCurrentMajesticModel->video_params.iVideoFPS);
    hw_execute_bash_command_raw(szComm, NULL);
 
    s_uCurrentMajesticBitrate = s_pCurrentMajesticModel->video_link_profiles[s_iCurrentMajesticVideoProfile].bitrate_fixed_bps;
@@ -506,7 +550,7 @@ void _hardware_camera_maj_set_all_params()
    sprintf(szComm, "cli -s .video0.bitrate %u", s_uCurrentMajesticBitrate/1000);
    hw_execute_bash_command_raw(szComm, NULL);
 
-   sprintf(szComm, "cli -s .video0.size %dx%d", s_pCurrentMajesticModel->video_link_profiles[s_iCurrentMajesticVideoProfile].width, s_pCurrentMajesticModel->video_link_profiles[s_iCurrentMajesticVideoProfile].height);
+   sprintf(szComm, "cli -s .video0.size %dx%d", s_pCurrentMajesticModel->video_params.iVideoWidth, s_pCurrentMajesticModel->video_params.iVideoHeight);
    hw_execute_bash_command_raw(szComm, NULL);
 
    s_iCurrentMajesticQPDelta = s_pCurrentMajesticModel->video_link_profiles[s_iCurrentMajesticVideoProfile].iIPQuantizationDelta;
@@ -521,8 +565,11 @@ void _hardware_camera_maj_set_all_params()
    if ( s_fTemporaryMajesticGOP > 0 )
       s_fCurrentMajesticGOP = s_fTemporaryMajesticGOP;
 
-   sprintf(szComm, "cli -s .video0.gopSize %.1f", s_fCurrentMajesticGOP);
+   sprintf(szComm, "cli -s .video0.gopSize %.2f", s_fCurrentMajesticGOP);
    hw_execute_bash_command_raw(szComm, NULL);
+
+   hw_execute_bash_command_raw("cli -s .outgoing.enabled true", NULL);
+   hw_execute_bash_command_raw("cli -s .outgoing.server udp://127.0.0.1:5600", NULL);
 
    // Allow room for video header important and 5 bytes for NAL header
    int iNALSize = s_pCurrentMajesticModel->video_link_profiles[s_iCurrentMajesticVideoProfile].video_data_length;
@@ -536,12 +583,16 @@ void _hardware_camera_maj_set_all_params()
 
 
    u32 uNoiseLevel = s_pCurrentMajesticModel->video_link_profiles[s_iCurrentMajesticVideoProfile].uProfileFlags & VIDEO_PROFILE_FLAGS_MASK_NOISE;
-   if ( uNoiseLevel >= 2 )
+   if ( uNoiseLevel > 2 )
       hw_execute_bash_command_raw("cli -d .fpv.noiseLevel", NULL);
+   else if ( uNoiseLevel == 2 )
+      hw_execute_bash_command_raw("cli -s .fpv.noiseLevel 2", NULL);
    else if ( uNoiseLevel == 1 )
       hw_execute_bash_command_raw("cli -s .fpv.noiseLevel 1", NULL);
    else
       hw_execute_bash_command_raw("cli -s .fpv.noiseLevel 0", NULL);
+
+   hardware_camera_maj_set_daylight_off((s_CurrentMajesticVideoCamSettings.uFlags & CAMERA_FLAG_OPENIPC_DAYLIGHT_OFF)?1:0, false);
 
    hardware_camera_maj_apply_image_settings(&s_CurrentMajesticVideoCamSettings, false);
 }
@@ -595,6 +646,13 @@ void hardware_camera_maj_apply_all_settings(Model* pModel, camera_profile_parame
 
 void _hardware_camera_maj_set_irfilter_off_sync()
 {
+   u32 uSubBoardType = (hardware_getBoardType() & BOARD_SUBTYPE_MASK) >> BOARD_SUBTYPE_SHIFT;
+ 
+   if ( (uSubBoardType == BOARD_SUBTYPE_OPENIPC_UNKNOWN) ||
+        (uSubBoardType == BOARD_SUBTYPE_OPENIPC_GENERIC) ||
+        (uSubBoardType == BOARD_SUBTYPE_OPENIPC_GENERIC_30KQ) )
+   {
+
    // IR cut filer off?
    if ( s_iLastMajesticIRFilterMode )
    {
@@ -641,6 +699,7 @@ void _hardware_camera_maj_set_irfilter_off_sync()
          hw_execute_bash_command("gpio set 11", NULL);
          hw_execute_bash_command("gpio clear 10", NULL);
       }
+   }
    }
 }
 
@@ -698,7 +757,7 @@ void* _thread_majestic_set_daylight_mode(void *argument)
    return NULL; 
 }
 
-void hardware_camera_maj_set_daylight_off(int iDLOff)
+void hardware_camera_maj_set_daylight_off(int iDLOff, bool bAsync)
 {
    if ( !hardware_board_is_openipc(hardware_getBoardType()) )
       return;
@@ -748,7 +807,8 @@ void hardware_camera_maj_set_calibration_file(int iCameraType, int iCalibrationF
    {
       strcpy(szFileName, "c_");
       strcat(szFileName, szCalibrationFile);
-      strcat(szFileName, ".bin");
+      if ( NULL == strstr(szFileName, ".bin") )
+         strcat(szFileName, ".bin");
       snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %s%s /etc/sensors/%s", FOLDER_RUBY_TEMP, szFileName, szFileName);
       hw_execute_bash_command(szComm, NULL);
       hw_execute_bash_command("sync", NULL);
@@ -951,11 +1011,11 @@ void hardware_camera_maj_clear_temp_values()
 void* _thread_majestic_set_temp_gop(void *argument)
 {
    s_bMajThreadSetGOPRunning = true;
-   log_line("[HwCamMajestic] Started thread to set GOP to %.1f ...", s_fTemporaryMajesticGOP);
+   log_line("[HwCamMajestic] Started thread to set GOP to %.2f ...", s_fTemporaryMajesticGOP);
    char szComm[128];
-   sprintf(szComm, "curl -s localhost/api/v1/set?video0.gopSize=%.1f", s_fTemporaryMajesticGOP);
+   sprintf(szComm, "curl -s localhost/api/v1/set?video0.gopSize=%.2f", s_fTemporaryMajesticGOP);
    hw_execute_bash_command_raw(szComm, NULL);
-   sprintf(szComm, "cli -s .video0.gopSize %.1f", s_fTemporaryMajesticGOP);
+   sprintf(szComm, "cli -s .video0.gopSize %.2f", s_fTemporaryMajesticGOP);
    hw_execute_bash_command_raw(szComm, NULL);
    s_bMajThreadSetGOPRunning = false;
    log_line("[HwCamMajestic] Finished thread to set GOP.");
@@ -990,12 +1050,14 @@ void hardware_camera_maj_set_keyframe(float fGOP)
       s_bMajThreadSetGOPRunning = false;
       log_softerror_and_alarm("[HwCamMajestic] Can't create thread. Set GOP manualy.");
       char szComm[128];
-      sprintf(szComm, "curl -s localhost/api/v1/set?video0.gopSize=%.1f", s_fTemporaryMajesticGOP);
+      sprintf(szComm, "curl -s localhost/api/v1/set?video0.gopSize=%.2f", s_fTemporaryMajesticGOP);
       hw_execute_bash_command_raw(szComm, NULL);
-      sprintf(szComm, "cli -s .video0.gopSize %.1f", s_fTemporaryMajesticGOP);
+      sprintf(szComm, "cli -s .video0.gopSize %.2f", s_fTemporaryMajesticGOP);
       hw_execute_bash_command_raw(szComm, NULL);
       s_bMajThreadSetGOPRunning = false;
    }
+   else
+      pthread_detach(s_ThreadMajSetGOP);
    //pthread_attr_destroy(&attr);
 }
 
@@ -1057,6 +1119,8 @@ void hardware_camera_maj_set_bitrate(u32 uBitrate)
       sprintf(szComm, "cli -s .video0.bitrate %u", s_uTemporaryMajesticBitrate/1000);
       hw_execute_bash_command_raw(szComm, NULL);
    }
+   else
+      pthread_detach(s_ThreadMajSetBitrate);
    //pthread_attr_destroy(&attr);
 }
 
@@ -1117,6 +1181,8 @@ void hardware_camera_maj_set_qpdelta(int iQPDelta)
       sprintf(szComm, "cli -s .video0.qpDelta %d", iQPDelta);
       hw_execute_bash_command_raw(szComm, NULL);
    }
+   else
+      pthread_detach(s_ThreadMajSetQPDelta);
    //pthread_attr_destroy(&attr);
 }
 
@@ -1213,6 +1279,8 @@ void hardware_camera_maj_set_bitrate_and_qpdelta(u32 uBitrate, int iQPDelta)
       sprintf(szComm, "cli -s .video0.qpDelta %d", s_iTemporaryMajesticQPDelta);
       hw_execute_bash_command_raw(szComm, NULL);
    }
+   else
+      pthread_detach(s_ThreadMajSetBitrateQPDelta);
    //pthread_attr_destroy(&attr);
 }
 

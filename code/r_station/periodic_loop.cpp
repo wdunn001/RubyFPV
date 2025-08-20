@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -85,10 +85,11 @@ void _synchronize_shared_mems()
             g_SM_RouterVehiclesRuntimeInfo.bIsVehicleFastUplinkFromControllerLost[i] = g_State.vehiclesRuntimeInfo[i].bIsVehicleFastUplinkFromControllerLost;
             g_SM_RouterVehiclesRuntimeInfo.bIsVehicleSlowUplinkFromControllerLost[i] = g_State.vehiclesRuntimeInfo[i].bIsVehicleSlowUplinkFromControllerLost;
             g_SM_RouterVehiclesRuntimeInfo.bIsDoingRetransmissions[i] = g_State.vehiclesRuntimeInfo[i].bIsDoingRetransmissions;
-            g_SM_RouterVehiclesRuntimeInfo.bIsDoingAdaptive[i] = g_State.vehiclesRuntimeInfo[i].bIsDoingAdaptive;
+            g_SM_RouterVehiclesRuntimeInfo.bIsAdaptiveVideoActive[i] = g_State.vehiclesRuntimeInfo[i].bIsAdaptiveVideoActive;
             g_SM_RouterVehiclesRuntimeInfo.uLastTimeReceivedAckFromVehicle[i] = g_State.vehiclesRuntimeInfo[i].uLastTimeReceivedAckFromVehicle;
             g_SM_RouterVehiclesRuntimeInfo.iVehicleClockDeltaMilisec[i] = g_State.vehiclesRuntimeInfo[i].iVehicleClockDeltaMilisec;
-            
+            g_SM_RouterVehiclesRuntimeInfo.uCurrentAdaptiveECScheme[i] = g_State.vehiclesRuntimeInfo[i].uCurrentAdaptiveVideoECScheme;
+ 
             g_SM_RouterVehiclesRuntimeInfo.uAverageCommandRoundtripMiliseconds[i] = g_State.vehiclesRuntimeInfo[i].uAverageCommandRoundtripMiliseconds;
             g_SM_RouterVehiclesRuntimeInfo.uMaxCommandRoundtripMiliseconds[i] = g_State.vehiclesRuntimeInfo[i].uMaxCommandRoundtripMiliseconds;
             g_SM_RouterVehiclesRuntimeInfo.uMinCommandRoundtripMiliseconds[i] = g_State.vehiclesRuntimeInfo[i].uMinCommandRoundtripMiliseconds;
@@ -241,15 +242,28 @@ void _check_send_pairing_requests()
       radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_RUBY_PAIRING_REQUEST, STREAM_ID_DATA);
       PH.vehicle_id_src = g_uControllerId;
       PH.vehicle_id_dest = pModel->uVehicleId;
-      PH.total_length = sizeof(t_packet_header) + 2*sizeof(u32);
-      u32 uDeveloperMode = 0;
+      PH.total_length = sizeof(t_packet_header) + 3*sizeof(u32);
+
+      u32 uDeveloperFlags = 0;
+      if ( get_sw_version_build(g_pCurrentModel) <= 289 )
       if ( (NULL != g_pControllerSettings) && g_pControllerSettings->iDeveloperMode )
-         uDeveloperMode = 1;
+         uDeveloperFlags = 1;
+      if ( get_sw_version_build(g_pCurrentModel) > 289 )
+      {
+         uDeveloperFlags = g_pCurrentModel->uDeveloperFlags;
+         if ( (NULL != g_pControllerSettings) && g_pControllerSettings->iDeveloperMode )
+            uDeveloperFlags |= DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE;
+         else
+            uDeveloperFlags &= ~DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE;
+      }
+
+      u32 uBoardType = hardware_getBoardType();
       u8 packet[MAX_PACKET_TOTAL_SIZE];
       memcpy(packet, (u8*)&PH, sizeof(t_packet_header));
       memcpy(packet + sizeof(t_packet_header), &(g_State.vehiclesRuntimeInfo[i].uPairingRequestId), sizeof(u32));
-      memcpy(packet + sizeof(t_packet_header) + sizeof(u32), &uDeveloperMode, sizeof(u32));
-      
+      memcpy(packet + sizeof(t_packet_header) + sizeof(u32), &uDeveloperFlags, sizeof(u32));
+      memcpy(packet + sizeof(t_packet_header) + 2*sizeof(u32), &uBoardType, sizeof(u32));
+
       if ( 0 == send_packet_to_radio_interfaces(packet, PH.total_length, -1, 1, 500) )
       {
          if ( g_State.vehiclesRuntimeInfo[i].uPairingRequestId < 2 )
@@ -276,7 +290,7 @@ int _must_inject_ping_now()
    if ( g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_DOWNLINK_ONLY )
       return 0;
 
-   u32 ping_interval_ms = compute_ping_interval_ms(g_pCurrentModel->uModelFlags, g_pCurrentModel->rxtx_sync_type, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags);
+   u32 ping_interval_ms = compute_ping_interval_ms(g_pCurrentModel->uModelFlags, g_pCurrentModel->rxtx_sync_type, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags);
 
    //if ( g_pCurrentModel->radioLinksParams.links_count > 1 )
    //   ping_interval_ms /= g_pCurrentModel->radioLinksParams.links_count;
@@ -385,12 +399,16 @@ bool _check_queue_ping()
 
    t_packet_header PH;
    radio_packet_init(&PH, PACKET_COMPONENT_RUBY, PACKET_TYPE_RUBY_PING_CLOCK, STREAM_ID_DATA);
+   PH.packet_flags |= PACKET_FLAGS_BIT_HIGH_PRIORITY;
    PH.vehicle_id_src = g_uControllerId;
    PH.vehicle_id_dest = uDestinationVehicleId;
+   PH.total_length = sizeof(t_packet_header) + 2*sizeof(u8);
+
    if ( (g_pCurrentModel->sw_version>>16) > 79 ) // 7.7
       PH.total_length = sizeof(t_packet_header) + 4*sizeof(u8);
-   else
-      PH.total_length = sizeof(t_packet_header) + 2*sizeof(u8);
+   if ( get_sw_version_build(g_pCurrentModel) > 289 )
+      PH.total_length = sizeof(t_packet_header) + 5*sizeof(u8);
+
 
    u8 packet[MAX_PACKET_TOTAL_SIZE];
    // u8 ping id, u8 radio link id, u8 relay flags for destination vehicle
@@ -402,6 +420,15 @@ bool _check_queue_ping()
       memcpy(packet+sizeof(t_packet_header)+2*sizeof(u8), &uDestinationRelayCapabilities, sizeof(u8));
       memcpy(packet+sizeof(t_packet_header)+3*sizeof(u8), &uDestinationRelayMode, sizeof(u8));
    }
+
+   if ( get_sw_version_build(g_pCurrentModel) > 289 )
+   {
+      u8 uPingFlags = 0;
+      if ( g_bOSDPluginsNeedTelemetryStreams )
+         uPingFlags |= 0x01;
+      memcpy(packet + sizeof(t_packet_header) + 4*sizeof(u8), &uPingFlags, sizeof(u8));
+   }
+
    packets_queue_add_packet(&s_QueueRadioPacketsRegPrio, packet);
 
    return true;
@@ -459,9 +486,15 @@ void _check_retransmissions_state()
       return;
    if ( (! g_pControllerSettings->iDeveloperMode) || g_pCurrentModel->is_spectator )
       return;
-   if ( test_link_is_in_progress() || g_bNegociatingRadioLinks )
+   if ( test_link_is_in_progress() || isNegociatingRadioLink() )
       return;
-   if ( (g_TimeNow < g_TimeStart + 10000) || (g_TimeNow < test_link_get_last_finish_time() + 4000) || (g_TimeNow < g_uTimeEndedNegiciateRadioLink + 4000) )
+   if ( adaptive_video_is_paused() )
+      return;
+   if ( adaptive_video_get_last_paused_time() != 0 )
+   if ( adaptive_video_get_last_paused_time() > g_TimeNow - 5000 )
+      return;
+
+   if ( (g_TimeNow < g_TimeStart + 10000) || (g_TimeNow < test_link_get_last_finish_time() + 4000) )
       return;
    if ( g_TimeNow < g_TimeLastVideoParametersOrProfileChanged + 10000 )
       return;
@@ -474,7 +507,7 @@ void _check_retransmissions_state()
       return;
    if ( (! pRuntimeInfo->bIsPairingDone) || (g_TimeNow < pRuntimeInfo->uPairingRequestTime + 100) )
       return;
-   if ( ! (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.user_selected_video_link_profile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS) )
+   if ( ! (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS) )
       return;
    if ( rx_video_out_is_stream_output_disabled() )
       return;
@@ -486,6 +519,8 @@ void _check_retransmissions_state()
       if ( g_pVideoProcessorRxList[i]->m_uVehicleId == g_pCurrentModel->uVehicleId )
       if ( 0 != g_pVideoProcessorRxList[i]->getLastestVideoPacketReceiveTime() )
       {
+         if ( g_TimeNow < g_pVideoProcessorRxList[i]->getLastTempRetrPauseResume() + SYSTEM_RT_INFO_INTERVALS * g_SMControllerRTInfo.uUpdateIntervalMs )
+            return;
          bHasAnyVideoPackets = true;
          break;
       }
@@ -494,52 +529,74 @@ void _check_retransmissions_state()
    if ( ! bHasAnyVideoPackets )
       return;
 
-   // Check only the older half of the buffer for skipped blocks. Newer skipped blocks might not have yet been rerequested
+   // Check only the older part of the buffer for skipped blocks. Newer skipped blocks might not have yet been re-requested
    int iHasSkippedBlocksCount = 0;
-   int iRTStartIndex = g_SMControllerRTInfo.iCurrentIndex - SYSTEM_RT_INFO_INTERVALS/2;
+   u32 uLastSkipBlockTime = 0;
+   u32 uLastRetransmissionTime = 0;
+   u32 uLastRetransmissionAckTime = 0;
+
+   int iDeltaSlicesFromNow = SYSTEM_RT_INFO_INTERVALS/4;
+   int iRTStartIndex = g_SMControllerRTInfo.iCurrentIndex - SYSTEM_RT_INFO_INTERVALS/4;
    if ( iRTStartIndex < 0 )
       iRTStartIndex += SYSTEM_RT_INFO_INTERVALS-1;
    
    int iRTIndex = iRTStartIndex;
    for( int i=0; i<SYSTEM_RT_INFO_INTERVALS/2; i++ )
    {
+      iDeltaSlicesFromNow++;
       iRTIndex--;
       if ( iRTIndex < 0 )
          iRTIndex = SYSTEM_RT_INFO_INTERVALS - 1;
-      if ( g_SMControllerRTInfo.uOutputedVideoPacketsSkippedBlocks[iRTIndex] > 0 )
+      if ( g_SMControllerRTInfo.uOutputedVideoBlocksSkippedBlocks[iRTIndex] > 0 )
+      {
          iHasSkippedBlocksCount++;
+         uLastSkipBlockTime = g_TimeNow - iDeltaSlicesFromNow * g_SMControllerRTInfo.uUpdateIntervalMs;
+      }
    }
    if ( 0 == iHasSkippedBlocksCount )
       return;
 
    int iHasRequestedRetransmissionsCount = 0;
    iRTIndex = g_SMControllerRTInfo.iCurrentIndex;
+   iDeltaSlicesFromNow = 0;
 
    for( int i=0; i<SYSTEM_RT_INFO_INTERVALS; i++ )
    {
+      iDeltaSlicesFromNow++;
       iRTIndex--;
       if ( iRTIndex < 0 )
          iRTIndex = SYSTEM_RT_INFO_INTERVALS - 1;
       if ( pRTInfoVehicle->uCountReqRetransmissions[iRTIndex] > 0 )
+      {
          iHasRequestedRetransmissionsCount += pRTInfoVehicle->uCountReqRetransmissions[iRTIndex];
+         uLastRetransmissionTime = g_TimeNow - iDeltaSlicesFromNow * g_SMControllerRTInfo.uUpdateIntervalMs;
+      }
    }
 
    int iHasAckRetransmissionsCount = 0;
    iRTIndex = g_SMControllerRTInfo.iCurrentIndex;
+   iDeltaSlicesFromNow = 0;
    
    for( int i=0; i<SYSTEM_RT_INFO_INTERVALS; i++ )
    {
+      iDeltaSlicesFromNow++;
       iRTIndex--;
       if ( iRTIndex < 0 )
          iRTIndex = SYSTEM_RT_INFO_INTERVALS - 1;
       if ( pRTInfoVehicle->uCountAckRetransmissions[iRTIndex] > 0 )
+      {
          iHasAckRetransmissionsCount += pRTInfoVehicle->uCountAckRetransmissions[iRTIndex];
+         uLastRetransmissionAckTime = g_TimeNow - iDeltaSlicesFromNow * g_SMControllerRTInfo.uUpdateIntervalMs;
+      }
    }
 
    static u32 s_uTimeLastSentDevAlarmRetransmissionsToCentral = 0;
    if ( (0 == iHasRequestedRetransmissionsCount) || (0 == iHasAckRetransmissionsCount) )
    {
-      log_line("Video has skipped blocks but no requested or acknowledged retransmissions and retransmissions are enabled.");
+      log_line("Video has skipped blocks (%u ms ago) but no requested (%u ms ago) or acknowledged (%u ms ago) retransmissions and retransmissions are enabled.",
+         g_TimeNow - uLastSkipBlockTime,
+         g_TimeNow - uLastRetransmissionTime,
+         g_TimeNow - uLastRetransmissionAckTime);
       if ( g_TimeNow > s_uTimeLastSentDevAlarmRetransmissionsToCentral + 10000 )
       {
          s_uTimeLastSentDevAlarmRetransmissionsToCentral = g_TimeNow;

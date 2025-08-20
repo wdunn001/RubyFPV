@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -206,9 +206,7 @@ void MenuVehicleSimpleSetup::addRegularItems()
        u32 uPortTelemetryType = g_pCurrentModel->hardwareInterfacesInfo.serial_port_supported_and_usage[i] & 0xFF;
        
        if ( g_pCurrentModel->hardwareInterfacesInfo.serial_port_supported_and_usage[i] & MODEL_SERIAL_PORT_BIT_SUPPORTED )
-       if ( (uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK) ||
-            (uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY_LTM) ||
-            (uPortTelemetryType == SERIAL_PORT_USAGE_MSP_OSD) )
+       if ( uPortTelemetryType == SERIAL_PORT_USAGE_TELEMETRY )
        {
           m_iCurrentSerialPortIndexUsedForTelemetry = i;
           break;
@@ -563,8 +561,11 @@ void MenuVehicleSimpleSetup::valuesToUI()
    
    addItems();
 
-   if ( iTmp >= 0 )
-     m_SelectedIndex = iTmp;
+   if ( (iTmp >= 0) && (iTmp <m_ItemsCount) )
+   {
+      m_SelectedIndex = iTmp;
+      onFocusedItemChanged();
+   }
 }
 
 void MenuVehicleSimpleSetup::renderSearch()
@@ -671,7 +672,7 @@ bool MenuVehicleSimpleSetup::periodicLoop()
       m_iSearchTelemetryPort = 0;
       m_iSearchTelemetrySpeed = 0;
       m_uTimeStartCurrentTelemetrySearch = g_TimeNow;
-      send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, 12000);
+      send_pause_adaptive_to_router(10000);
       sendTelemetrySearchToVehicle();
       return true;
    }
@@ -688,7 +689,7 @@ bool MenuVehicleSimpleSetup::periodicLoop()
          m_bSearchingTelemetry = false;
          enableBackAction();
          m_SelectedIndex = m_iIndexMenuOk;
-         send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, 0);
+         send_pause_adaptive_to_router(0);
          addItems();
          return true;
       }
@@ -712,7 +713,7 @@ bool MenuVehicleSimpleSetup::periodicLoop()
             m_bSearchingTelemetry = false;
             enableBackAction();
             m_SelectedIndex = m_iIndexMenuOk;
-            send_control_message_to_router(PACEKT_TYPE_LOCAL_CONTROLLER_ADAPTIVE_VIDEO_PAUSE, 0);
+            send_pause_adaptive_to_router(0);
             addItems();
             return true;
          }
@@ -810,11 +811,11 @@ void MenuVehicleSimpleSetup::sendTelemetryTypeToVehicle()
 
          new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] &= 0xFFFFFF00;
          if ( 1 == m_pItemsSelect[0]->getSelectedIndex() )
-            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
+            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY;
          if ( 2 == m_pItemsSelect[0]->getSelectedIndex() )
-            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY_LTM;
+            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY;
          if ( 3 == m_pItemsSelect[0]->getSelectedIndex() )
-            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_MSP_OSD;
+            new_info.serial_port_supported_and_usage[m_iCurrentSerialPortIndexUsedForTelemetry] |= SERIAL_PORT_USAGE_TELEMETRY;
 
          // We don't need to send the serial ports configuration to vehicle as the vehicle
          // does the same assignment if no serial port is set when telemetry changes with
@@ -878,11 +879,11 @@ void MenuVehicleSimpleSetup::sendTelemetryPortToVehicle()
 
       new_info.serial_port_supported_and_usage[iSerialPort-1] &= 0xFFFFFF00;
       if ( 1 == m_pItemsSelect[0]->getSelectedIndex() )
-         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
+         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY;
       if ( 2 == m_pItemsSelect[0]->getSelectedIndex() )
-         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY_LTM;
+         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY;
       if ( 3 == m_pItemsSelect[0]->getSelectedIndex() )
-         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_MSP_OSD;
+         new_info.serial_port_supported_and_usage[iSerialPort-1] |= SERIAL_PORT_USAGE_TELEMETRY;
 
       log_line("Sending new serial port to be used for telemetry to vehicle.");
       if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_SERIAL_PORTS_INFO, 0, (u8*)&new_info, sizeof(type_vehicle_hardware_interfaces_info)) )
@@ -1046,6 +1047,11 @@ void MenuVehicleSimpleSetup::onSelectItem()
 
    if ( (-1 != m_iIndexVideo) && (m_iIndexVideo == m_SelectedIndex) )
    {
+      if ( get_sw_version_build(g_pCurrentModel) < 289 )
+      {
+         addMessage(L("Video Settings have changed. You need to update your vehicle first."));
+         return;
+      }
       MenuVehicleVideo* pMenuVid = new MenuVehicleVideo();
       add_menu_to_stack(pMenuVid);
       return;

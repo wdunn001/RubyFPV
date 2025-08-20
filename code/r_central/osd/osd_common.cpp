@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -94,6 +94,7 @@ u32 g_idIconSDCard = 0;
 u32 g_idImgMSPOSDBetaflight = 0;
 u32 g_idImgMSPOSDINAV = 0;
 u32 g_idImgMSPOSDArdupilot = 0;
+u32 g_idImgMSPOSDPitLab = 0;
 
 float sfScreenXMargin = 0.02;
 float sfScreenYMargin = 0.02;
@@ -300,6 +301,8 @@ void osd_reload_msp_resources()
       g_pRenderEngine->freeImage(g_idImgMSPOSDINAV);
    if ( g_idImgMSPOSDArdupilot > 0 )
       g_pRenderEngine->freeImage(g_idImgMSPOSDArdupilot);
+   if ( g_idImgMSPOSDPitLab > 0 )
+      g_pRenderEngine->freeImage(g_idImgMSPOSDPitLab);
 
    log_line("Loading MSP OSD images for screen surface height: %d px", g_pRenderEngine->getScreenHeight());
    if ( g_pRenderEngine->getScreenHeight() > 800 )
@@ -307,12 +310,14 @@ void osd_reload_msp_resources()
       g_idImgMSPOSDBetaflight = g_pRenderEngine->loadImage("res/msp_osd_betaflight.png");
       g_idImgMSPOSDINAV = g_pRenderEngine->loadImage("res/msp_osd_inav.png");
       g_idImgMSPOSDArdupilot = g_pRenderEngine->loadImage("res/msp_osd_ardu.png");
+      g_idImgMSPOSDPitLab = g_pRenderEngine->loadImage("res/msp_osd_pitlab.png");
    }
    else
    {
       g_idImgMSPOSDBetaflight = g_pRenderEngine->loadImage("res/msp_osd_betaflight720.png");
       g_idImgMSPOSDINAV = g_pRenderEngine->loadImage("res/msp_osd_inav720.png");
-      g_idImgMSPOSDArdupilot = g_pRenderEngine->loadImage("res/msp_osd_ardu720.png");    
+      g_idImgMSPOSDArdupilot = g_pRenderEngine->loadImage("res/msp_osd_ardu720.png");
+      g_idImgMSPOSDPitLab = g_pRenderEngine->loadImage("res/msp_osd_pitlab720.png");
    }
    Preferences* p = get_Preferences();
    if ( NULL != p )
@@ -320,6 +325,7 @@ void osd_reload_msp_resources()
       g_pRenderEngine->changeImageHue(g_idImgMSPOSDBetaflight, p->iColorOSD[0], p->iColorOSD[1], p->iColorOSD[2]);
       g_pRenderEngine->changeImageHue(g_idImgMSPOSDINAV, p->iColorOSD[0], p->iColorOSD[1], p->iColorOSD[2]);
       g_pRenderEngine->changeImageHue(g_idImgMSPOSDArdupilot, p->iColorOSD[0], p->iColorOSD[1], p->iColorOSD[2]);
+      g_pRenderEngine->changeImageHue(g_idImgMSPOSDPitLab, p->iColorOSD[0], p->iColorOSD[1], p->iColorOSD[2]);
    }
 }
 
@@ -576,16 +582,14 @@ float osd_show_video_profile_mode(float xPos, float yPos, u32 uFontId, bool bLef
       return 0.0;
 
    strcpy(szBuff, str_get_video_profile_name(pVDS->PHVS.uCurrentVideoLinkProfile));
-   int diffEC = pVDS->PHVS.uCurrentBlockECPackets - pActiveModel->video_link_profiles[pVDS->PHVS.uCurrentVideoLinkProfile].iBlockECs;
-
-   if ( diffEC > 0 )
+   
+   if ( pVDS->iAdaptiveVideoLevelNow > 0 )
    {
       char szTmp[16];
-      sprintf(szTmp, "-%d", diffEC);
+      sprintf(szTmp, "-%d", pVDS->iAdaptiveVideoLevelNow);
       strcat(szBuff, szTmp);
    }
-
-   if ( pVDS->PHVS.uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_ON_LOWER_BITRATE )
+   else if ( pVDS->PHVS.uVideoStatusFlags2 & VIDEO_STATUS_FLAGS2_IS_ON_LOWER_BITRATE )
       strcat(szBuff, "-");
      
    if ( pVDS->uCurrentVideoProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ONE_WAY_FIXED_VIDEO )
@@ -841,48 +845,4 @@ u32 osd_get_current_data_source_vehicle_id()
    if ( NULL != g_VehiclesRuntimeInfo[s_iCurrentOSDVehicleDataSourceRuntimeIndex].pModel )
       uVehicleId = g_VehiclesRuntimeInfo[s_iCurrentOSDVehicleDataSourceRuntimeIndex].pModel->uVehicleId;
    return uVehicleId;
-}
-
-char* osd_format_video_adaptive_level(Model* pModel, int iLevel)
-{
-   static char s_szOSDVideoAdaptiveLevelInfo[64];
-   s_szOSDVideoAdaptiveLevelInfo[0] = 0;
-   if ( NULL == pModel )
-   {
-      strcpy(s_szOSDVideoAdaptiveLevelInfo, "N/A");
-      return s_szOSDVideoAdaptiveLevelInfo;
-   }
-
-   int iLevelsHQ = pModel->get_video_profile_total_levels(pModel->video_params.user_selected_video_link_profile);
-   int iLevelsMQ = pModel->get_video_profile_total_levels(VIDEO_PROFILE_MQ);
-   int iLevelsLQ = pModel->get_video_profile_total_levels(VIDEO_PROFILE_LQ);
-   if ( iLevel < iLevelsHQ )
-   {
-      if ( iLevel == 0 )
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s", str_get_video_profile_name(pModel->video_params.user_selected_video_link_profile));
-      else
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s-%d", str_get_video_profile_name(pModel->video_params.user_selected_video_link_profile), iLevel);
-      return s_szOSDVideoAdaptiveLevelInfo;
-   }
-   iLevel -= iLevelsHQ;
-   if ( iLevel < iLevelsMQ )
-   {
-      if ( iLevel == 0 )
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s", str_get_video_profile_name(VIDEO_PROFILE_MQ));
-      else
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s-%d", str_get_video_profile_name(VIDEO_PROFILE_MQ), iLevel);
-      return s_szOSDVideoAdaptiveLevelInfo;
-   }
-   
-   iLevel -= iLevelsMQ;
-   if ( iLevel < iLevelsLQ )
-   {
-      if ( iLevel == 0 )
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s", str_get_video_profile_name(VIDEO_PROFILE_LQ));
-      else
-         sprintf(s_szOSDVideoAdaptiveLevelInfo, "%s-%d", str_get_video_profile_name(VIDEO_PROFILE_LQ), iLevel);
-      return s_szOSDVideoAdaptiveLevelInfo;
-   }
-   strcpy(s_szOSDVideoAdaptiveLevelInfo, "???");
-   return s_szOSDVideoAdaptiveLevelInfo;
 }

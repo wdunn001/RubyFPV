@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -101,7 +101,7 @@ u32 s_uDataLinkLastReceivedUploadedSegmentIndex = MAX_U32;
 u32 s_uRawTelemetryLastReceivedUploadedSegmentIndex = MAX_U32;
 
 t_packet_header sPH;
-t_packet_header_ruby_telemetry_extended_v4 sPHRTE;
+t_packet_header_ruby_telemetry_extended_v5 sPHRTE;
 
 
 u32 s_SendIntervalMiliSec_FCTelemetry = 0;
@@ -170,7 +170,9 @@ void _compute_telemetry_intervals()
    log_line("Vehicle telemetry user set update rate: %d Hz", g_pCurrentModel->telemetry_params.update_rate);
    s_SendIntervalMiliSec_FCTelemetry = 1000/g_pCurrentModel->telemetry_params.update_rate;
    s_SendIntervalMiliSec_RubyTelemetry = 1000/g_pCurrentModel->telemetry_params.update_rate;
-   
+
+   // To fix may2025
+   /*   
    if ( s_uCurrentVideoProfile == VIDEO_PROFILE_LQ )
    if ( g_pCurrentModel->telemetry_params.update_rate < 4 )
    {
@@ -178,6 +180,7 @@ void _compute_telemetry_intervals()
       s_SendIntervalMiliSec_RubyTelemetry /= 2;
       s_SendIntervalMiliSec_FCTelemetry /= 2;
    }
+   */
 
    if ( g_pCurrentModel->relay_params.uCurrentRelayMode & RELAY_MODE_IS_RELAY_NODE )
    {
@@ -241,7 +244,7 @@ void broadcast_vehicle_stats()
       g_pProcessStats->lastIPCOutgoingTime = g_TimeNow; 
 }
 
-void _add_hardware_telemetry_info( t_packet_header_ruby_telemetry_extended_v4* pPHRTE )
+void _add_hardware_telemetry_info( t_packet_header_ruby_telemetry_extended_v5* pPHRTE )
 {
    static unsigned long long s_val_cpu[4] = {0,0,0,0};
    static int counter_tx_telemetry_info = 0;
@@ -297,7 +300,7 @@ void _add_hardware_telemetry_info( t_packet_header_ruby_telemetry_extended_v4* p
    pPHRTE->cpu_mhz = (u16) hardware_get_cpu_speed();
 }
 
-void _populate_ruby_telemetry_data(t_packet_header_ruby_telemetry_extended_v4* pPHRTE)
+void _populate_ruby_telemetry_data(t_packet_header_ruby_telemetry_extended_v5* pPHRTE)
 {
    u32 vMaj = SYSTEM_SW_VERSION_MAJOR;
    u32 vMin = SYSTEM_SW_VERSION_MINOR/10;
@@ -309,7 +312,7 @@ void _populate_ruby_telemetry_data(t_packet_header_ruby_telemetry_extended_v4* p
    pPHRTE->rubyVersion = ((vMaj<<4) | vMin);
 
    _add_hardware_telemetry_info(pPHRTE);
-   g_pCurrentModel->populateVehicleTelemetryData_v4(pPHRTE);
+   g_pCurrentModel->populateVehicleTelemetryData_v5(pPHRTE);
 
    // link stats get populated by router before sending it out
    pPHRTE->downlink_tx_video_bitrate_bps = 0;
@@ -405,7 +408,6 @@ void _send_rc_data_to_FC()
    static u16 s_ch_last_values[18];
    static u8 s_is_failsafe = 0;
 
-   if ( g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_RXONLY )
    if ( ! (g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_REQUEST_DATA_STREAMS) )
    {
       log_line("Telemetry is set as read only with no requests for data streams. Do not send data to FC.");
@@ -538,6 +540,7 @@ void reload_model(u8 changeType)
    if ( changeType != MODEL_CHANGED_CONTROLLER_TELEMETRY )
    if ( changeType != MODEL_CHANGED_SWAPED_RADIO_INTERFACES )
    if ( changeType != MODEL_CHANGED_SERIAL_PORTS )
+   if ( changeType != MODEL_CHANGED_DEVELOPER_FLAGS )
    {
       log_line("Model change does not affect TX telemetry. Done updating local model.");
       return;
@@ -596,6 +599,8 @@ void reload_model(u8 changeType)
    {
       check_open_datalink_serial_port();
    }
+
+   log_line("Telemetry will send full telemetry back to controller? %s", telemetry_will_send_full_telemetry_to_controller()?"yes":"no");
 }
 
 void onRebootRequest()
@@ -671,6 +676,16 @@ bool try_read_messages_from_router()
       return true;
    }
 
+   if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_LOCAL_CONTROL )
+   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_OSD_PLUGINS_NEED_TELEMETRY )
+   {
+      log_line("Received notification about OSD plugins telemetry flags.");
+      g_bOSDPluginsNeedTelemetryStreams = pPH->vehicle_id_src?true:false;
+      log_line("Received local message that OSD plugins %s", g_bOSDPluginsNeedTelemetryStreams?"need full telemetry stream":"don't need full telemetry stream");
+      reload_model(MODEL_CHANGED_CONTROLLER_TELEMETRY);
+      return true;
+   }
+
    // To fix: vehicle needs to generate this message when video profile is switched/changed
    if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_LOCAL_CONTROL )
    if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_VEHICLE_VIDEO_PROFILE_SWITCHED )
@@ -680,8 +695,9 @@ bool try_read_messages_from_router()
       if ( s_uCurrentVideoProfile != uOldVideoProfile )
       {
          log_line("Received notification that video profile changed to %u.", s_uCurrentVideoProfile);
-         if ( (uOldVideoProfile == VIDEO_PROFILE_LQ) || (s_uCurrentVideoProfile == VIDEO_PROFILE_LQ) )
-            _compute_telemetry_intervals();
+         // To fix may2025
+         //if ( (uOldVideoProfile == VIDEO_PROFILE_LQ) || (s_uCurrentVideoProfile == VIDEO_PROFILE_LQ) )
+         //   _compute_telemetry_intervals();
       }
       return true;
    }
@@ -690,15 +706,18 @@ bool try_read_messages_from_router()
    if ( pPH->packet_type == PACKET_TYPE_RUBY_PAIRING_REQUEST )
    {
       if ( pPH->total_length >= sizeof(t_packet_header) + 2*sizeof(u32) )
-      {
-         u32 uDeveloperMode = 0;
-         memcpy(&uDeveloperMode, &(s_BufferMessageFromRouter[sizeof(t_packet_header) + sizeof(u32)]), sizeof(u32));
-         g_bDeveloperMode = (bool)uDeveloperMode;
-      }
+         memcpy(&g_pCurrentModel->uDeveloperFlags, &(s_BufferMessageFromRouter[sizeof(t_packet_header) + sizeof(u32)]), sizeof(u32));
+
+      if ( pPH->total_length >= sizeof(t_packet_header) + 3*sizeof(u32) )
+         memcpy(&g_pCurrentModel->uControllerBoardType, &(s_BufferMessageFromRouter[sizeof(t_packet_header) + 2*sizeof(u32)]), sizeof(u32));
+
       log_line("Received pairing request from router. CID: %u, VID: %u. Developer mode? %s. Updating local model.",
-         pPH->vehicle_id_src, pPH->vehicle_id_dest, g_bDeveloperMode?"yes":"no");
+         pPH->vehicle_id_src, pPH->vehicle_id_dest, (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
       if ( (NULL != g_pCurrentModel) && (0 != g_uControllerId) && (g_uControllerId != pPH->vehicle_id_src) )
+      {
          g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags &= ~(MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS);
+         g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab = 0;
+      }
       g_uControllerId = pPH->vehicle_id_src;
       if ( NULL != g_pCurrentModel )
       {
@@ -716,19 +735,10 @@ bool try_read_messages_from_router()
       {
          u8 changeType = (pPH->vehicle_id_src >> 8 ) & 0xFF;      
          log_line("Received request from router to reload model (change type: %d (%s)).", (int)changeType, str_get_model_change_type((int)changeType));
-         
-         if ( changeType == MODEL_CHANGED_DEBUG_MODE )
-         {
-            u8 uExtraParam = (pPH->vehicle_id_src >> 16 ) & 0xFF;
-            log_line("Received notification that developer mode changed from %s to %s",
-              g_bDeveloperMode?"yes":"no",
-              uExtraParam?"yes":"no");
-            g_bDeveloperMode = (bool)uExtraParam;
-         }
-         else
-            reload_model(changeType);
+         reload_model(changeType);
          return true;
       }
+
       if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_LINK_FREQUENCY_CHANGED )
       {
          u32* pI = (u32*)((&s_BufferMessageFromRouter[0])+sizeof(t_packet_header));
@@ -1023,13 +1033,13 @@ void check_send_telemetry_to_controller()
       radio_packet_init(&sPH, PACKET_COMPONENT_TELEMETRY, PACKET_TYPE_RUBY_TELEMETRY_EXTENDED, STREAM_ID_TELEMETRY);
       sPH.vehicle_id_src = g_pCurrentModel->uVehicleId;
       sPH.vehicle_id_dest = 0;
-      sPH.total_length = (u16)sizeof(t_packet_header)+(u16)sizeof(t_packet_header_ruby_telemetry_extended_v4) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions) + sPHRTE.extraSize;
+      sPH.total_length = (u16)sizeof(t_packet_header)+(u16)sizeof(t_packet_header_ruby_telemetry_extended_v5) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info) + (u16)sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions) + sPHRTE.extraSize;
       
       int dx = 0;
       memcpy(buffer, &sPH, sizeof(t_packet_header));
       dx += sizeof(t_packet_header);
-      memcpy(buffer+dx, &sPHRTE, sizeof(t_packet_header_ruby_telemetry_extended_v4));
-      dx += sizeof(t_packet_header_ruby_telemetry_extended_v4);
+      memcpy(buffer+dx, &sPHRTE, sizeof(t_packet_header_ruby_telemetry_extended_v5));
+      dx += sizeof(t_packet_header_ruby_telemetry_extended_v5);
       memcpy(buffer+dx , &PHTExtraInfo, sizeof(t_packet_header_ruby_telemetry_extended_extra_info));
       dx += sizeof(t_packet_header_ruby_telemetry_extended_extra_info);
       memcpy(buffer+dx , &ph_extra_info, sizeof(t_packet_header_ruby_telemetry_extended_extra_info_retransmissions));
@@ -1049,7 +1059,7 @@ void check_send_telemetry_to_controller()
       // Send debug info
       static u32 s_uTimeDebugSentLastDebugInfoPacket = 0;
 
-      if ( g_bDeveloperMode )
+      if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE )
       if ( g_TimeNow > s_uTimeDebugSentLastDebugInfoPacket + 1000 )
       {
          s_uTimeDebugSentLastDebugInfoPacket = g_TimeNow;
@@ -1464,9 +1474,8 @@ int main(int argc, char *argv[])
    hardware_detectBoardAndSystemType();
 
 
+  
    if ( strcmp(argv[argc-1], "-debug") == 0 )
-      g_bDebug = true;
-   if ( g_bDebug )
       log_enable_stdout();
 
    g_uControllerId = vehicle_utils_getControllerId();
@@ -1608,6 +1617,7 @@ void _main_loop()
    while ( !g_bQuit )
    {
       hardware_sleep_ms(iSleepTime);
+      g_uLoopCounter++;
       g_TimeNow = get_current_timestamp_ms();
       u32 tTime0 = g_TimeNow;
 

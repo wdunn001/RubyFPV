@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -148,7 +148,7 @@ void controller_launch_tx_rc()
       sprintf(szPrefix, "ionice -c 1 -n %d nice -n %d", DEFAULT_IO_PRIORITY_RC, g_pCurrentModel->processesPriorities.iNiceRC);
    #else
    if ( g_bSearching )
-      sprintf(szParams, "-search &");
+      sprintf(szParams, "-search");
    else if ( NULL != g_pCurrentModel )
       sprintf(szPrefix, "nice -n %d", g_pCurrentModel->processesPriorities.iNiceRC);
    #endif
@@ -317,10 +317,8 @@ static void * _thread_adjust_affinities(void *argument)
    log_line("[BGThread] Background thread id: %d, PID: %d", iSelfId, iSelfPID);
    if ( s_iCPUCoresCount > 2 )
    {
-      hw_set_proc_affinity("ruby_rt_station", iSelfId, 1,1);
-      hw_set_proc_affinity("ruby_central", iSelfId, 2,2);
-      hw_set_proc_affinity("ruby_rx_telemetry", iSelfId, 3, 3);
-      hw_set_proc_affinity("ruby_tx_rc", iSelfId, 3, 3);
+      hw_set_proc_affinity("ruby_central", iSelfId, 1,1);
+      hw_set_proc_affinity("ruby_rx_telemetry", iSelfId, 1, 1);
       #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)
       char szFile[MAX_FILE_PATH_SIZE];
       ControllerSettings* pCS = get_ControllerSettings();
@@ -328,13 +326,15 @@ static void * _thread_adjust_affinities(void *argument)
          strcpy(szFile, VIDEO_PLAYER_SM);
       else
          strcpy(szFile, VIDEO_PLAYER_PIPE);
-      hw_set_proc_affinity(szFile, iSelfId, 3, s_iCPUCoresCount);
+      hw_set_proc_affinity(szFile, iSelfId, 2, 2);
+      hw_set_proc_affinity("ruby_tx_rc", iSelfId, 3, s_iCPUCoresCount);
+      hw_set_proc_affinity("ruby_rt_station", iSelfId, 3,s_iCPUCoresCount);
       #endif
    }
-   else
+   else if ( s_iCPUCoresCount > 1 )
    {
-      hw_set_proc_affinity("ruby_rt_station", iSelfId, 1,1);
-      hw_set_proc_affinity("ruby_central", iSelfId, 2,2); 
+      hw_set_proc_affinity("ruby_central", iSelfId, 1,1);
+      hw_set_proc_affinity("ruby_rt_station", iSelfId, 2,2);
    }
    log_line("[BGThread] Background thread to adjust processes affinities completed.");
    return NULL;

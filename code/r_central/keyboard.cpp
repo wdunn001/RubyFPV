@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -464,7 +464,7 @@ int keyboard_init()
       log_error_and_alarm("[Keyboard] Failed to create thread.");
       return 0;
    }
-
+   pthread_detach(s_pThreadKeyboard);
    return 1;
 }
 

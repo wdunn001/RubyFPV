@@ -28,57 +28,33 @@ void shared_vars_osd_update()
          continue;
       if ( ! pRadioHWInfo->isHighCapacityInterface )
          continue;
-
-      int idbmMaxForRadioCard = -1000;
-      int iSNRMaxForRadioCard = -1000;
-      u32 uTimeCapture = 0;
-
-      /*
-      for( int k=0; k<g_SM_RadioStats.radio_interfaces[i].signalInfo.iAntennaCount; k++ )
+      
+      if ( (g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxDBMVideoForInterface > -500) && (g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxDBMVideoForInterface < 500) )
       {
-         if ( g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMax[k] < 1000 )
-         if ( g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMax[k] > idbmMaxForRadioCard )
-            idbmMaxForRadioCard = g_SM_RadioStats.radio_interfaces[i].signalInfo.dbmValuesAll.iDbmMax[k];
+         g_uOSDDbmLastCaptureTime[i] = g_SMControllerRTInfo.radioInterfacesSignals[i].uLastUpdateTimeVideo;
+         g_fOSDDbm[i] = g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxDBMVideoForInterface;
       }
-      */
-
-      int iIndex = g_SMControllerRTInfo.iCurrentIndex;
-      iIndex--;
-      if ( iIndex < 0 )
-         iIndex = SYSTEM_RT_INFO_INTERVALS-1;
-      for( int iAnt=0; iAnt<g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iCountAntennas; iAnt++ )
+      if ( 0 == g_SMControllerRTInfo.radioInterfacesSignals[i].uLastUpdateTimeVideo )
       {
-         if ( g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt] < 500 )
-         if ( g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt] > -120 )
-         if ( g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt] > idbmMaxForRadioCard )
+         if ( (g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxDBMDataForInterface > -500) && (g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxDBMDataForInterface < 500) )
          {
-            idbmMaxForRadioCard = g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt];
-            uTimeCapture = g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].uLastTimeCapture[iAnt];
-            int iSNR = g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmMax[iAnt] - g_SMControllerRTInfo.radioInterfacesDbm[iIndex][i].iDbmNoiseMin[iAnt];
-            if ( iSNR < 500 )
-            if ( iSNR > -120 )
-               iSNRMaxForRadioCard = iSNR;
+            g_uOSDDbmLastCaptureTime[i] = g_SMControllerRTInfo.radioInterfacesSignals[i].uLastUpdateTimeData;
+            g_fOSDDbm[i] = g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxDBMDataForInterface;
          }
       }
-     
-      if ( idbmMaxForRadioCard > -120 )
+
+      if ( (g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxSNRVideoForInterface > -500) && (g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxSNRVideoForInterface < 500) )
       {
-         g_uOSDDbmLastCaptureTime[i] = uTimeCapture;
-         if ( fabs(g_fOSDDbm[i] - (float)idbmMaxForRadioCard) > 10.0 )
-            g_fOSDDbm[i] = 0.6 * g_fOSDDbm[i] + 0.4 * (float)idbmMaxForRadioCard;
-         else
-            g_fOSDDbm[i] = 0.5 * g_fOSDDbm[i] + 0.5 * (float)idbmMaxForRadioCard;
+         g_uOSDDbmLastCaptureTime[i] = g_SMControllerRTInfo.radioInterfacesSignals[i].uLastUpdateTimeVideo;
+         g_fOSDSNR[i] = g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxSNRVideoForInterface;
       }
-      if ( iSNRMaxForRadioCard > -120 )
+      if ( 0 == g_SMControllerRTInfo.radioInterfacesSignals[i].uLastUpdateTimeVideo )
       {
-         if ( iSNRMaxForRadioCard < g_fOSDSNR[i] - 10 )
-            g_fOSDSNR[i] = (float)iSNRMaxForRadioCard;
-         else if ( iSNRMaxForRadioCard < g_fOSDSNR[i] - 5 )
-            g_fOSDSNR[i] = 0.4 * g_fOSDSNR[i] + 0.6 * (float)iSNRMaxForRadioCard;
-         if ( fabs(g_fOSDSNR[i] - (float)iSNRMaxForRadioCard) > 10.0 )
-            g_fOSDSNR[i] = 0.6 * g_fOSDSNR[i] + 0.4 * (float)iSNRMaxForRadioCard;
-         else
-            g_fOSDSNR[i] = 0.5 * g_fOSDSNR[i] + 0.5 * (float)iSNRMaxForRadioCard;
+         if ( (g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxSNRDataForInterface > -500) && (g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxSNRDataForInterface < 500) )
+         {
+            g_uOSDDbmLastCaptureTime[i] = g_SMControllerRTInfo.radioInterfacesSignals[i].uLastUpdateTimeData;
+            g_fOSDSNR[i] = g_SMControllerRTInfo.radioInterfacesSignals[i].iMaxSNRDataForInterface;
+         }
       }
    }
 }

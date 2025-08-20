@@ -14,6 +14,17 @@
 
 typedef struct
 {
+   int iCountHitRSSI;
+   int iCountHitSNR;
+   int iCountHitRetr;
+   int iCountHitRxLost;
+   int iCountHitECUsed;
+   int iCountHitECMax;
+   int iCountHitVideoLost;
+} ALIGN_STRUCT_SPEC_INFO type_adaptive_info;
+
+typedef struct
+{
    u32 uVehicleId;
    u8 uVideoStreamIndex;
    t_packet_header_video_segment PHVS;
@@ -27,6 +38,12 @@ typedef struct
    u8 uDetectedH264Profile;
    u8 uDetectedH264ProfileConstrains;
    u8 uDetectedH264Level;
+   int iDetectedFPS;
+   int iDetectedSlices;
+   int iDetectedKeyframeMs;
+   int iAdaptiveVideoLevelNow;
+   type_adaptive_info adaptiveHitsLow;
+   type_adaptive_info adaptiveHitsHigh;
 } ALIGN_STRUCT_SPEC_INFO shared_mem_video_stream_stats;
 
 typedef struct
@@ -43,10 +60,11 @@ typedef struct
    u32 uLastTimeReceivedAckFromVehicle[MAX_CONCURENT_VEHICLES];
    int iVehicleClockDeltaMilisec[MAX_CONCURENT_VEHICLES];
    bool bIsDoingRetransmissions[MAX_CONCURENT_VEHICLES];
-   bool bIsDoingAdaptive[MAX_CONCURENT_VEHICLES];
+   bool bIsAdaptiveVideoActive[MAX_CONCURENT_VEHICLES];
    u32 uAverageCommandRoundtripMiliseconds[MAX_CONCURENT_VEHICLES];
    u32 uMaxCommandRoundtripMiliseconds[MAX_CONCURENT_VEHICLES];
    u32 uMinCommandRoundtripMiliseconds[MAX_CONCURENT_VEHICLES];
+   u16 uCurrentAdaptiveECScheme[MAX_CONCURENT_VEHICLES];
 } ALIGN_STRUCT_SPEC_INFO shared_mem_router_vehicles_runtime_info;
 
 
@@ -63,6 +81,8 @@ shared_mem_video_stream_stats_rx_processors* shared_mem_video_stream_stats_rx_pr
 shared_mem_video_stream_stats_rx_processors* shared_mem_video_stream_stats_rx_processors_open_for_write();
 void shared_mem_video_stream_stats_rx_processors_close(shared_mem_video_stream_stats_rx_processors* pAddress);
 shared_mem_video_stream_stats* get_shared_mem_video_stream_stats_for_vehicle(shared_mem_video_stream_stats_rx_processors* pSM, u32 uVehicleId);
+void reset_video_stream_stats_for_vehicle(shared_mem_video_stream_stats_rx_processors* pSM, u32 uVehicleId);
+void reset_video_stream_stats_detected_info(shared_mem_video_stream_stats* pVSStats);
 
 shared_mem_router_vehicles_runtime_info* shared_mem_router_vehicles_runtime_info_open_for_read();
 shared_mem_router_vehicles_runtime_info* shared_mem_router_vehicles_runtime_info_open_for_write();

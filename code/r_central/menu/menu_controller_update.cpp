@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -228,7 +228,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
    g_bUpdateInProgress = true;
    popups_remove(p);
 
-   ruby_pause_watchdog();
+   ruby_pause_watchdog("starting controller update procedure");
    pairing_stop();
    
    if ( (NULL == szUpdateFile) || (0 == szUpdateFile[0]) )
@@ -456,7 +456,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
    render_all(g_TimeNow);
    ruby_signal_alive();
    g_bUpdateInProgress = false;
-   ruby_resume_watchdog();
+   ruby_resume_watchdog("finished controller update procedure");
 
    popups_remove(p);
    ruby_processing_loop(true);

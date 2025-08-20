@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -80,27 +80,6 @@ void MenuControllerDevStatsConfig::addItems()
    m_pItemsSelect[1]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_TX_PACKETS)?1:0);
    m_IndexShowRXTXPackets = addMenuItem(m_pItemsSelect[1]);
 
-   m_pItemsSelect[13] = new MenuItemSelect("Show RX air gaps", "");
-   m_pItemsSelect[13]->addSelection("No");
-   m_pItemsSelect[13]->addSelection("Yes");
-   m_pItemsSelect[13]->setUseMultiViewLayout();
-   m_pItemsSelect[13]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_AIR_GAPS)?1:0);
-   m_IndexShowRXAirGaps = addMenuItem(m_pItemsSelect[13]);
-
-   m_pItemsSelect[2] = new MenuItemSelect("Show RX H264/H265 frames", "");
-   m_pItemsSelect[2]->addSelection("No");
-   m_pItemsSelect[2]->addSelection("Yes");
-   m_pItemsSelect[2]->setUseMultiViewLayout();
-   m_pItemsSelect[2]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_H264265_FRAMES)?1:0);
-   m_IndexShowRxH264Frames = addMenuItem(m_pItemsSelect[2]);
-
-   m_pItemsSelect[3] = new MenuItemSelect("Show RX DBM", "");
-   m_pItemsSelect[3]->addSelection("No");
-   m_pItemsSelect[3]->addSelection("Yes");
-   m_pItemsSelect[3]->setUseMultiViewLayout();
-   m_pItemsSelect[3]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_DBM)?1:0);
-   m_IndexShowRxDBM = addMenuItem(m_pItemsSelect[3]);
-
    m_pItemsSelect[4] = new MenuItemSelect("Show RX missing packets", "");
    m_pItemsSelect[4]->addSelection("No");
    m_pItemsSelect[4]->addSelection("Yes");
@@ -114,6 +93,27 @@ void MenuControllerDevStatsConfig::addItems()
    m_pItemsSelect[5]->setUseMultiViewLayout();
    m_pItemsSelect[5]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_MISSING_PACKETS_MAX_GAP)?1:0);
    m_IndexShowRxMissingPacketsMaxGap = addMenuItem(m_pItemsSelect[5]);
+
+   m_pItemsSelect[13] = new MenuItemSelect("Show RX air gaps", "Show distance (in miliseconds) between received radio packets.");
+   m_pItemsSelect[13]->addSelection("No");
+   m_pItemsSelect[13]->addSelection("Yes");
+   m_pItemsSelect[13]->setUseMultiViewLayout();
+   m_pItemsSelect[13]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_AIR_GAPS)?1:0);
+   m_IndexShowRXAirGaps = addMenuItem(m_pItemsSelect[13]);
+
+   m_pItemsSelect[3] = new MenuItemSelect("Show RX DBM", "");
+   m_pItemsSelect[3]->addSelection("No");
+   m_pItemsSelect[3]->addSelection("Yes");
+   m_pItemsSelect[3]->setUseMultiViewLayout();
+   m_pItemsSelect[3]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_DBM)?1:0);
+   m_IndexShowRxDBM = addMenuItem(m_pItemsSelect[3]);
+
+   m_pItemsSelect[15] = new MenuItemSelect("Show RX SNR", "");
+   m_pItemsSelect[15]->addSelection("No");
+   m_pItemsSelect[15]->addSelection("Yes");
+   m_pItemsSelect[15]->setUseMultiViewLayout();
+   m_pItemsSelect[15]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_SNR)?1:0);
+   m_IndexShowRxSNR = addMenuItem(m_pItemsSelect[15]);
 
    m_pItemsSelect[6] = new MenuItemSelect("Show RX consumed packets", "");
    m_pItemsSelect[6]->addSelection("No");
@@ -150,6 +150,13 @@ void MenuControllerDevStatsConfig::addItems()
    m_pItemsSelect[8]->setUseMultiViewLayout();
    m_pItemsSelect[8]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_VIDEO_MAX_EC_USED)?1:0);
    m_IndexShowRxMaxECUsed = addMenuItem(m_pItemsSelect[8]);
+
+   m_pItemsSelect[2] = new MenuItemSelect("Show Output Video Frames", "");
+   m_pItemsSelect[2]->addSelection("No");
+   m_pItemsSelect[2]->addSelection("Yes");
+   m_pItemsSelect[2]->setUseMultiViewLayout();
+   m_pItemsSelect[2]->setSelectedIndex( (pP->uDebugStatsFlags & CTRL_RT_DEBUG_INFO_FLAG_SHOW_OUTPUT_VIDEO_FRAMES)?1:0);
+   m_IndexShowOutputVideoFrames = addMenuItem(m_pItemsSelect[2]);
 
    m_pItemsSelect[9] = new MenuItemSelect("Show unrecoverable/skipped video blocks", "");
    m_pItemsSelect[9]->addSelection("No");
@@ -235,12 +242,12 @@ void MenuControllerDevStatsConfig::onSelectItem()
          pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_AIR_GAPS;
    }
 
-   if ( m_IndexShowRxH264Frames == m_SelectedIndex )
+   if ( m_IndexShowOutputVideoFrames == m_SelectedIndex )
    {
       if ( m_pItemsSelect[2]->getSelectedIndex() != 0 )
-         pP->uDebugStatsFlags |= CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_H264265_FRAMES;
+         pP->uDebugStatsFlags |= CTRL_RT_DEBUG_INFO_FLAG_SHOW_OUTPUT_VIDEO_FRAMES;
       else
-         pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_H264265_FRAMES;
+         pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_OUTPUT_VIDEO_FRAMES;
    }
 
    if ( m_IndexShowRxDBM == m_SelectedIndex )
@@ -250,6 +257,15 @@ void MenuControllerDevStatsConfig::onSelectItem()
       else
          pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_DBM;
    }
+
+   if ( m_IndexShowRxSNR == m_SelectedIndex )
+   {
+      if ( m_pItemsSelect[15]->getSelectedIndex() != 0 )
+         pP->uDebugStatsFlags |= CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_SNR;
+      else
+         pP->uDebugStatsFlags &= ~CTRL_RT_DEBUG_INFO_FLAG_SHOW_RX_SNR;
+   }
+
 
    if ( m_IndexShowRxMissingPackets == m_SelectedIndex )
    {

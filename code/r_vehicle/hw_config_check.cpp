@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -104,8 +104,8 @@ bool _check_update_hardware_one_interface_after_and_before(Model* pModel)
             pModel->radioLinksParams.link_frequency_khz[0] = DEFAULT_FREQUENCY_915;
          pModel->radioLinksParams.link_capabilities_flags[0] = RADIO_HW_CAPABILITY_FLAG_CAN_RX | RADIO_HW_CAPABILITY_FLAG_CAN_TX | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA;
          pModel->radioLinksParams.link_capabilities_flags[0] &= ~(RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO);
-         pModel->radioLinksParams.link_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
-         pModel->radioLinksParams.link_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+         pModel->radioLinksParams.downlink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+         pModel->radioLinksParams.downlink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
          pModel->radioLinksParams.uplink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
          pModel->radioLinksParams.uplink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SIK_AIR;
       }
@@ -117,8 +117,8 @@ bool _check_update_hardware_one_interface_after_and_before(Model* pModel)
          pModel->radioLinksParams.link_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK;
          if ( pRadioHWInfo->iCardModel == CARD_MODEL_SERIAL_RADIO_ELRS )
             pModel->radioLinksParams.link_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK_ELRS;
-         pModel->radioLinksParams.link_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
-         pModel->radioLinksParams.link_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+         pModel->radioLinksParams.downlink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+         pModel->radioLinksParams.downlink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
          pModel->radioLinksParams.uplink_datarate_video_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
          pModel->radioLinksParams.uplink_datarate_data_bps[0] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
 
@@ -276,7 +276,7 @@ bool _check_update_hardware_one_interface_after_multiple_before(Model* pModel)
    pModel->radioInterfacesParams.interface_capabilities_flags[0] |= RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA;
    pModel->radioInterfacesParams.interfaces_count = 1;
 
-   pModel->updateRadioInterfacesRadioFlagsFromRadioLinksFlags();
+   pModel->validateRadioSettings();
    log_line("[HW Radio Check] Radio hardware check: Updated radio links based on current hardware radio interfaces. Completed.");
    return true;
 }
@@ -329,8 +329,8 @@ void _add_new_radio_link_for_hw_radio_interface(int iInterfaceIndex, Model* pMod
          pModel->radioLinksParams.link_frequency_khz[iRadioLink] = DEFAULT_FREQUENCY_915;
 
       pModel->radioLinksParams.link_capabilities_flags[iRadioLink] &= ~(RADIO_HW_CAPABILITY_FLAG_HIGH_CAPACITY | RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_VIDEO);
-      pModel->radioLinksParams.link_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
-      pModel->radioLinksParams.link_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+      pModel->radioLinksParams.downlink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
+      pModel->radioLinksParams.downlink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
       pModel->radioLinksParams.uplink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
       pModel->radioLinksParams.uplink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SIK_AIR;
    }
@@ -342,8 +342,8 @@ void _add_new_radio_link_for_hw_radio_interface(int iInterfaceIndex, Model* pMod
       if ( pRadioHWInfo->iCardModel == CARD_MODEL_SERIAL_RADIO_ELRS )
          pModel->radioLinksParams.link_capabilities_flags[iRadioLink] |= RADIO_HW_CAPABILITY_FLAG_SERIAL_LINK_ELRS;
 
-      pModel->radioLinksParams.link_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
-      pModel->radioLinksParams.link_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+      pModel->radioLinksParams.downlink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
+      pModel->radioLinksParams.downlink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
       pModel->radioLinksParams.uplink_datarate_video_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
       pModel->radioLinksParams.uplink_datarate_data_bps[iRadioLink] = DEFAULT_RADIO_DATARATE_SERIAL_AIR;
 

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -84,15 +84,13 @@ MenuVehiclePeripherals::MenuVehiclePeripherals(void)
          else
          {
             m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_NONE));
-            m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_TELEMETRY_MAVLINK));
-            m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_TELEMETRY_LTM));
-            m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_MSP_OSD));
+            m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_TELEMETRY));
             m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_DATA_LINK));
             m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_433));
             m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_868));
             m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_915));
             m_pItemsSelect[i*2]->addSelection(str_get_serial_port_usage(SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_24));
-            m_IndexStartPortUsagePluginsStartIndex[i] = 9;
+            m_IndexStartPortUsagePluginsStartIndex[i] = 7;
 
             for( int n=0; n<g_iVehicleCorePluginsCount; n++ )
             {
@@ -160,22 +158,18 @@ void MenuVehiclePeripherals::valuesToUI()
       {
          if ( uUsage == SERIAL_PORT_USAGE_NONE )
             m_pItemsSelect[i*2]->setSelectedIndex(0);
-         if ( uUsage == SERIAL_PORT_USAGE_TELEMETRY_MAVLINK )
+         if ( uUsage == SERIAL_PORT_USAGE_TELEMETRY )
             m_pItemsSelect[i*2]->setSelectedIndex(1);
-         if ( uUsage == SERIAL_PORT_USAGE_TELEMETRY_LTM )
-            m_pItemsSelect[i*2]->setSelectedIndex(2);
-         if ( uUsage == SERIAL_PORT_USAGE_MSP_OSD )
-            m_pItemsSelect[i*2]->setSelectedIndex(3);
          if ( uUsage == SERIAL_PORT_USAGE_DATA_LINK )
-            m_pItemsSelect[i*2]->setSelectedIndex(4);
+            m_pItemsSelect[i*2]->setSelectedIndex(2);
          if ( uUsage == SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_433 )
-            m_pItemsSelect[i*2]->setSelectedIndex(5);
+            m_pItemsSelect[i*2]->setSelectedIndex(3);
          if ( uUsage == SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_868 )
-            m_pItemsSelect[i*2]->setSelectedIndex(6);
+            m_pItemsSelect[i*2]->setSelectedIndex(4);
          if ( uUsage == SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_915 )
-            m_pItemsSelect[i*2]->setSelectedIndex(7);
+            m_pItemsSelect[i*2]->setSelectedIndex(5);
          if ( uUsage == SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_24 )
-            m_pItemsSelect[i*2]->setSelectedIndex(8);
+            m_pItemsSelect[i*2]->setSelectedIndex(6);
       }
       else if ( ((int)uUsage - 20) > g_iVehicleCorePluginsCount )
          m_pItemsSelect[i*2]->setSelectedIndex(0);
@@ -253,20 +247,16 @@ void MenuVehiclePeripherals::onSelectItem()
             if ( 0 == m_pItemsSelect[i*2]->getSelectedIndex() )
                newUsage = SERIAL_PORT_USAGE_NONE;
             if ( 1 == m_pItemsSelect[i*2]->getSelectedIndex() )
-               newUsage = SERIAL_PORT_USAGE_TELEMETRY_MAVLINK;
+               newUsage = SERIAL_PORT_USAGE_TELEMETRY;
             if ( 2 == m_pItemsSelect[i*2]->getSelectedIndex() )
-               newUsage = SERIAL_PORT_USAGE_TELEMETRY_LTM;
-            if ( 3 == m_pItemsSelect[i*2]->getSelectedIndex() )
-               newUsage = SERIAL_PORT_USAGE_MSP_OSD;
-            if ( 4 == m_pItemsSelect[i*2]->getSelectedIndex() )
                newUsage = SERIAL_PORT_USAGE_DATA_LINK;
-            if ( 5 == m_pItemsSelect[i*2]->getSelectedIndex() )
+            if ( 3 == m_pItemsSelect[i*2]->getSelectedIndex() )
                newUsage = SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_433;
-            if ( 6 == m_pItemsSelect[i*2]->getSelectedIndex() )
+            if ( 4 == m_pItemsSelect[i*2]->getSelectedIndex() )
                newUsage = SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_868;
-            if ( 7 == m_pItemsSelect[i*2]->getSelectedIndex() )
+            if ( 5 == m_pItemsSelect[i*2]->getSelectedIndex() )
                newUsage = SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_915;
-            if ( 8 == m_pItemsSelect[i*2]->getSelectedIndex() )
+            if ( 6 == m_pItemsSelect[i*2]->getSelectedIndex() )
                newUsage = SERIAL_PORT_USAGE_SERIAL_RADIO_ELRS_24;
             if ( newUsage == (g_pCurrentModel->hardwareInterfacesInfo.serial_port_supported_and_usage[i] & 0xFF) )
                return;

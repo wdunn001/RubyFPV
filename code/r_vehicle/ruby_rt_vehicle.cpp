@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -75,7 +75,6 @@
 
 #include "processor_tx_audio.h"
 #include "processor_tx_video.h"
-#include "process_received_ruby_messages.h"
 #include "process_radio_in_packets.h"
 #include "process_radio_out_packets.h"
 #include "launchers_vehicle.h"
@@ -96,8 +95,8 @@
 #include "process_local_packets.h"
 #include "processor_relay.h"
 #include "test_link_params.h"
-#include "test_majestic.h"
 #include "adaptive_video.h"
+#include "video_sources.h"
 #include "video_source_csi.h"
 #include "video_source_majestic.h"
 #include "video_tx_buffers.h"
@@ -135,7 +134,52 @@ extern u32 s_uLastAlarmsCount;
 
 u32 s_uTimeLastTryReadIPCMessages = 0;
 
-bool links_set_cards_frequencies_and_params(int iLinkId)
+void checkDeveloperFlagsChanges(u32 uOldDeveloperFlags, u32 uNewDeveloperFlags)
+{
+   if ( uOldDeveloperFlags == uNewDeveloperFlags )
+   {
+      log_line("Checking developer flags: no changes.");
+      return;
+   }
+
+   log_line("Checking developer flags: changed from %u to %u, current flags: %s",
+      uOldDeveloperFlags, uNewDeveloperFlags,
+      str_get_developer_flags(uNewDeveloperFlags));
+
+   if ( (uNewDeveloperFlags & DEVELOPER_FLAGS_USE_PCAP_RADIO_TX ) != (uOldDeveloperFlags & DEVELOPER_FLAGS_USE_PCAP_RADIO_TX) )
+   {
+      log_line("Radio Tx mode (PPCAP/Socket) changed. Reinit radio interfaces...");
+      radio_links_close_rxtx_radio_interfaces();
+      if ( NULL != g_pProcessStats )
+      {
+         g_TimeNow = get_current_timestamp_ms();
+         g_pProcessStats->lastActiveTime = g_TimeNow;
+         g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
+      }
+      if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_USE_PCAP_RADIO_TX )
+         radio_set_use_pcap_for_tx(1);
+      else
+         radio_set_use_pcap_for_tx(0);
+      
+      if ( g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_BYPASS_SOCKETS_BUFFERS )
+         radio_set_bypass_socket_buffers(1);
+      else
+         radio_set_bypass_socket_buffers(0);
+      radio_links_open_rxtx_radio_interfaces();
+   }
+
+   bool bOldDevMode = (uNewDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?true:false;
+   bool bNewDevMode = (uOldDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?true:false;
+   if ( bOldDevMode != bNewDevMode )
+   {
+      radio_tx_set_dev_mode((int)bNewDevMode);
+      radio_rx_set_dev_mode((int)bNewDevMode);
+      radio_set_debug_flag((int)bNewDevMode);
+      video_sources_on_changed_developer_flags(uOldDeveloperFlags, uNewDeveloperFlags);
+   }
+}
+
+bool _links_set_cards_frequencies_and_params(int iLinkId)
 {
    if ( NULL == g_pCurrentModel )
    {
@@ -188,7 +232,7 @@ bool links_set_cards_frequencies_and_params(int iLinkId)
          else
          {
             u32 uFreqKhz = uRadioLinkFrequency;
-            u32 uDataRate = g_pCurrentModel->radioLinksParams.link_datarate_data_bps[nRadioLinkId];
+            u32 uDataRate = g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[nRadioLinkId];
             u32 uTxPower = g_pCurrentModel->radioInterfacesParams.interface_raw_power[i];
             u32 uECC = (g_pCurrentModel->radioLinksParams.link_radio_flags[nRadioLinkId] & RADIO_FLAGS_SIK_ECC)? 1:0;
             u32 uLBT = (g_pCurrentModel->radioLinksParams.link_radio_flags[nRadioLinkId] & RADIO_FLAGS_SIK_LBT)? 1:0;
@@ -336,33 +380,6 @@ void send_radio_reinitialized_message()
    send_packet_to_radio_interfaces(packet, PH.total_length, -1);
 }
 
-
-void video_source_capture_mark_needs_update_or_restart(u32 uChangeType)
-{
-   log_line("Router was flagged to restart video capture (reason: %d (%s))", uChangeType & 0xFF, str_get_model_change_type(uChangeType & 0xFF));
-   if ( (NULL == g_pCurrentModel) || (!g_pCurrentModel->hasCamera()) )
-   {
-      log_line("Vehicle has no camera. Do not flag need for restarting video capture.");
-      return;
-   }
-
-   u32 uReason = uChangeType & 0xFF;
-   if ( (uReason == MODEL_CHANGED_VIDEO_RESOLUTION) ||
-        (uReason == MODEL_CHANGED_VIDEO_CODEC) ||
-        (uReason == MODEL_CHANGED_USER_SELECTED_VIDEO_PROFILE) )
-      g_pVideoTxBuffers->discardBuffer();
-
-   if ( NULL != g_pVideoTxBuffers )
-      g_pVideoTxBuffers->updateVideoHeader(g_pCurrentModel);
-
-   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-      video_source_majestic_request_update_program(uChangeType);
-   else if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      video_source_csi_request_restart_program();
-   log_line("Requested video capture restart from video capture module.");
-   log_line("Router: done handling of flagged to restart video capture (reason: %d (%s))", uChangeType & 0xFF, str_get_model_change_type(uChangeType & 0xFF));
-}
-
 void flag_update_sik_interface(int iInterfaceIndex)
 {
    if ( g_SiKRadiosState.iMustReconfigureSiKInterfaceIndex >= 0 )
@@ -436,7 +453,7 @@ void reinit_radio_interfaces()
       if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] >= 0 )
       if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] < g_pCurrentModel->radioLinksParams.links_count )
       {
-         int dataRateMb = g_pCurrentModel->radioLinksParams.link_datarate_video_bps[g_pCurrentModel->radioInterfacesParams.interface_link_id[i]];
+         int dataRateMb = g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[g_pCurrentModel->radioInterfacesParams.interface_link_id[i]];
          if ( dataRateMb > 0 )
             dataRateMb = dataRateMb / 1000 / 1000;
          if ( dataRateMb > 0 )
@@ -449,16 +466,9 @@ void reinit_radio_interfaces()
 
    hardware_radio_remove_stored_config();
    
-   if ( g_pCurrentModel->hasCamera() )
-   if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      video_source_csi_stop_program();
-
+   video_sources_stop_capture();
    // Clean up video pipe data
-
-   #ifdef HW_PLATFORM_RASPBERRY
-   if ( g_pCurrentModel->hasCamera() )
-      video_source_csi_flush_discard();
-   #endif
+   video_sources_flush_all_pending_data();
 
    while ( true )
    {
@@ -642,39 +652,6 @@ void send_model_settings_to_controller()
       g_pProcessStats->lastActiveTime = get_current_timestamp_ms();
 }
 
-void _inject_video_link_dev_stats_packet()
-{
- // To fix
- /*
-   t_packet_header PH;
-   radio_packet_init(&PH, PACKET_COMPONENT_TELEMETRY, PACKET_TYPE_RUBY_TELEMETRY_VIDEO_LINK_DEV_STATS, STREAM_ID_TELEMETRY);
-   PH.vehicle_id_src = g_pCurrentModel->uVehicleId;
-   PH.vehicle_id_dest = g_uControllerId;
-   PH.total_length = sizeof(t_packet_header) + sizeof(shared_mem_video_link_stats_and_overwrites);
-   u8 packet[MAX_PACKET_TOTAL_SIZE];
-   memcpy(packet, (u8*)&PH, sizeof(t_packet_header));
-   memcpy(packet+sizeof(t_packet_header), &g_SM_VideoLinkStats, sizeof(shared_mem_video_link_stats_and_overwrites));
-
-   // Add it to the start of the queue, so it's extracted (poped) next
-   packets_queue_inject_packet_first(&g_QueueRadioPacketsOut, packet);
-*/
-}
-
-void _inject_video_link_dev_graphs_packet()
-{
-   t_packet_header PH;
-   radio_packet_init(&PH, PACKET_COMPONENT_TELEMETRY, PACKET_TYPE_RUBY_TELEMETRY_VIDEO_LINK_DEV_GRAPHS, STREAM_ID_TELEMETRY);
-   PH.vehicle_id_src = g_pCurrentModel->uVehicleId;
-   PH.vehicle_id_dest = g_uControllerId;
-   PH.total_length = sizeof(t_packet_header) + sizeof(shared_mem_video_link_graphs);
-   u8 packet[MAX_PACKET_TOTAL_SIZE];
-   memcpy(packet, (u8*)&PH, sizeof(t_packet_header));
-   memcpy(packet+sizeof(t_packet_header), &g_SM_VideoLinkGraphs, sizeof(shared_mem_video_link_graphs));
-
-   // Add it to the start of the queue, so it's extracted (poped) next
-   packets_queue_inject_packet_first(&g_QueueRadioPacketsOut, packet);
-}
-
 void _read_ipc_pipes(u32 uTimeNow)
 {
    s_uTimeLastTryReadIPCMessages = uTimeNow;
@@ -744,11 +721,9 @@ int _consume_ipc_messages()
    return iConsumed;
 }
 
-int process_and_send_packets()
+int process_and_send_packets(bool bIsEndOfTransmissionFrame)
 {
    int iCountSent = 0;
-   bool bMustInjectVideoDevStats = false;
-   bool bMustInjectVideoDevGraphs = false;
    
    while ( packets_queue_has_packets(&g_QueueRadioPacketsOut) )
    {
@@ -767,26 +742,10 @@ int process_and_send_packets()
       if ( NULL != g_pProcessStats )
          g_pProcessStats->lastIPCIncomingTime = g_TimeNow;
 
-      preprocess_radio_out_packet(pPacketBuffer, iPacketLength);
-
-      t_packet_header* pPH = (t_packet_header*)pPacketBuffer;
-      if ( pPH->packet_type == PACKET_TYPE_RUBY_TELEMETRY_EXTENDED )
-      {
-         if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_LINK_STATS) )
-            bMustInjectVideoDevStats = true;
-         if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->osd_params.osd_flags2[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_FLAG2_SHOW_ADAPTIVE_VIDEO_GRAPH) )
-            bMustInjectVideoDevStats = true;
-         if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_LINK_GRAPHS) )
-            bMustInjectVideoDevGraphs = true;
-      }
-
+      preprocess_radio_out_packet(pPacketBuffer, iPacketLength, bIsEndOfTransmissionFrame);
       send_packet_to_radio_interfaces(pPacketBuffer, iPacketLength, -1);
       iCountSent++;
    }
-   if ( bMustInjectVideoDevStats )
-      _inject_video_link_dev_stats_packet();
-   if ( bMustInjectVideoDevGraphs )
-      _inject_video_link_dev_graphs_packet();
    return iCountSent;
 }
 
@@ -851,13 +810,7 @@ void cleanUp()
    if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->audio_params.has_audio_device) )
       vehicle_stop_audio_capture(g_pCurrentModel);
 
-   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-   {
-      video_source_majestic_close();
-      video_source_majestic_cleanup();
-   }
-   else
-      video_source_csi_close();
+   video_sources_stop_capture();
    
    ruby_close_ipc_channel(s_fIPCRouterToCommands);
    ruby_close_ipc_channel(s_fIPCRouterFromCommands);
@@ -979,7 +932,7 @@ void _check_loop_consistency(int iStep, u32 uLastTotalTxPackets, u32 uLastTotalT
    if ( g_TimeNow < g_TimeStart + 10000 )
       return;
    
-   if ( (get_video_capture_start_program_time() != 0) && ( g_TimeNow < get_video_capture_start_program_time() + 4000 ) )
+   if ( (video_sources_get_capture_start_time() != 0) && ( g_TimeNow < video_sources_get_capture_start_time() + 4000 ) )
       return;
 
    if ( tTime5 > tTime0 + DEFAULT_MAX_LOOP_TIME_MILISECONDS )
@@ -1072,16 +1025,6 @@ void _check_rx_loop_consistency()
    }
 }
 
-u32 get_video_capture_start_program_time()
-{
-   if ( (NULL == g_pCurrentModel) || ( ! g_pCurrentModel->hasCamera()) )
-      return 0;
-
-   if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      return video_source_cs_get_program_start_time();
-   return video_source_majestic_get_program_start_time();
-}
-
 void _broadcast_router_ready()
 {
    t_packet_header PH;
@@ -1115,7 +1058,9 @@ void _check_compute_send_rt_debug_info()
       u8 packet[MAX_PACKET_TOTAL_SIZE];
       memcpy(packet, (u8*)&PH, sizeof(t_packet_header));
       memcpy(packet + sizeof(t_packet_header), (u8*)&(g_VehicleRuntimeInfo), sizeof(vehicle_runtime_info));
-      send_packet_to_radio_interfaces(packet, PH.total_length, -1);
+      packets_queue_add_packet(&g_QueueRadioPacketsOut, packet);
+
+      //send_packet_to_radio_interfaces(packet, PH.total_length, -1);
    }
 }
 
@@ -1145,12 +1090,6 @@ int main(int argc, char *argv[])
 
    log_init("Router");
    log_arguments(argc, argv);
-
-   if ( strcmp(argv[argc-1], "test_maj") == 0 )
-   {
-      test_majestic();
-      return 0;
-   }
 
    hardware_detectBoardAndSystemType();
 
@@ -1189,8 +1128,7 @@ int main(int argc, char *argv[])
          (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_LIVE_LOG)?"yes":"no",
          (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_RADIO_SILENCE_FAILSAFE)?"yes":"no",
          (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS)?"yes":"no",
-          (int)((g_pCurrentModel->uDeveloperFlags >> 8) & 0xFF) );
-   log_line_forced_to_file("Start sequence: Model has vehicle developer video link stats flag on: %s/%s", (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_LINK_STATS)?"yes":"no", (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_VIDEO_LINK_GRAPHS)?"yes":"no");
+          (int)((g_pCurrentModel->uDeveloperFlags >> DEVELOPER_FLAGS_WIFI_GUARD_DELAY_MASK_SHIFT) & 0xFF) );
    log_line_forced_to_file("Model flags: %u (%s), developer flags: %u (%s)",
       g_pCurrentModel->uModelFlags, str_get_model_flags(g_pCurrentModel->uModelFlags), g_pCurrentModel->uDeveloperFlags, str_get_developer_flags(g_pCurrentModel->uDeveloperFlags));
    log_line_forced_to_file("Start sequence: Vehicle has camera? %s", g_pCurrentModel->hasCamera()?"Yes":"No");
@@ -1227,38 +1165,11 @@ int main(int argc, char *argv[])
    if ( -1 == router_open_pipes() )
       log_error_and_alarm("Start sequence: Failed to open some pipes.");
    
-   if ( g_pCurrentModel->hasCamera() )
-   {
-      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      if ( video_source_csi_open(FIFO_RUBY_CAMERA1) <= 0 )
-      {
-         cleanUp();
-         return -1;
-      }
-
-      if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-      if ( video_source_majestic_open(MAJESTIC_UDP_PORT) <= 0 )
-      {
-         cleanUp();
-         return -1;
-      }
-   }
-
    g_bVehicleArmed = false;
    if ( g_pCurrentModel->telemetry_params.flags & TELEMETRY_FLAGS_FORCE_ARMED )
       g_bVehicleArmed = true;
 
-   u32 uRefreshIntervalMs = 100;
-   switch ( g_pCurrentModel->m_iRadioInterfacesGraphRefreshInterval )
-   {
-      case 0: uRefreshIntervalMs = 10; break;
-      case 1: uRefreshIntervalMs = 20; break;
-      case 2: uRefreshIntervalMs = 50; break;
-      case 3: uRefreshIntervalMs = 100; break;
-      case 4: uRefreshIntervalMs = 200; break;
-      case 5: uRefreshIntervalMs = 500; break;
-   }
-   radio_stats_reset(&g_SM_RadioStats, uRefreshIntervalMs);
+   radio_stats_reset(&g_SM_RadioStats, g_pCurrentModel->osd_params.iRadioInterfacesGraphRefreshIntervalMs);
    vehicle_rt_info_init(&g_VehicleRuntimeInfo);
 
    g_SM_RadioStats.countLocalRadioInterfaces = hardware_get_radio_interfaces_count();
@@ -1300,11 +1211,11 @@ int main(int argc, char *argv[])
 
    radio_enable_crc_gen(1);
 
-   if ( g_bDeveloperMode )
+   if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE )
    {
-      radio_tx_set_dev_mode();
-      radio_rx_set_dev_mode();
-      radio_set_debug_flag();
+      radio_tx_set_dev_mode(1);
+      radio_rx_set_dev_mode(1);
+      radio_set_debug_flag(1);
    }
    packet_utils_init();
 
@@ -1316,7 +1227,7 @@ int main(int argc, char *argv[])
    }
 
    log_line("Start sequence: Setting radio interfaces frequencies...");
-   links_set_cards_frequencies_and_params(-1);
+   _links_set_cards_frequencies_and_params(-1);
    log_line("Start sequence: Done setting radio interfaces frequencies.");
 
    if ( radio_links_open_rxtx_radio_interfaces() < 0 )
@@ -1344,7 +1255,9 @@ int main(int argc, char *argv[])
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
    {
       memset(&g_UplinkInfoRxStats[i], 0, sizeof(type_uplink_rx_info_stats));
-      g_UplinkInfoRxStats[i].lastReceivedDBM = 200;
+      g_UplinkInfoRxStats[i].lastReceivedDBM = 1000;
+      g_UplinkInfoRxStats[i].lastReceivedDBMNoise = 1000;
+      g_UplinkInfoRxStats[i].lastReceivedSNR = 1000;
       g_UplinkInfoRxStats[i].lastReceivedDataRate = 0;
       g_UplinkInfoRxStats[i].timeLastLogWrongRxPacket = 0;
    }
@@ -1392,24 +1305,16 @@ int main(int argc, char *argv[])
   
    log_line("Start sequence: Done setting up radio stats history.");
 
-   if ( g_pCurrentModel->hasCamera() )
-   {
-      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-         video_source_csi_start_program();
-      if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-         video_source_majestic_init_all_params();
-   }
-   else
-      log_line("Vehicle has no camera. Video capture not started.");
-
-   log_line("Start sequence: Done starting camera.");
-   
    adaptive_video_init();
+   video_sources_start_capture();   
+   
    g_pVideoTxBuffers = new VideoTxPacketsBuffer(0,0);
    g_pVideoTxBuffers->init(g_pCurrentModel);
    
    g_pProcessorTxVideo = new ProcessorTxVideo(0,0);
    g_pProcessorTxVideo->init();
+
+   adaptive_video_load_state();
 
    log_line("Start sequence: Done creating video processor.");
    
@@ -1507,13 +1412,7 @@ int main(int argc, char *argv[])
    if ( g_pCurrentModel->hasCamera() )
    {
       // Clear up video pipes on start
-      log_line("Clear video pipes...");
-      
-      if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-         video_source_majestic_clear_input_buffers();
-      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-         video_source_csi_flush_discard();
-      log_line("Done clear video pipes.");
+      video_sources_flush_all_pending_data();
    }
    g_TimeNow = get_current_timestamp_ms();
 
@@ -1526,20 +1425,26 @@ int main(int argc, char *argv[])
 
    while ( !g_bQuit )
    {
+      g_uLoopCounter++;
       g_TimeNow = get_current_timestamp_ms();
       g_pProcessStats->lastActiveTime = g_TimeNow;
       g_pProcessStats->uLoopSubStep = 0;
       g_pProcessStats->uLoopCounter++;
 
-      if ( g_TimeNow - uLastLoopTime > 5 )
+      if ( g_TimeNow - uLastLoopTime > 5  + video_source_csi_get_debug_videobitrate()/1000/1000/5)
       {
          iLoopTimeErrorsCount++;
-         log_softerror_and_alarm("Main loop took too long: %u ms (%u + %u + %u) cnt2: %u, cnt3: %u, cnt4: %u",
+         log_softerror_and_alarm("Main loop took too long: %u ms (%u + %u + %u) cnt2: %u, cnt3: %u, sent pckts: %u",
             g_TimeNow - uLastLoopTime,
             g_pProcessStats->uLoopTimer1 - uLastLoopTime,
             g_pProcessStats->uLoopTimer2 - g_pProcessStats->uLoopTimer1,
             g_TimeNow - g_pProcessStats->uLoopTimer2,
             g_pProcessStats->uLoopCounter2, g_pProcessStats->uLoopCounter3, g_pProcessStats->uLoopCounter4);
+
+         if ( (NULL != g_pCurrentModel) && g_pCurrentModel->hasCamera() )
+         if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
+            video_source_csi_log_input_data();
+
       }
   
       uLastLoopTime = g_TimeNow;
@@ -1565,10 +1470,6 @@ int main(int argc, char *argv[])
 
    cleanUp();
 
-   if ( g_pCurrentModel->hasCamera() )
-   if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      video_source_csi_stop_program();
- 
    delete g_pProcessorTxVideo;
    delete g_pVideoTxBuffers;
    shared_mem_radio_stats_rx_hist_close(g_pSM_HistoryRxStats);
@@ -1634,8 +1535,6 @@ void _update_main_loop_debug_info()
 // returns the count of consumed high priority packets
 int _main_loop_try_read_camera()
 {
-   int iReadSize = 0;
-   u8* pVideoData = NULL;
    bool bDidReadVideoData = false;
    bool bIsEndOfFrame = false;
    u8* pPacket = NULL;
@@ -1658,71 +1557,18 @@ int _main_loop_try_read_camera()
       g_pProcessStats->uLoopSubStep = 4;
 
       iMaxRepeatCount--;
-      iReadSize = 0;
-      pVideoData = NULL;
       bIsEndOfFrame = false;
-      bDidReadVideoData = false;
-
-      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      {
-         g_pProcessStats->uLoopSubStep = 98;
-         pVideoData = video_source_csi_read(&iReadSize);
-         g_pProcessStats->uLoopSubStep = 5;
-         if ( iReadSize > 0 )
-         {
-            bDidReadVideoData = true;
-            int iBuffSize = video_source_csi_get_buffer_size();
-            bIsEndOfFrame = (iReadSize < iBuffSize)?true:false;
-            // Concatenate SPS,PSP units to the next I/P unit
-            if ( iReadSize < 50 )
-               bIsEndOfFrame = false;
-
-            g_pVideoTxBuffers->fillVideoPacketsFromCSI(pVideoData, iReadSize, bIsEndOfFrame);
-         }
-         g_pProcessStats->uLoopSubStep = 6;
-      }
-      
-      if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-      {
-         // Read mulitple times for end of frame backward adjustment
-         for( int k=0; k<4; k++ )
-         {
-            g_pProcessStats->uLoopSubStep = 99;
-            pVideoData = video_source_majestic_read(&iReadSize, true);
-            g_pProcessStats->uLoopSubStep = 5;
-            if ( iReadSize > 0 )
-            {
-               bDidReadVideoData = true;
-               bool bSingle = video_source_majestic_last_read_is_single_nal();
-               bool bEnd = video_source_majestic_last_read_is_end_nal();
-               u32 uNALType = video_source_majestic_get_last_nal_type();
-               bIsEndOfFrame |= g_pVideoTxBuffers->fillVideoPacketsFromRTSPPacket(pVideoData, iReadSize, bSingle, bEnd, uNALType);
-               g_pProcessStats->uLoopCounter3++;
-            }
-            if ( (iReadSize <= 0) || bIsEndOfFrame )
-               break;
-         }
-         g_pProcessStats->uLoopSubStep = 6;
-      }
-
+      bDidReadVideoData = video_sources_read_process_stream(&bIsEndOfFrame, packets_queue_has_packets(&g_QueueRadioPacketsOut));
+     
       g_pProcessStats->uLoopSubStep = 7;
 
       if ( (!bDidReadVideoData) || bIsEndOfFrame )
          iMaxRepeatCount = 0;
 
-      if ( bDidReadVideoData )
-         adaptive_video_on_new_camera_read(bIsEndOfFrame);
+      if ( bDidReadVideoData && bIsEndOfFrame )
+         adaptive_video_on_end_of_frame();
 
       g_pProcessStats->uLoopSubStep = 8;
-
-      // Send telemetry/commands/etc before video data
-      if ( g_pVideoTxBuffers->hasPendingPacketsToSend() )
-      if ( packets_queue_has_packets(&g_QueueRadioPacketsOut) )
-      {
-         process_and_send_packets();
-         g_pProcessStats->uLoopCounter4++;
-      }
-      g_pProcessStats->uLoopSubStep = 9;
 
       // Send audio packets if any
       if ( g_pVideoTxBuffers->hasPendingPacketsToSend() )
@@ -1730,13 +1576,13 @@ int _main_loop_try_read_camera()
       if ( NULL != g_pProcessorTxAudio )
          g_pProcessorTxAudio->sendAudioPackets();
 
-      // Intermix video packets and try again to see if we got any new high priority packets
+      // Intermix video packets with/and trying to see if we got any new high priority packets
       while ( g_pVideoTxBuffers->hasPendingPacketsToSend() )
       {
          g_pProcessStats->uLoopSubStep = 10;
          int iPending = g_pVideoTxBuffers->hasPendingPacketsToSend();
-         g_pVideoTxBuffers->sendAvailablePackets(10);
-         g_pProcessStats->uLoopCounter4++;
+         g_pProcessStats->uLoopCounter4 += g_pVideoTxBuffers->sendAvailablePackets(10);
+
          int iCount2 = 0;
          while ( (iCount2 < 3) && (!g_bQuit) )
          {
@@ -1757,10 +1603,12 @@ int _main_loop_try_read_camera()
          }
       }
 
-      g_pProcessStats->uLoopSubStep = 14;
-      if ( g_bDeveloperMode )
-         _check_compute_send_rt_debug_info();
-
+      // Send any pending telemetry/commands/etc after video data frame end
+      if ( bDidReadVideoData && bIsEndOfFrame )
+      if ( packets_queue_has_packets(&g_QueueRadioPacketsOut) )
+      {
+         g_pProcessStats->uLoopCounter4 += process_and_send_packets(true);
+      }
       g_pProcessStats->uLoopSubStep = 15;
    }
 
@@ -1868,11 +1716,24 @@ void _main_loop()
       if ( g_TimeLastReceivedSlowRadioPacketFromController + TIMEOUT_LINK_TO_CONTROLLER_LOST < g_TimeNow )
       if ( g_bHasFastUplinkFromController || g_bHasSlowUplinkFromController )
       {
+         bool bHadSlowSpeedLink = g_bHasSlowUplinkFromController;
+         bool bHadHighSpeedLink = g_bHasFastUplinkFromController;
+
+         log_line("Link from controller lost. Last received fast radio packet: %u ms ago. Last received slow radio packet: %u ms ago.",
+             g_TimeNow - g_TimeLastReceivedFastRadioPacketFromController,
+             g_TimeNow - g_TimeLastReceivedSlowRadioPacketFromController);
+
          g_bHasFastUplinkFromController = false;
          g_bHasSlowUplinkFromController = false;
+
+         if ( bHadHighSpeedLink )
+            g_LastTimeLostFastLinkFromController = g_TimeNow;
+         if ( bHadSlowSpeedLink )
+            g_LastTimeLostSlowLinkFromController = g_TimeNow;
+
          adaptive_video_on_uplink_lost();
-         if ( g_pCurrentModel->osd_params.osd_preferences[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM )
-            send_alarm_to_controller(ALARM_ID_LINK_TO_CONTROLLER_LOST, 0, 0, 5);
+         //if ( g_pCurrentModel->osd_params.osd_preferences[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM )
+            send_alarm_to_controller(ALARM_ID_LINK_TO_CONTROLLER_LOST, bHadHighSpeedLink?1:0, bHadSlowSpeedLink?1:0, 10);
       }
 
       if ( g_pCurrentModel->relay_params.isRelayEnabledOnRadioLinkId >= 0 )
@@ -1887,11 +1748,19 @@ void _main_loop()
          onEventRelayModeChanged(uOldRelayMode, g_pCurrentModel->relay_params.uCurrentRelayMode, "stop");
       }
    }
+
    if ( g_TimeLastReceivedFastRadioPacketFromController + TIMEOUT_LINK_TO_CONTROLLER_LOST < g_TimeNow )
    if ( g_bHasFastUplinkFromController )
    {
+      log_line("Fast link from controller lost. Last received fast radio packet: %u ms ago. Last received slow radio packet: %u ms ago.",
+          g_TimeNow - g_TimeLastReceivedFastRadioPacketFromController,
+          g_TimeNow - g_TimeLastReceivedSlowRadioPacketFromController);
       g_bHasFastUplinkFromController = false;
+      g_LastTimeLostFastLinkFromController = g_TimeNow;
       adaptive_video_on_uplink_lost();
+
+      //if ( g_pCurrentModel->osd_params.osd_preferences[g_pCurrentModel->osd_params.iCurrentOSDScreen] & OSD_PREFERENCES_BIT_FLAG_SHOW_CONTROLLER_LINK_LOST_ALARM )
+         send_alarm_to_controller(ALARM_ID_LINK_TO_CONTROLLER_LOST, 1, 0, 10);
    }
 
    g_pProcessStats->uLoopSubStep = 26;
@@ -1920,22 +1789,24 @@ void _main_loop()
    // * too much time since last tx
    if ( packets_queue_has_packets(&g_QueueRadioPacketsOut) )
    {
-      bool bNoVideoData = false;
-      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
+      bool bSendNow = false;
+      if ( ! video_sources_has_stream_data() )
+         bSendNow = true;
+      if ( ! g_pCurrentModel->hasCamera() )
+         bSendNow = true;
+      if ( video_sources_last_stream_data() < g_TimeNow - 70 )
+         bSendNow = true;
+      if ( 0 == video_sources_get_capture_start_time() )
+         bSendNow = true;
+
+      //bool bTxWaiting = false;
+      //if ( g_SM_RadioStats.timeLastTxPacket < g_TimeNow - 100 )
+      //   bTxWaiting = true;
+
+      if ( bSendNow )
       {
-         if ( ! video_source_csi_read_any_data() )
-             bNoVideoData = true;
+         process_and_send_packets(false);
       }
-      else if ( video_source_majestic_is_restarting() )
-         bNoVideoData = true;
-
-      bool bTxWaiting = false;
-      if ( g_SM_RadioStats.timeLastTxPacket < g_TimeNow - 100 )
-         bTxWaiting = true;
-
-      if ( (! g_pCurrentModel->hasCamera()) || bNoVideoData || bTxWaiting )
-            process_and_send_packets();
-
       g_pProcessStats->uLoopSubStep = 30;
    }
 
@@ -1944,7 +1815,7 @@ void _main_loop()
    //------------------------------------------
    // Periodic loops
 
-   if ( g_bDeveloperMode )
+   if ( g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE )
       _check_compute_send_rt_debug_info();
 
    g_pProcessStats->uLoopSubStep = 41;
@@ -1957,29 +1828,24 @@ void _main_loop()
    process_data_tx_video_loop();
    g_pProcessStats->uLoopSubStep = 45;
 
-   if ( g_pCurrentModel->hasCamera() )
+   if ( video_sources_periodic_health_checks() )
    {
-      if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-         video_source_csi_periodic_checks();
-      if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+      log_line("Router is marked for restart due to video sources periodic health checks. Quit it.");
+      if ( hw_process_exists("sysupgrade") )
       {
-         if ( video_source_majestic_periodic_checks() )
-         {
-            log_line("Router is marked for restart. Quit it.");
-            if ( hw_process_exists("sysupgrade") )
-            {
-               log_softerror_and_alarm("Sysupgrade is in progress. Don't do anything else. Just quit.");
-               g_bQuit = true;
-               return;
-            }
-            if ( packets_queue_has_packets(&g_QueueRadioPacketsOut) )
-               process_and_send_packets();
-            log_line("Done sending pending radio packets. Quit now.");
-            g_bQuit = true;
-            return;
-         }
+         log_softerror_and_alarm("Sysupgrade is in progress. Don't do anything else. Just quit.");
+         g_bQuit = true;
+         return;
       }
+      if ( packets_queue_has_packets(&g_QueueRadioPacketsOut) )
+      {
+         process_and_send_packets(false);
+      }
+      log_line("Done sending pending radio packets. Quit now.");
+      g_bQuit = true;
+      return;
    }
+
 
    g_pProcessStats->uLoopSubStep = 46;
    _check_rx_loop_consistency();
@@ -2003,9 +1869,8 @@ void _main_loop()
    if ( NULL != g_pProcessorTxAudio )
       g_pProcessorTxAudio->tryReadAudioInputStream();
    g_pProcessStats->uLoopSubStep = 51;
+
    //----------------------------------------------
    // Other stuff
 
-   //if ( packets_queue_has_packets(&g_QueueRadioPacketsOut) )
-   //   process_and_send_packets();
 }

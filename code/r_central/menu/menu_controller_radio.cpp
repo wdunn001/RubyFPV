@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -277,7 +277,6 @@ void MenuControllerRadio::onSelectItem()
       ControllerSettings* pCS = get_ControllerSettings();
       pCS->iFixedTxPower = 1 - m_pItemsSelect[0]->getSelectedIndex();
       save_ControllerSettings();
-      compute_controller_radio_tx_powers(g_pCurrentModel, &g_SM_RadioStats);
       send_model_changed_message_to_router(MODEL_CHANGED_RADIO_POWERS, 0);
       valuesToUI();
       return;
@@ -329,7 +328,6 @@ void MenuControllerRadio::onSelectItem()
       }
       save_ControllerSettings();
       save_ControllerInterfacesSettings();
-      compute_controller_radio_tx_powers(g_pCurrentModel, &g_SM_RadioStats);
       send_model_changed_message_to_router(MODEL_CHANGED_RADIO_POWERS, 0);
       valuesToUI();
       return;

@@ -29,12 +29,9 @@ typedef struct
    int nVideoForwardETHType; // 0 - none, 1 - raw (h264), 2 - rtp (gstreamer)
    int nVideoForwardETHPort;
    int nVideoForwardETHPacketSize;
-   int iTelemetryForwardUSBType; // 0 - none, 1 - mavlink
+   int iTelemetryForwardUSBType; // 0 - none, 1 - enabled
    int iTelemetryForwardUSBPort;
    int iTelemetryForwardUSBPacketSize;
-   int iTelemetryOutputSerialPortIndex;  // -1 for disabled
-   int iTelemetryInputSerialPortIndex;   // -1 for disabled
-   int iMAVLinkSysIdController;
    int iDisableHDMIOverscan;
    int iDeveloperMode;
    int iRenderFPS;
@@ -49,12 +46,11 @@ typedef struct
    int nRotaryEncoderFunction2;
    int nRotaryEncoderSpeed2;
    int nPingClockSyncFrequency;
-   int nGraphRadioRefreshInterval;
    int nGraphVideoRefreshInterval;
    int iDisableRetransmissionsAfterControllerLinkLostMiliseconds; // 0 to disable functionality
    int iVideoDecodeStatsSnapshotClosesOnTimeout;
    int iFreezeOSD;
-   int iDevSwitchVideoProfileUsingQAButton;
+   int iDummyCS1;
    int iShowControllerAdaptiveInfoStats;
    int iShowVideoStreamInfoCompactType;
 
@@ -78,6 +74,7 @@ typedef struct
    int iStreamerOutputMode; // 0 - sm, 1 - pipe, 2 - udp
    int iVideoMPPBuffersSize;
    int iHDMIVSync;
+   int iEasterEgg1;
 } ControllerSettings;
 
 int save_ControllerSettings();

@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga petrusoroaga@yahoo.com
+    Copyright (c) 2020-2025 Petru Soroaga petrusoroaga@yahoo.com
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -1193,6 +1193,94 @@ void RenderEngineCairo::drawRoundRect(float xPos, float yPos, float fWidth, floa
    cairo_set_source_rgba(m_pCairoCtx, m_fColorStroke[0], m_fColorStroke[1], m_fColorStroke[2], m_fColorStroke[3]);
    cairo_stroke(m_pCairoCtx);
    */
+}
+
+
+void RenderEngineCairo::drawRoundRectMenu(float xPos, float yPos, float fWidth, float fHeight, float fCornerRadius)
+{
+   if ( m_ColorFill[3] < 150 )
+   {
+      drawRoundRect(xPos, yPos, fWidth, fHeight, fCornerRadius);
+      return;
+   }
+
+   int xSt = xPos*m_iRenderWidth;
+   int ySt = yPos*m_iRenderHeight;
+   int w = fWidth*m_iRenderWidth;
+   int h = fHeight*m_iRenderHeight;
+
+   if ( (xSt >= m_iRenderWidth) || (ySt >= m_iRenderHeight) )
+      return;
+
+   if ( (xSt+w <= 0) || (ySt+h <= 0) )
+      return;
+
+   if ( xSt < 0 )
+   {
+      w += xSt;
+      xSt = 0;
+   }
+   if ( ySt < 0 )
+   {
+      h += ySt;
+      ySt = 0;
+   }
+
+   if ( xSt+w >= m_iRenderWidth )
+      w = m_iRenderWidth-xSt-1;
+   if ( ySt+h >= m_iRenderHeight )
+      h = m_iRenderHeight-ySt-1;
+
+   if ( (w < 6.0*m_fPixelWidth) || (h < 6.0*m_fPixelHeight) )
+      return;
+
+   if ( m_ColorFill[3] > 2 )
+   {
+      cairo_rectangle(m_pCairoCtx, xSt, ySt, w, h);
+      cairo_set_source_rgba(m_pCairoCtx, m_ColorFill[0]/255.0, m_ColorFill[1]/255.0, m_ColorFill[2]/255.0, m_ColorFill[3]/255.0);
+      cairo_fill(m_pCairoCtx);
+
+      u8 r = m_ColorFill[0];
+      u8 g = m_ColorFill[1];
+      u8 b = m_ColorFill[2];
+      u8 a = m_ColorFill[3];
+
+      _draw_vline(xSt+2, ySt+1, h-2 , r,g,b,a);
+      _draw_vline(xSt+1, ySt+1, h-2 , r,g,b,a);
+      _draw_vline(xSt,   ySt+3, h-6 , r,g,b,a);
+     
+      _draw_vline(xSt+w-2, ySt+1, h-2 , r,g,b,a);
+      _draw_vline(xSt+w-1, ySt+1, h-2 , r,g,b,a);
+      _draw_vline(xSt+w,   ySt+3, h-6 , r,g,b,a);
+   }
+
+   if ( (m_ColorStroke[3] > 2) && (m_fStrokeSizePx >= 0.9) )
+   if ( (m_ColorStroke[0] != m_ColorFill[0]) ||
+        (m_ColorStroke[1] != m_ColorFill[1]) ||
+        (m_ColorStroke[2] != m_ColorFill[2]) ||
+        (m_ColorStroke[3] != m_ColorFill[3]))
+   {
+      u8 r = m_ColorStroke[0];
+      u8 g = m_ColorStroke[1];
+      u8 b = m_ColorStroke[2];
+      u8 a = m_ColorStroke[3];
+
+      _draw_hline(xSt+3,  ySt,    w-6, r,g,b,a);
+      _draw_hline(xSt+1,  ySt+1,  2, r,g,b,a);
+      _draw_hline(xSt+w-4, ySt+1, 2, r,g,b,a);
+
+      _draw_hline(xSt+3,  ySt+h,    w-6, r,g,b,a);
+      _draw_hline(xSt+1,  ySt+h-1,  2, r,g,b,a);
+      _draw_hline(xSt+w-4, ySt+h-1, 2, r,g,b,a);
+
+      _draw_vline(xSt, ySt+3,  h-6 , r,g,b,a);
+      _draw_vline(xSt+1, ySt+1,  2 , r,g,b,a);
+      _draw_vline(xSt+1, ySt+h-3, 2 , r,g,b,a);
+
+      _draw_vline(xSt+w, ySt+3,  h-6 , r,g,b,a);
+      _draw_vline(xSt+w-1, ySt+1,  2 , r,g,b,a);
+      _draw_vline(xSt+w-1, ySt+h-3, 2 , r,g,b,a);
+   }
 }
 
 void RenderEngineCairo::drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3)

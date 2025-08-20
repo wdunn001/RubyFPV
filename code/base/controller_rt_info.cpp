@@ -1,6 +1,6 @@
 /*
     Ruby Licence
-    Copyright (c) 2025 Petru Soroaga
+    Copyright (c) 2020-2025 Petru Soroaga
     All rights reserved.
 
     Redistribution and/or use in source and/or binary forms, with or without
@@ -60,55 +60,54 @@ void controller_rt_info_close(controller_runtime_info* pAddress)
    //shm_unlink(szName);
 }
 
-void _controller_runtime_info_reset_dbm_slice(controller_runtime_info* pRTInfo, int iSliceIndex)
+void _controller_runtime_info_reset_slice_signal_info(controller_runtime_info* pCRTInfo, int iSliceIndex)
 {
-   if ( NULL == pRTInfo )
+   if ( NULL == pCRTInfo )
       return;
    for( int k=0; k<MAX_RADIO_INTERFACES; k++ )
    {
-      for( int j=0; j<MAX_RADIO_ANTENNAS; j++ )
-      {
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmLast[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmMin[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmMax[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmAvg[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmChangeSpeedMin[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmChangeSpeedMax[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmNoiseLast[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmNoiseMin[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmNoiseMax[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].iDbmNoiseAvg[j] = 1000;
-         pRTInfo->radioInterfacesDbm[iSliceIndex][k].uLastTimeCapture[j] = 0;
-      }
+      reset_runtime_radio_rx_signal_info(&(pCRTInfo->radioInterfacesSignalInfoAll[iSliceIndex][k]));
+      reset_runtime_radio_rx_signal_info(&(pCRTInfo->radioInterfacesSignalInfoVideo[iSliceIndex][k]));
+      reset_runtime_radio_rx_signal_info(&(pCRTInfo->radioInterfacesSignalInfoData[iSliceIndex][k]));
    }
 }
 
-void controller_rt_info_init(controller_runtime_info* pRTInfo)
+void controller_rt_info_init(controller_runtime_info* pCRTInfo)
 {
-   if ( NULL == pRTInfo )
+   if ( NULL == pCRTInfo )
       return;
 
    log_line("controller_runtime_info total size: %d", sizeof(controller_runtime_info));
-   log_line("controller_runtime_info dbm size: %d", sizeof(pRTInfo->radioInterfacesDbm));
-   memset(pRTInfo, 0, sizeof(controller_runtime_info));
+   log_line("controller_runtime_info dbm size: %d", sizeof(pCRTInfo->radioInterfacesSignalInfoAll));
+   memset(pCRTInfo, 0, sizeof(controller_runtime_info));
    
-   pRTInfo->uUpdateIntervalMs = SYSTEM_RT_INFO_UPDATE_INTERVAL_MS;
-   pRTInfo->uCurrentSliceStartTime = 0;
-   pRTInfo->iCurrentIndex = 0;
-   pRTInfo->iCurrentIndex2 = 0;
-   pRTInfo->iCurrentIndex3 = 0;
+   pCRTInfo->uUpdateIntervalMs = SYSTEM_RT_INFO_UPDATE_INTERVAL_MS;
+   pCRTInfo->uCurrentSliceStartTime = 0;
+   pCRTInfo->iCurrentIndex = 0;
+   pCRTInfo->iCurrentIndex2 = 0;
+   pCRTInfo->iCurrentIndex3 = 0;
 
    for( int i=0; i<SYSTEM_RT_INFO_INTERVALS; i++ )
    {
-      pRTInfo->uSliceUpdateTime[i] = 0;
-      for( int k=0; k<MAX_RADIO_INTERFACES; k++ )
-      {
-         pRTInfo->radioInterfacesDbm[i][k].iCountAntennas = 0;
-      }
-      _controller_runtime_info_reset_dbm_slice(pRTInfo, i);
+      pCRTInfo->uSliceStartTimeMs[i] = 0;
+      pCRTInfo->uSliceDurationMs[i] = 0;
+      _controller_runtime_info_reset_slice_signal_info(pCRTInfo, i);
    }
 
-   pRTInfo->uTotalCountOutputSkippedBlocks = 0;
+   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+   {
+      pCRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface = 1000;
+      pCRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface = 1000;
+      pCRTInfo->radioInterfacesSignals[i].uLastUpdateTimeData = 0;
+      pCRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface = 1000;
+      pCRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface = 1000;
+      pCRTInfo->radioInterfacesSignals[i].uLastUpdateTimeVideo = 0;
+      pCRTInfo->radioInterfacesSignals[i].iMaxSNRForInterface = 1000;
+      pCRTInfo->radioInterfacesSignals[i].iMaxDBMForInterface = 1000;
+      pCRTInfo->radioInterfacesSignals[i].uLastUpdateTime = 0;
+   }
+
+   pCRTInfo->uTotalCountOutputSkippedBlocks = 0;
 }
 
 controller_runtime_info_vehicle* controller_rt_info_get_vehicle_info(controller_runtime_info* pRTInfo, u32 uVehicleId)
@@ -177,25 +176,101 @@ int controller_rt_info_check_advance_index(controller_runtime_info* pRTInfo, u32
 
    int iIndex = pRTInfo->iCurrentIndex;
 
+   if ( 0 != pRTInfo->uCurrentSliceStartTime )
+      pRTInfo->uSliceDurationMs[iIndex] = uTimeNowMs - pRTInfo->uCurrentSliceStartTime;
+   pRTInfo->uCurrentSliceStartTime = uTimeNowMs;
+
    // ------------------------------------------------
    // Begin Compute derived values
-
+   
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
    {
-      pRTInfo->uDbmChangeSpeed[iIndex][i] = 0;
-      for( int k=0; k<pRTInfo->radioInterfacesDbm[iIndex][i].iCountAntennas; i++ )
+      if ( (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iDbmMax > -500) && (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iDbmMax < 500) )
       {
-         int iDbmChangeSpeed = pRTInfo->radioInterfacesDbm[iIndex][i].iDbmMax - pRTInfo->radioInterfacesDbm[iIndex][i].iDbmMin;
-         if ( iDbmChangeSpeed > pRTInfo->uDbmChangeSpeed[iIndex][i] )
-            pRTInfo->uDbmChangeSpeed[iIndex][i] = iDbmChangeSpeed;
+         if ( (pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeVideo == 0) ||
+              (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iDbmMax > pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface + 5) ||
+              (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iDbmMax < pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface - 5) )
+             pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface = pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iDbmMax;
+         else
+             pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface = (pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface*60 + pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iDbmMax*40)/100;
+         pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeVideo = uTimeNowMs;
       }
-   }   
-   
+      
+      if ( (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iSNRMax > -500) && (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iSNRMax < 500) )
+      {
+         if ( (pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeVideo == 0) ||
+              (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iSNRMax > pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface + 5) ||
+              (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iSNRMax < pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface - 5) )
+             pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface = pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iSNRMax;
+         else
+             pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface = (pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface*60 + pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iSNRMax*40)/100;
+         pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeVideo = uTimeNowMs;
+      }
+      
+      if ( pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeVideo < uTimeNowMs-200 )
+      {
+         pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface = 1000;
+         pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface = 1000;
+      }
+
+      if ( (pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iDbmMax > -500) && (pRTInfo->radioInterfacesSignalInfoVideo[pRTInfo->iCurrentIndex][i].iDbmMax < 500) )
+      {
+         if ( (pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeData == 0) ||
+              (pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iDbmMax > pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface + 5) ||
+              (pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iDbmMax < pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface - 5) )
+             pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface = pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iDbmMax;
+         else
+             pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface = (pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface*60 + pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iDbmMax*40)/100;
+         pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeData = uTimeNowMs;
+      }
+      
+      if ( (pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iSNRMax > -500) && (pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iSNRMax < 500) )
+      {
+         if ( (pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeData == 0) ||
+              (pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iSNRMax > pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface + 5) ||
+              (pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iSNRMax < pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface - 5) )
+             pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface = pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iSNRMax;
+         else
+             pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface = (pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface*60 + pRTInfo->radioInterfacesSignalInfoData[pRTInfo->iCurrentIndex][i].iSNRMax*40)/100;
+         pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeData = uTimeNowMs;
+      }
+      
+      if ( pRTInfo->radioInterfacesSignals[i].uLastUpdateTimeData < uTimeNowMs-1000 )
+      {
+         pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface = 1000;
+         pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface = 1000;
+      }
+
+      if ( (pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface > -500) && (pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface < 500) )
+      {
+         pRTInfo->radioInterfacesSignals[i].iMaxDBMForInterface = pRTInfo->radioInterfacesSignals[i].iMaxDBMVideoForInterface;
+         pRTInfo->radioInterfacesSignals[i].uLastUpdateTime = uTimeNowMs;
+      }
+      if ( (pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface > -500) && (pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface < 500) )
+      {
+         pRTInfo->radioInterfacesSignals[i].iMaxSNRForInterface = pRTInfo->radioInterfacesSignals[i].iMaxSNRVideoForInterface;
+         pRTInfo->radioInterfacesSignals[i].uLastUpdateTime = uTimeNowMs;
+      }
+
+      if ( pRTInfo->radioInterfacesSignals[i].uLastUpdateTime < uTimeNowMs-1000 )
+      {
+         if ( (pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface > -500) && (pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface < 500) )
+         {
+            pRTInfo->radioInterfacesSignals[i].iMaxDBMForInterface = pRTInfo->radioInterfacesSignals[i].iMaxDBMDataForInterface;
+            pRTInfo->radioInterfacesSignals[i].uLastUpdateTime = uTimeNowMs;
+         }
+         if ( (pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface > -500) && (pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface < 500) )
+         {
+            pRTInfo->radioInterfacesSignals[i].iMaxSNRForInterface = pRTInfo->radioInterfacesSignals[i].iMaxSNRDataForInterface;
+            pRTInfo->radioInterfacesSignals[i].uLastUpdateTime = uTimeNowMs;
+         }       
+      }
+   }
+
    // End Compute derived values
    // ------------------------------------------------
    // Advance index
 
-   pRTInfo->uCurrentSliceStartTime = uTimeNowMs;
    pRTInfo->iCurrentIndex++;
    if ( pRTInfo->iCurrentIndex >= SYSTEM_RT_INFO_INTERVALS )
       pRTInfo->iCurrentIndex = 0;
@@ -206,9 +281,11 @@ int controller_rt_info_check_advance_index(controller_runtime_info* pRTInfo, u32
    // Reset the new slice
 
    iIndex = pRTInfo->iCurrentIndex;
-   pRTInfo->uSliceUpdateTime[iIndex] = 0;
+   pRTInfo->uSliceStartTimeMs[iIndex] = uTimeNowMs;
+   pRTInfo->uSliceDurationMs[iIndex] = 0;
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
    {
+      pRTInfo->uRxLastDeltaTime[iIndex][i] = 0;
       pRTInfo->uRxVideoPackets[iIndex][i] = 0;
       pRTInfo->uRxVideoECPackets[iIndex][i] = 0;
       pRTInfo->uRxDataPackets[iIndex][i] = 0;
@@ -220,12 +297,14 @@ int controller_rt_info_check_advance_index(controller_runtime_info* pRTInfo, u32
    pRTInfo->uRxMaxAirgapSlots[iIndex] = 0;
    pRTInfo->uRxMaxAirgapSlots2[iIndex] = 0;
 
+   pRTInfo->uTxFirstDeltaTime[iIndex] = 0xFF;
+   pRTInfo->uTxLastDeltaTime[iIndex] = 0;
    pRTInfo->uTxPackets[iIndex] = 0;
    pRTInfo->uTxHighPriorityPackets[iIndex] = 0;
 
    pRTInfo->uRecvVideoDataPackets[iIndex] = 0;
    pRTInfo->uRecvVideoECPackets[iIndex] = 0;
-   pRTInfo->uRecvFramesInfo[iIndex] = 0;
+   pRTInfo->uOutputFramesInfo[iIndex] = 0;
  
    for( int i=0; i<MAX_CONCURENT_VEHICLES; i++ )
    {
@@ -240,21 +319,26 @@ int controller_rt_info_check_advance_index(controller_runtime_info* pRTInfo, u32
    }
    pRTInfo->uOutputedVideoPackets[iIndex] = 0;
    pRTInfo->uOutputedVideoPacketsRetransmitted[iIndex] = 0;
-   pRTInfo->uOutputedVideoPacketsSingleECUsed[iIndex] = 0;
-   pRTInfo->uOutputedVideoPacketsTwoECUsed[iIndex] = 0;
-   pRTInfo->uOutputedVideoPacketsMultipleECUsed[iIndex] = 0;
-   pRTInfo->uOutputedVideoPacketsMaxECUsed[iIndex] = 0;
-   pRTInfo->uOutputedVideoPacketsSkippedBlocks[iIndex] = 0;
+   pRTInfo->uOutputedVideoBlocks[iIndex] = 0;
+   pRTInfo->uOutputedVideoBlocksSkippedBlocks[iIndex] = 0;
+   pRTInfo->uOutputedVideoBlocksECUsed[iIndex] = 0;
+   pRTInfo->uOutputedVideoBlocksSingleECUsed[iIndex] = 0;
+   pRTInfo->uOutputedVideoBlocksTwoECUsed[iIndex] = 0;
+   pRTInfo->uOutputedVideoBlocksMultipleECUsed[iIndex] = 0;
+   pRTInfo->uOutputedVideoBlocksMaxECUsed[iIndex] = 0;
 
    pRTInfo->uOutputedAudioPackets[iIndex] = 0;
    pRTInfo->uOutputedAudioPacketsCorrected[iIndex] = 0;
    pRTInfo->uOutputedAudioPacketsSkipped[iIndex] = 0;
 
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      pRTInfo->iRecvVideoDataRate[iIndex][i] = 0;
       pRTInfo->uDbmChangeSpeed[iIndex][i] = 0;
+   }
    pRTInfo->uRadioLinkQuality[iIndex] = 0;
 
    pRTInfo->uFlagsAdaptiveVideo[iIndex] = 0;
-   _controller_runtime_info_reset_dbm_slice(pRTInfo, iIndex);
+   _controller_runtime_info_reset_slice_signal_info(pRTInfo, iIndex);
    return 1;
 }
