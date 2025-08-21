@@ -80,7 +80,7 @@ type_localized_strings s_LocalizedStringsTable[] =
   {"Max FPS for this video mode (%d x %d) for this camera is %d FPS", "当前视频模式下(%d x %d)摄像头的最大帧率 %d FPS", "", "", "", "Максимальный FPS для этого видео режима (%d x %d) для этой камеры %d FPS", "", 0},
   {"Are you sure you want to delete %s?", "你确定要删除%s吗？", "", "", "", "Вы уверенны что хотите удалить %s?", "", 0},
   {"Current camera sensor changed from %s to %s", "当前摄像头传感器已从 %s 更改为 %s", "", "", "", "Текущий сенсор камеры изменен с %s на %s", "", 0},
-  {"%s has Ruby version %s (b%u) and your controller %s (b%u). You should update your %s.", "%s 的 Ruby 版本为 %s (b%u)，而您的地面端 %s 版本为 %s (b%u)。建议立即升级 %s 。", "", "", "", "%s имеет версию Ruby %s (b%u), а ваш контроллер %s (b%u). Вам следуе обновить ваш %s.", "", 0},
+  {"%s has Ruby version %s (b%u) and your controller %s (b%u). You should update your %s.", "%s 的 Ruby 版本为 %s (b%u)，而您的地面端版本为 %s (b%u)。建议立即升级 %s 。", "", "", "", "%s имеет версию Ruby %s (b%u), а ваш контроллер %s (b%u). Вам следуе обновить ваш %s.", "", 0},
   {"Some radio interfaces on your %s are not fully supported.", "您的设备 %s 上存在部分不完全兼容的射频模块", "", "", "", "Некоторые радио интерфейсы на вашем %s не полностью поддерживаються.", "", 0},
   {"No radio interface on your %s is fully supported.", "您的设备 %s 完全不支持当前射频模块", "", "", "", "Не найденно поддерживаемых радио интерфейсов на вашем %s.", "", 0},
   {"Radio links configuration changed on your %s. Updating local radio configuration...", "您的设备 %s 的无线链路配置已变更，正在更新本地射频参数...", "", "", "", "", "", 0},
