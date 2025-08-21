@@ -708,17 +708,17 @@ float osd_render_stats_video_decode(float xPos, float yPos, int iDeveloperMode, 
       else if (((pVDS->PHVS.uVideoStreamIndexAndType >> 4) & 0x0F) == VIDEO_TYPE_H264 )
          strcpy(szVideoType, "H264");
 
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %s %d (%d-%d) FPS ", szVideoType, getOptionVideoResolutionName(pVDS->iCurrentVideoWidth, pVDS->iCurrentVideoHeight), pVDS->iCurrentVideoFPS, pVDS->iDetectedFPS, pVDS->iDetectedSlices);
+      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %s FPS: %d (%d-%d)", szVideoType, getOptionVideoResolutionName(pVDS->iCurrentVideoWidth, pVDS->iCurrentVideoHeight), pVDS->iCurrentVideoFPS, pVDS->iDetectedFPS, pVDS->iDetectedSlices);
       g_pRenderEngine->drawText(xPos, y, s_idFontStatsSmall, szBuff);
       float wtmp = g_pRenderEngine->textWidth(s_idFontStatsSmall, szBuff);
 
-      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), " %d (%d) ms ", pVDS->PHVS.uCurrentVideoKeyframeIntervalMs, pVDS->iDetectedKeyframeMs);
+      snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "KF: %d (%d) ms ", pVDS->PHVS.uCurrentVideoKeyframeIntervalMs, pVDS->iDetectedKeyframeMs);
       if ( pActiveModel->isVideoLinkFixedOneWay() )
-         strcat(szBuff, "1Way KF");
-      else if ( pActiveModel->video_link_profiles[pActiveModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK )
-         strcat(szBuff, "Auto KF");
+         strcat(szBuff, "1Way");
+      else if ( pActiveModel->video_link_profiles[pActiveModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME )
+         strcat(szBuff, "Auto");
       else
-         strcat(szBuff, "Fixed KF");
+         strcat(szBuff, "Fixed");
 
       static int sl_iLastKeyframeValue = 0;
       static u32 sl_uLastKeyframeValueChange = 0;

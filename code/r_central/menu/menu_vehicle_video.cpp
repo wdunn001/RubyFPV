@@ -357,16 +357,18 @@ void MenuVehicleVideo::sendVideoSettings()
 
    type_video_link_profile profiles[MAX_VIDEO_LINK_PROFILES];
    memcpy((u8*)&profiles[0], (u8*)&g_pCurrentModel->video_link_profiles[0], MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
+   char szCurrentProfile[64];
+   strcpy(szCurrentProfile, str_get_video_profile_name(g_pCurrentModel->video_params.iCurrentVideoProfile));
 
    int iMatchProfile = g_pCurrentModel->isVideoSettingsMatchingBuiltinVideoProfile(&paramsNew, &profileNew);
    if ( (iMatchProfile >= 0) && (iMatchProfile < MAX_VIDEO_LINK_PROFILES) )
    {
-      log_line("MenuVideo: Matched to video profile %s", str_get_video_profile_name(iMatchProfile));
+      log_line("MenuVehicleVideo: Will switch to matched to video profile %s, current video profile was: %s", str_get_video_profile_name(iMatchProfile), szCurrentProfile);
       paramsNew.iCurrentVideoProfile = iMatchProfile;
    }
    else
    {
-      log_line("MenuVideo: Switched to user profile");
+      log_line("MenuVehicleVideo: Will switch to user profile, current video profile was: %s", szCurrentProfile);
       paramsNew.iCurrentVideoProfile = VIDEO_PROFILE_USER;
    }
    memcpy((u8*)&profiles[paramsNew.iCurrentVideoProfile], &profileNew, sizeof(type_video_link_profile));

@@ -1000,7 +1000,8 @@ void compute_adaptive_metrics(type_adaptive_metrics* pAdaptiveMetrics, int iAdap
    pAdaptiveMetrics->iMaxRxLostPercent = 100;
    if ( ((uAdaptiveWeights >> 12) & 0x0F) != 0 )
    {
-      pAdaptiveMetrics->uTimeToLookBackForRxLost = 200 + (iAdaptiveStrength + (((uAdaptiveWeights >> 12) & 0x0F) - 12))*30;
+      pAdaptiveMetrics->uTimeToLookBackForRxLost = 200 + (11-iAdaptiveStrength)*30;
+      pAdaptiveMetrics->uTimeToLookBackForRxLost -= (((uAdaptiveWeights >> 12) & 0x0F) - 7) * 20;
       pAdaptiveMetrics->iMaxRxLostPercent = 50 - iAdaptiveStrength * 4;
       pAdaptiveMetrics->iMaxRxLostPercent += (15-((uAdaptiveWeights >> 12) & 0x0F))/2;
       pAdaptiveMetrics->iMaxRxLostPercent = (pAdaptiveMetrics->iMaxRxLostPercent * ((16-((uAdaptiveWeights >> 12) & 0x0F)))) / 10;

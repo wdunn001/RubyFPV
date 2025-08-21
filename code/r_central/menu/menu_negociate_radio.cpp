@@ -1193,6 +1193,11 @@ void MenuNegociateRadio::_save_new_settings_to_model()
       g_pCurrentModel->radioLinksParams.link_radio_flags[0] = m_uRadioFlagsToApply;
       memcpy(&g_pCurrentModel->radioRuntimeCapabilities, &m_RadioRuntimeCapabilitiesToApply, sizeof(type_radio_runtime_capabilities_parameters));
    }
+   for( int i=0; i<g_pCurrentModel->radioLinksParams.links_count; i++ )
+   {
+       g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[i] = 0;
+       g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[i] = 0;
+   }
    g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab = uFlagsRuntimeCapab | MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED;
    g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab &= ~MODEL_RUNTIME_RADIO_CAPAB_FLAG_DIRTY;
    g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags |= MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS;
@@ -1682,6 +1687,15 @@ bool MenuNegociateRadio::_compute_settings_to_apply()
       }
    }
 
+   for( int i=0; i<g_pCurrentModel->radioLinksParams.links_count; i++ )
+   {
+      if ( (g_pCurrentModel->radioLinksParams.downlink_datarate_video_bps[i] != 0) ||
+           (g_pCurrentModel->radioLinksParams.downlink_datarate_data_bps[i] != 0) )
+      {
+         bUpdatedDatarates = true;
+         break;
+      }
+   }
    if ( (! bUpdatedRadioFlags) && (!bUpdatedDatarates) && (!bUpdatedPowers) )
    {
       log_line("[NegociateRadioLink] Compute settings: No change detected in computed radio links flags or datarates or powers.");

@@ -612,6 +612,8 @@ bool MenuVehicleVideoEncodings::sendVideoParams()
 
    type_video_link_profile profiles[MAX_VIDEO_LINK_PROFILES];
    memcpy((u8*)&profiles[0], (u8*)&g_pCurrentModel->video_link_profiles[0], MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
+   char szCurrentProfile[64];
+   strcpy(szCurrentProfile, str_get_video_profile_name(g_pCurrentModel->video_params.iCurrentVideoProfile));
 
    if ( g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED ) 
       log_line("MenuVehicleVideoEncodings: Currently computed max supported datarates: MCS: %d, legacy: %d", g_pCurrentModel->radioRuntimeCapabilities.iMaxSupportedMCSDataRate, g_pCurrentModel->radioRuntimeCapabilities.iMaxSupportedLegacyDataRate);
@@ -637,14 +639,15 @@ bool MenuVehicleVideoEncodings::sendVideoParams()
    int iMatchProfile = g_pCurrentModel->isVideoSettingsMatchingBuiltinVideoProfile(&paramsNew, &profileNew);
    if ( (iMatchProfile >= 0) && (iMatchProfile < MAX_VIDEO_LINK_PROFILES) )
    {
-      log_line("MenuVideo: Matched to video profile %s", str_get_video_profile_name(iMatchProfile));
+      log_line("MenuVehicleVideoEncodings: Will switch to matched to video profile %s, current video profile was: %s", str_get_video_profile_name(iMatchProfile), szCurrentProfile);
       paramsNew.iCurrentVideoProfile = iMatchProfile;
    }
    else
    {
-      log_line("MenuVideo: Switched to user profile");
+      log_line("MenuVehicleVideoEncodings: Will switch to user profile, current video profile was: %s", szCurrentProfile);
       paramsNew.iCurrentVideoProfile = VIDEO_PROFILE_USER;
    }
+
    memcpy((u8*)&profiles[paramsNew.iCurrentVideoProfile ], &profileNew, sizeof(type_video_link_profile));
    g_pCurrentModel->logVideoSettingsDifferences(&paramsNew, &profileNew);
 
@@ -666,6 +669,32 @@ bool MenuVehicleVideoEncodings::sendVideoParams()
    log_line("MenuVideoEncodings: Adaptive video quantization: %s, %s",
     (profileNew.uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_VIDEO_ADAPTIVE_H264_QUANTIZATION)?"On":"ROff",
     (profileNew.uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_VIDEO_ADAPTIVE_QUANTIZATION_STRENGTH_HIGH)?"Strength: High":"Strength: Low");
+
+
+   bool bIsInlineFastChange = false;
+   if ( profileNew.keyframe_ms != g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].keyframe_ms )
+      bIsInlineFastChange = true;
+   if ( (profileNew.uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME) != (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME) )
+      bIsInlineFastChange = true;
+
+   bool bResetState = false;
+   if ( (paramsNew.iCurrentVideoProfile != g_pCurrentModel->video_params.iCurrentVideoProfile) ||
+        ((profileNew.uProfileEncodingFlags & (~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME)) != (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & (~VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME))) )
+   {
+      log_line("MenuVehicleVideoEncodings: Must reset adaptive state.");
+      bIsInlineFastChange = false;
+      bResetState = true;
+   }
+
+   bResetState = false;
+   bIsInlineFastChange = true;
+
+   if ( bIsInlineFastChange )
+      log_line("MenuVehicleVideoEncodings: Doing fast inline change with no adaptive pause.");
+   else
+      send_pause_adaptive_to_router(4000);
+   if ( bResetState )
+      send_reset_adaptive_state_to_router(g_pCurrentModel->uVehicleId);
 
    if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMETERS, 0, (u8*)&paramsNew, sizeof(video_parameters_t), (u8*)(&profiles[0]), MAX_VIDEO_LINK_PROFILES * sizeof(type_video_link_profile)) )
    {

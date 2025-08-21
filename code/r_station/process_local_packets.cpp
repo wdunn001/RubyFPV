@@ -382,6 +382,8 @@ void _process_local_notification_model_changed(t_packet_header* pPH, u8 uChangeT
 
       if ( bResetAdaptive )
          adaptive_video_reset_state(g_pCurrentModel->uVehicleId);
+      else
+         adaptive_video_on_vehicle_video_params_changed(g_pCurrentModel->uVehicleId, &oldVideoParams, &(oldVideoLinkProfiles[0]));
       
       rx_video_output_on_changed_video_params(&oldVideoParams, &oldVideoLinkProfiles[0], &(g_pCurrentModel->video_params), &(g_pCurrentModel->video_link_profiles[0]));
       log_line("Done processing received notification that video parameters have changed.");

@@ -176,7 +176,8 @@ void do_first_boot_initialization_radxa(bool bIsVehicle, u32 uBoardType)
 void do_first_boot_initialization_openipc(bool bIsVehicle, u32 uBoardType)
 {
    log_line("Doing first time boot setup for OpenIPC platform...");
-   hw_execute_bash_command("cp -rf /etc/majestic.yaml /etc/majestic.yaml.org", NULL);
+   if ( (access("/etc/majestic.yaml", R_OK) != -1) && (hardware_file_get_file_size("/etc/majestic.yaml") > 200) )
+      hw_execute_bash_command("cp -rf /etc/majestic.yaml /etc/majestic.yaml.org", NULL);
 
    hw_execute_bash_command("ln -s /lib/firmware/ath9k_htc/htc_9271.fw.3 /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw", NULL);
    hw_execute_bash_command("sed -i 's/console:/#console:/' /etc/inittab", NULL);

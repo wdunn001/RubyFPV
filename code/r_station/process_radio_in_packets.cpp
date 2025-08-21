@@ -955,11 +955,6 @@ int process_received_single_radio_packet(int iInterfaceIndex, u8* pData, int iDa
          g_TimeLastVideoParametersOrProfileChanged = g_TimeNow;
       }
 
-      if ( (pPHCR->origin_command_type & COMMAND_TYPE_MASK) == COMMAND_ID_SET_VIDEO_PARAMETERS )
-      {
-         adaptive_video_on_vehicle_video_params_changed(pPH->vehicle_id_src);
-      }
-
       if ( pPHCR->origin_command_type == COMMAND_ID_GET_ALL_PARAMS_ZIP )
       {
          log_line("[Router] Received command response for get zip model settings, command counter %d, command retry counter %d, %d extra bytes, packet index: %u, on radio interface %d.",

@@ -2997,6 +2997,7 @@ bool Model::validateRadioSettings()
       }
       if ( uNewRadioFlags != radioLinksParams.link_radio_flags[i] )
       {
+         radioLinksParams.downlink_datarate_data_bps[i] = 0;
          char szOldFlags[128];
          char szNewFlags[128];
          str_get_radio_frame_flags_description(radioLinksParams.link_radio_flags[i], szOldFlags);
