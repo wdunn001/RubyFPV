@@ -51,6 +51,7 @@ MenuControllerTelemetry::MenuControllerTelemetry(void)
    addMenuItem(new MenuItemSection(L("Local Telemetry")));
 
    m_pItemsSelect[1] = new MenuItemSelect(L("Telemetry Local Serial Port"), "Sets the serial port to use for telemetry input/output to other devices.");
+
    m_pItemsSelect[1]->addSelection(L("None"));
    for( int i=0; i<hardware_get_serial_ports_count(); i++ )
    {
@@ -62,7 +63,8 @@ MenuControllerTelemetry::MenuControllerTelemetry(void)
    m_pItemsSelect[1]->setIsEditable();
    m_IndexSerialPort = addMenuItem(m_pItemsSelect[1]);
 
-   m_pItemsSelect[2] = new MenuItemSelect(L("Telemetry Local Port Baudrate"), "Sets the baud rate of the serial port used for telemetry.");
+   m_pItemsSelect[2] = new MenuItemSelect(L("Telemetry Local Port Baudrate"), L("Sets the baud rate of the serial port used for telemetry."));
+
    for( int n=0; n<hardware_get_serial_baud_rates_count(); n++ )
    {
       char szBuff[32];
@@ -75,17 +77,17 @@ MenuControllerTelemetry::MenuControllerTelemetry(void)
 
    addMenuItem(new MenuItemSection(L("Other Telemetry Outputs")));
 
-   m_pItemsSelect[3] = new MenuItemSelect("Enable USB Device Telemetry Output", "Enables or disables forwarding the telemetry stream received from vehicle to an external device using a USB connection.");
-   m_pItemsSelect[3]->addSelection("Disabled");
-   m_pItemsSelect[3]->addSelection("Enabled");
+   m_pItemsSelect[3] = new MenuItemSelect(L("Enable USB Device Telemetry Output"), L("Enables or disables forwarding the telemetry stream received from vehicle to an external device using a USB connection."));
+   m_pItemsSelect[3]->addSelection(L("Disabled"));
+   m_pItemsSelect[3]->addSelection(L("Enabled"));
    m_pItemsSelect[3]->setIsEditable();
    m_IndexTelemetryUSBForward = addMenuItem(m_pItemsSelect[3]);
 
-   m_pItemsRange[0] = new MenuItemRange("    USB Telemetry Port Number", "Sets the USB port number to output telemetry to.", 1025, 32000, 5001, 1 );
+   m_pItemsRange[0] = new MenuItemRange(L("    USB Telemetry Port Number"), L("Sets the USB port number to output telemetry to."), 1025, 32000, 5001, 1 );
    m_pItemsRange[0]->setSufix("");
    m_IndexTelemetryUSBPort = addMenuItem(m_pItemsRange[0]);
 
-   m_pItemsRange[1] = new MenuItemRange("    USB Packet Size", "Sets the data packet size send to USB. Some VR apps are sensitive to this value.", 10, 2048, 1024, 1 );
+   m_pItemsRange[1] = new MenuItemRange(L("    USB Packet Size"), L("Sets the data packet size send to USB. Some VR apps are sensitive to this value."), 10, 2048, 1024, 1 );
    m_pItemsRange[1]->setSufix("");
    m_IndexTelemetryUSBPacket = addMenuItem(m_pItemsRange[1]);
 }
