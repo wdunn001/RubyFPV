@@ -161,6 +161,24 @@ void adaptive_video_init()
    log_line("[AdaptiveVideo] Init");
 }
 
+void _adaptive_video_reset_kf_state(Model* pModel, type_global_state_vehicle_runtime_info* pRuntimeInfo)
+{
+   if ( (NULL == pModel) || (NULL == pRuntimeInfo) )
+      return;
+   if ( pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME )
+   {
+      pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget = DEFAULT_VIDEO_AUTO_INITIAL_KEYFRAME_INTERVAL;
+      #if defined (HW_PLATFORM_RASPBERRY)
+      if ( pModel->isRunningOnOpenIPCHardware() )
+         pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget = DEFAULT_VIDEO_AUTO_INITIAL_KEYFRAME_INTERVAL_FALLBACK;
+      #endif
+   }
+   else
+      pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget = pModel->getInitialKeyframeIntervalMs(pModel->video_params.iCurrentVideoProfile);
+   pRuntimeInfo->iPendingKeyFrameMsToSet = pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget;
+   log_line("[AdaptiveVideo] Did reset adaptive/fixed keyframe state to: to request %u ms keyframe from vehicle", pRuntimeInfo->iPendingKeyFrameMsToSet);
+}
+
 void adaptive_video_reset_state(u32 uVehicleId)
 {
    log_line("[AdaptiveVideo] Reset state for VID: %u", uVehicleId);
@@ -190,26 +208,7 @@ void adaptive_video_reset_state(u32 uVehicleId)
             if ( pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileFlags & VIDEO_PROFILE_FLAG_USE_HIGHER_DATARATE )
                g_State.vehiclesRuntimeInfo[i].uCurrentDRBoost = (pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileFlags & VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK) >> VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT;
 
-
-            if ( pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME )
-            {
-               g_State.vehiclesRuntimeInfo[i].iCurrentAdaptiveVideoKeyFrameMsTarget = DEFAULT_VIDEO_AUTO_INITIAL_KEYFRAME_INTERVAL;
-               #if defined (HW_PLATFORM_RASPBERRY)
-               if ( pModel->isRunningOnOpenIPCHardware() )
-                  g_State.vehiclesRuntimeInfo[i].iCurrentAdaptiveVideoKeyFrameMsTarget = 3000;
-               #endif
-            }
-            else
-            {
-               g_State.vehiclesRuntimeInfo[i].iCurrentAdaptiveVideoKeyFrameMsTarget = pModel->getInitialKeyframeIntervalMs(pModel->video_params.iCurrentVideoProfile);
-               #if defined (HW_PLATFORM_RASPBERRY)
-               if ( pModel->isRunningOnOpenIPCHardware() )
-                  g_State.vehiclesRuntimeInfo[i].iCurrentAdaptiveVideoKeyFrameMsTarget = 3000;
-               #endif
-            }
-
-            if ( pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].keyframe_ms > 0 )
-               g_State.vehiclesRuntimeInfo[i].iCurrentAdaptiveVideoKeyFrameMsTarget = pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].keyframe_ms;
+            _adaptive_video_reset_kf_state(pModel, &(g_State.vehiclesRuntimeInfo[i]));
          }
 
          g_State.vehiclesRuntimeInfo[i].uPendingVideoBitrateToSet = g_State.vehiclesRuntimeInfo[i].uCurrentAdaptiveVideoTargetVideoBitrateBPS;
@@ -281,7 +280,7 @@ void _adaptive_video_init_first_handshake(int iRuntimeIndex)
        g_State.vehiclesRuntimeInfo[iRuntimeIndex].iPendingKeyFrameMsToSet);
 }
 
-void adaptive_video_on_vehicle_video_params_changed(u32 uVehicleId)
+void adaptive_video_on_vehicle_video_params_changed(u32 uVehicleId, video_parameters_t* pOldVideoParams, type_video_link_profile* pOldVideoProfiles)
 {
    log_line("[AdaptiveVideo] Video params where updated for VID %u", uVehicleId);
    type_global_state_vehicle_runtime_info* pRuntimeInfo = getVehicleRuntimeInfo(uVehicleId);
@@ -300,6 +299,15 @@ void adaptive_video_on_vehicle_video_params_changed(u32 uVehicleId)
    ProcessorRxVideo* pProcessorRxVideo = ProcessorRxVideo::getVideoProcessorForVehicleId(uVehicleId, 0);
    if ( NULL != pProcessorRxVideo )
       pProcessorRxVideo->setMustParseStream(true);
+
+   if ( (NULL != pOldVideoParams) && (NULL != pOldVideoProfiles) )
+   {
+      if ( (pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].keyframe_ms != pOldVideoProfiles[pOldVideoParams->iCurrentVideoProfile].keyframe_ms) ||
+           ((pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME) != (pOldVideoProfiles[pOldVideoParams->iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME)) )
+      {
+         _adaptive_video_reset_kf_state(pModel, pRuntimeInfo);
+      }
+   }
 }
 
 void adaptive_video_enable_test_mode(bool bEnableTestMode)

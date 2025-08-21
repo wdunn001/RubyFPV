@@ -47,7 +47,7 @@ static u16 s_HashTableLocStrings[STRINGS_HASH_SIZE];
 static const char* s_szLanguages[] = { "Chinese", "English", "French", "German", "Hindi", "Russian", "Spanish" };
 static const char* s_szStringTableEmptyText = "";
 static const char* s_szStringTableMissingText = "missing text";
-static int s_iActiveLanguage = 0;
+static int s_iActiveLanguage = 1;
 static int s_iLocalizationInited = 0;
 
 int getLanguagesCount()

@@ -405,6 +405,7 @@ int load_Preferences()
    if ( bOk && (1 != fscanf(fd, "%d", &s_Preferences.iLanguage)) )
    {
       s_Preferences.iLanguage = 1;
+      bOk = 0;
    }
 
    if ( bOk )

@@ -115,8 +115,10 @@ void do_update_to_112()
 
       save_ControllerSettings();
 
+      load_Preferences();
       Preferences* pP = get_Preferences();
       pP->iDebugMaxPacketSize = MAX_VIDEO_PACKET_DATA_SIZE;
+      pP->iLanguage = 1;
       save_Preferences();
 
       for( int i=0; i<hardware_get_serial_ports_count(); i++ )

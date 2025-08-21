@@ -494,12 +494,12 @@ void MenuVehicleVideoBidirectional::sendVideoSettings(bool bIsInlineFastChange)
    int iMatchProfile = g_pCurrentModel->isVideoSettingsMatchingBuiltinVideoProfile(&paramsNew, &profileNew);
    if ( (iMatchProfile >= 0) && (iMatchProfile < MAX_VIDEO_LINK_PROFILES) )
    {
-      log_line("MenuVideo: Will switch to matched to video profile %s, current video profile was: %s", str_get_video_profile_name(iMatchProfile), szCurrentProfile);
+      log_line("MenuVehicleVideoBidirectional: Will switch to matched to video profile %s, current video profile was: %s", str_get_video_profile_name(iMatchProfile), szCurrentProfile);
       paramsNew.iCurrentVideoProfile = iMatchProfile;
    }
    else
    {
-      log_line("MenuVideo: Will switch to user profile, current video profile was: %s", szCurrentProfile);
+      log_line("MenuVehicleVideoBidirectional: Will switch to user profile, current video profile was: %s", szCurrentProfile);
       paramsNew.iCurrentVideoProfile = VIDEO_PROFILE_USER;
    }
    memcpy((u8*)&profiles[paramsNew.iCurrentVideoProfile ], &profileNew, sizeof(type_video_link_profile));
