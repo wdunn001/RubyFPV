@@ -1431,7 +1431,7 @@ int main(int argc, char *argv[])
       g_pProcessStats->uLoopSubStep = 0;
       g_pProcessStats->uLoopCounter++;
 
-      if ( g_TimeNow - uLastLoopTime > 5  + video_source_csi_get_debug_videobitrate()/1000/1000/5)
+      if ( g_TimeNow - uLastLoopTime > (5  + video_source_csi_get_debug_videobitrate()/1000/1000/5) * g_pCurrentModel->radioLinksParams.links_count )
       {
          iLoopTimeErrorsCount++;
          log_softerror_and_alarm("Main loop took too long: %u ms (%u + %u + %u) cnt2: %u, cnt3: %u, sent pckts: %u",
@@ -1559,7 +1559,6 @@ int _main_loop_try_read_camera()
       iMaxRepeatCount--;
       bIsEndOfFrame = false;
       bDidReadVideoData = video_sources_read_process_stream(&bIsEndOfFrame, packets_queue_has_packets(&g_QueueRadioPacketsOut));
-     
       g_pProcessStats->uLoopSubStep = 7;
 
       if ( (!bDidReadVideoData) || bIsEndOfFrame )
@@ -1580,8 +1579,7 @@ int _main_loop_try_read_camera()
       while ( g_pVideoTxBuffers->hasPendingPacketsToSend() )
       {
          g_pProcessStats->uLoopSubStep = 10;
-         int iPending = g_pVideoTxBuffers->hasPendingPacketsToSend();
-         g_pProcessStats->uLoopCounter4 += g_pVideoTxBuffers->sendAvailablePackets(10);
+         g_pProcessStats->uLoopCounter4 += g_pVideoTxBuffers->sendAvailablePackets(g_pVideoTxBuffers->getCurrentTotalBlockPackets());
 
          int iCount2 = 0;
          while ( (iCount2 < 3) && (!g_bQuit) )
@@ -1596,7 +1594,7 @@ int _main_loop_try_read_camera()
             iCount2++;
             iCountConsumedHighPrio++;
 
-            process_received_single_radio_packet(iRadioInterfaceIndex, pPacket, iPacketLength);      
+            process_received_single_radio_packet(iRadioInterfaceIndex, pPacket, iPacketLength);
             shared_mem_radio_stats_rx_hist_update(&g_SM_HistoryRxStats, iRadioInterfaceIndex, pPacket, g_TimeNow);
 
             g_pProcessStats->uLoopSubStep = 13;
@@ -1654,7 +1652,7 @@ void _main_loop()
 
       iCountConsumedHighPrio++;
 
-      process_received_single_radio_packet(iRadioInterfaceIndex, pPacket, iPacketLength);      
+      process_received_single_radio_packet(iRadioInterfaceIndex, pPacket, iPacketLength);
       shared_mem_radio_stats_rx_hist_update(&g_SM_HistoryRxStats, iRadioInterfaceIndex, pPacket, g_TimeNow);
    }
 
@@ -1687,7 +1685,7 @@ void _main_loop()
 
       shared_mem_radio_stats_rx_hist_update(&g_SM_HistoryRxStats, iRadioInterfaceIndex, pPacket, g_TimeNow);
       process_received_single_radio_packet(iRadioInterfaceIndex, pPacket, iPacketLength);
-   
+
       g_pProcessStats->uLoopSubStep = 23;
 
       u32 uTime = get_current_timestamp_ms();

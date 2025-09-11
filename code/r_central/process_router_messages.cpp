@@ -36,6 +36,7 @@
 #include "../base/ruby_ipc.h"
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_preferences.h"
+#include "../common/models_connect_frequencies.h"
 #include "../common/string_utils.h"
 #include "menu/menu.h"
 #include "menu/menu_objects.h"
@@ -912,8 +913,16 @@ int _process_received_message_from_router(u8* pPacketBuffer)
          if ( bSucceeded )
          {
             u32 uCurrentProfileVideoBitrate = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps;
+            bool bMustUpdateMainConnectFreq = false;
+            u32 uMainConnectFrequency = get_model_main_connect_frequency(g_pCurrentModel->uVehicleId);
+            if ( g_pCurrentModel->radioLinksParams.link_frequency_khz[iRadioLinkId] == uMainConnectFrequency )
+               bMustUpdateMainConnectFreq = true;
             reloadCurrentModel();
             g_pCurrentModel = getCurrentModel();
+
+            if ( bMustUpdateMainConnectFreq )
+               set_model_main_connect_frequency(g_pCurrentModel->uVehicleId, g_pCurrentModel->radioLinksParams.link_frequency_khz[iRadioLinkId]);
+
             if ( uCurrentProfileVideoBitrate != g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps )
             {
                Menu* pm = new Menu(MENU_ID_SIMPLE_MESSAGE, L("Video bitrate updated"),NULL);

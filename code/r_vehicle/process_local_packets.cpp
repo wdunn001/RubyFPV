@@ -360,7 +360,6 @@ void _process_local_notification_model_changed(t_packet_header* pPH, int changeT
    memcpy(&(oldVideoLinkProfiles[0]), &(g_pCurrentModel->video_link_profiles[0]), MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
    memcpy(&oldProcesses, &g_pCurrentModel->processesPriorities, sizeof(type_processes_priorities));
    
-   bool bWasOneWayVideo = g_pCurrentModel->isVideoLinkFixedOneWay();
    u32 uOldDevFlags = g_pCurrentModel->uDeveloperFlags;
    u32 old_ef = g_pCurrentModel->enc_flags;
    bool bMustSignalOtherComponents = true;

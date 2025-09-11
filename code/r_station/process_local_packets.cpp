@@ -677,6 +677,15 @@ void process_local_control_packet(u8* pPacketBuffer)
       adaptive_video_enable_test_mode(pPH->vehicle_id_src?true:false);
       return;
    }
+
+   if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_UPDATED_RADIO_TX_POWERS )
+   {
+      log_line("Received local notification that tx powers or auto tx cards have been updated.");
+      load_ControllerInterfacesSettings();
+      load_ControllerSettings(); 
+      return;
+   }
+
    if ( pPH->packet_type == PACKET_TYPE_LOCAL_CONTROL_VIDEO_RECORDING )
    {
       u8 uCmd = pPacketBuffer[sizeof(t_packet_header)];

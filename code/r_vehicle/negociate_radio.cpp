@@ -49,6 +49,7 @@ u32 s_uTimeStartOfNegociatingRadioLinks = 0;
 u32 s_uTimeLastNegociateRadioLinksReceivedCommand = 0;
 u8 s_uLastNegociateRadioTestIndex = 0xFF;
 u8 s_uLastNegociateRadioTestCommand = 0;
+int s_iLastNegociateRadioTestTxPower = 0;
 u32 s_uOriginalNegociateRadioVideoBitrate = 0;
 
 u32 s_uNegociateRadioCurrentTestRadioFlags = 0;
@@ -89,6 +90,7 @@ void _negociate_radio_link_end(bool bApply, u32 uRadioFlagsToApply, int iDataRat
 
    s_uLastNegociateRadioTestIndex = 0xFF;
    s_uLastNegociateRadioTestCommand = 0;
+   s_iLastNegociateRadioTestTxPower = 0;
    s_uTimeStartOfNegociatingRadioLinks = 0;
    s_uTimeLastNegociateRadioLinksReceivedCommand = 0;
 
@@ -111,6 +113,7 @@ void _negociate_radio_link_end(bool bApply, u32 uRadioFlagsToApply, int iDataRat
 
    if ( NULL != pRadioRuntimeCapab )
    {
+      log_line("[NegociateRadioLink] Save final runtime capability frame flags: %s", str_get_radio_frame_flags_description2(pRadioRuntimeCapab->uSupportedMCSFlags));
       u8 uFlagsRuntimeCapab = g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab;
       memcpy(&g_pCurrentModel->radioRuntimeCapabilities, pRadioRuntimeCapab, sizeof(type_radio_runtime_capabilities_parameters));
       g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab = uFlagsRuntimeCapab | MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED;
@@ -152,12 +155,26 @@ int negociate_radio_process_received_radio_link_messages(u8* pPacketBuffer)
    u8 uTestIndex = pPacketBuffer[sizeof(t_packet_header)];
    u8 uCommand = pPacketBuffer[sizeof(t_packet_header) + sizeof(u8)];
    int iRadioLinkIndex = 0;
+   int iTxPowerMw = 0;
+   int iDatarate = 0;
+   u32 uRadioFlags = 0;
+
    if ( pPH->total_length > (int)(sizeof(t_packet_header) + 2*sizeof(u8)) )
       iRadioLinkIndex = (int) pPacketBuffer[sizeof(t_packet_header) + 2*sizeof(u8)];
-
-   if ( (s_uLastNegociateRadioTestIndex == uTestIndex) && (uCommand == s_uLastNegociateRadioTestCommand) )
+   if ( (uCommand == NEGOCIATE_RADIO_TEST_PARAMS) || (uCommand == NEGOCIATE_RADIO_APPLY_PARAMS) )
    {
-      log_line("[NegociateRadioLink] Received duplicate test %d, command %d, send reply back.", uTestIndex, uCommand);
+      u8* pTmp = &(pPacketBuffer[sizeof(t_packet_header) + 3*sizeof(u8)]);
+      memcpy(&iDatarate, pTmp, sizeof(int));
+      pTmp += sizeof(int);
+      memcpy(&uRadioFlags, pTmp, sizeof(u32));
+      pTmp += sizeof(u32);
+      memcpy(&iTxPowerMw, pTmp, sizeof(int));
+      pTmp += sizeof(int);    
+   }
+
+   if ( (s_uLastNegociateRadioTestIndex == uTestIndex) && (uCommand == s_uLastNegociateRadioTestCommand) && ( iTxPowerMw == s_iLastNegociateRadioTestTxPower) )
+   {
+      log_line("[NegociateRadioLink] Received duplicate test %d, command %d, tx power %d mW, just send reply back.", uTestIndex, uCommand, iTxPowerMw);
       if ( uCommand != NEGOCIATE_RADIO_KEEP_ALIVE )
          packets_queue_add_packet(&g_QueueRadioPacketsOut, s_uLastPacketNegociateReply);
       return 0;
@@ -165,22 +182,20 @@ int negociate_radio_process_received_radio_link_messages(u8* pPacketBuffer)
 
    s_uLastNegociateRadioTestIndex = uTestIndex;
    s_uLastNegociateRadioTestCommand = uCommand;
+   s_iLastNegociateRadioTestTxPower = iTxPowerMw;
 
    log_line("[NegociateRadioLink] Received test message %d, command %d, link index: %d", uTestIndex, uCommand, iRadioLinkIndex);
 
    if ( (uCommand == NEGOCIATE_RADIO_TEST_PARAMS) || (uCommand == NEGOCIATE_RADIO_APPLY_PARAMS) )
    {
       u8* pTmp = &(pPacketBuffer[sizeof(t_packet_header) + 3*sizeof(u8)]);
-      int iDatarate = 0;
-      int iTxPowerMw = 0;
-      u32 uRadioFlags = 0;
       memcpy(&iDatarate, pTmp, sizeof(int));
       pTmp += sizeof(int);
       memcpy(&uRadioFlags, pTmp, sizeof(u32));
       pTmp += sizeof(u32);
       memcpy(&iTxPowerMw, pTmp, sizeof(int));
       pTmp += sizeof(int);
-      log_line("[NegociateRadioLink] Recv test %d for radio link %d, command %d, datarate: %s, radio flags: %s, tx power: %d",
+      log_line("[NegociateRadioLink] Recv test %d for radio link %d, command %d, datarate: %s, radio flags: %s, tx power: %d mW",
          uTestIndex, iRadioLinkIndex, uCommand, str_format_datarate_inline(iDatarate), str_get_radio_frame_flags_description2(uRadioFlags), iTxPowerMw);
 
       if ( uCommand == NEGOCIATE_RADIO_TEST_PARAMS )

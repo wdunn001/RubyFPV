@@ -664,7 +664,7 @@ float osd_show_txpowers(float xPos)
       strcpy(szTxPower, "0 mW");
       if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
          strcpy(szTxPower, "- mW");
-      else if ( pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink] <= 0 )
+      else if ( pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink] == 0 )
       {
          strcpy(szTxPower, "N/A mW");
          bYellow = true;
@@ -685,11 +685,18 @@ float osd_show_txpowers(float xPos)
             break;
          }
          */
+         char szPowerPref[16];
+         szPowerPref[0] = 0;
          int iPowerMw = pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink];
+         if ( iPowerMw < 0 )
+         {
+            iPowerMw = -iPowerMw;
+            strcpy(szPowerPref, "*");
+         }
          if ( iPowerMw < 1000 )
-            sprintf(szTxPower, "%d mW", iPowerMw);
+            sprintf(szTxPower, "%s%d mW", szPowerPref, iPowerMw);
          else
-            sprintf(szTxPower, "%.1f W", ((float)iPowerMw)/1000.0);
+            sprintf(szTxPower, "%s%.1f W", szPowerPref, ((float)iPowerMw)/1000.0);
 
          if ( iPowerMw >= 0 )
             bRed = false;

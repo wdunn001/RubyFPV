@@ -3,6 +3,10 @@
 #include <sys/resource.h>
 #include <ctype.h>
 #include <pthread.h>
+#include <errno.h>
+#include <sys/uio.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "base.h"
 #include "config.h"
@@ -51,6 +55,7 @@ char* hw_process_get_pids_inline(const char* szProcName)
    hw_process_get_pids(szProcName, s_szHWProcessPIDs);
    return s_szHWProcessPIDs;
 }
+
 void hw_process_get_pids(const char* szProcName, char* szOutput)
 {
    if ( NULL == szOutput )
@@ -176,28 +181,111 @@ int hw_kill_process(const char* szProcName, int iSignal)
    return 0;
 }
 
-
-int hw_launch_process(const char *szFile)
+int hw_execute_process(const char *szCommand, char* szOutput)
 {
-   return hw_launch_process4(szFile, NULL, NULL, NULL, NULL);
+   //u32 uTimeStart2 = get_current_timestamp_ms();
+   //hw_execute_bash_command_raw(szCommand, szOutput);
+   //u32 uTime2 = get_current_timestamp_ms() - uTimeStart2;
+   //log_line("DBG finished executing [%s] in %u ms", szCommand, uTime2);
+   //return 0;
+
+   log_line("Executing process: [%s]...", szCommand);
+
+   char* argv[32];
+   memset(argv, 0, sizeof(argv));
+
+   int iCountArg = 0;
+   char szArgs[1024];
+   strncpy(szArgs, szCommand, 1023);
+   szArgs[1023] = 0;
+   char* pTmp = szArgs;
+   char* pToken = pTmp;
+   while ( 1 )
+   {
+      if ( (*pTmp != ' ') && (*pTmp != 0) )
+      {
+         pTmp++;
+         continue;
+      }
+      if ( (pToken[1] == '>') && ((pToken[0] == '1') || (pToken[0] == '2')) )
+      {
+         argv[iCountArg] = NULL;
+         break;
+      }
+
+      argv[iCountArg] = pToken;
+      iCountArg++;
+
+      if ( (*pTmp == 0) || (iCountArg > 30) )
+         break;
+      *pTmp = 0;
+      pTmp++;
+      pToken = pTmp;
+   }
+
+   u32 uTimeStart = get_current_timestamp_ms();
+
+   int stdout_fds[2];
+   int stderr_fds[2];
+   pipe(stdout_fds);
+   pipe(stderr_fds);
+ 
+   const pid_t pidChild = fork();
+   if (0 == pidChild)
+   {
+      close(stdout_fds[0]);
+      close(stderr_fds[0]);
+      dup2(stdout_fds[1], 1);
+      dup2(stdout_fds[1], 2);
+      close(stdout_fds[1]);
+      close(stderr_fds[1]);
+      execvp(argv[0], argv);
+      exit(0);
+   }
+
+   int iCountRead = 0;
+   int iResWait = 0;
+   if ( NULL == szOutput )
+   {
+      close(stdout_fds[1]);
+      close(stdout_fds[0]);
+      close(stderr_fds[1]);
+      close(stderr_fds[0]);
+
+      int timeout = 1000;
+      int status = 0;
+      while ( 0 == iResWait )
+      {
+         iResWait = waitpid(pidChild , &status , WNOHANG);
+         if ( iResWait != 0 )
+            break;
+         hardware_sleep_ms(1);
+         timeout--;
+         if ( timeout == 0 )
+            break;
+      }
+   }
+   else
+   {
+      close(stdout_fds[1]);
+      do
+      {
+        int iRead = read(stdout_fds[0], &(szOutput[iCountRead]), 1024);
+        if ( iRead > 0 )
+           iCountRead += iRead;
+      } while ( (errno == EAGAIN) || (errno == EINTR));
+      szOutput[iCountRead] = 0;
+      close(stdout_fds[0]);
+      close(stderr_fds[1]);
+      close(stderr_fds[0]);
+   }
+
+   u32 uTime = get_current_timestamp_ms() - uTimeStart;
+   log_line("Finished executing and waiting for child pid %d, res pid: %d, read %d bytes in %u ms", pidChild, iResWait, iCountRead, uTime);
+   return 0;
 }
 
-int hw_launch_process1(const char *szFile, const char* szParam1)
-{
-   return hw_launch_process4(szFile, szParam1, NULL, NULL, NULL);
-}
-
-int hw_launch_process2(const char *szFile, const char* szParam1, const char* szParam2)
-{
-   return hw_launch_process4(szFile, szParam1, szParam2, NULL, NULL);
-}
-
-int hw_launch_process3(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3)
-{
-   return hw_launch_process4(szFile, szParam1, szParam2, szParam3, NULL);
-}
-
-int hw_launch_process4(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3, const char* szParam4)
+int hw_launch_process_exec(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3, const char* szParam4)
 {
    // execv messes up the timer
 

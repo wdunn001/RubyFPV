@@ -440,7 +440,10 @@ void ProcessorRxVideo::handleReceivedVideoPacket(int interfaceNb, u8* pBuffer, i
    type_global_state_vehicle_runtime_info* pRuntimeInfo = getVehicleRuntimeInfo(m_uVehicleId);
    Model* pModel = findModelWithId(m_uVehicleId, 170);
 
-   if ( (NULL == m_pVideoRxBuffer) || (NULL == pRuntimeInfo) || (! pRuntimeInfo->bIsPairingDone) || (NULL == pModel) )
+   if ( (NULL == m_pVideoRxBuffer) || (NULL == pRuntimeInfo) || (NULL == pModel) )
+      return;
+
+   if ( (!pModel->is_spectator) && (! pRuntimeInfo->bIsPairingDone) )
       return;
 
    #ifdef PROFILE_RX
@@ -452,8 +455,10 @@ void ProcessorRxVideo::handleReceivedVideoPacket(int interfaceNb, u8* pBuffer, i
    {
       if ( pPHVS->uCurrentBlockIndex == m_uLastTopBlockRequested )
       {
-         log_line("[ProcessorRxVideo] Recv org top block video pckt [%u/%u] after it was requested for retr.",
-            pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex);
+         log_line("[ProcessorRxVideo] Recv org top block video pckt [%u/%u] [eof: %d] after it was requested for retr.",
+            pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex,
+            (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_END_OF_TRANSMISSION_FRAME) ?
+            (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK): -1);
       }
       if ( m_bPauseTempRetrUntillANewVideoPacket )
       {
@@ -477,6 +482,27 @@ void ProcessorRxVideo::handleReceivedVideoPacket(int interfaceNb, u8* pBuffer, i
       m_InfoLastReceivedVideoPacket.video_block_packet_index = pPHVS->uCurrentBlockPacketIndex;
    }
 
+   if ( pPH->packet_flags & PACKET_FLAGS_BIT_RETRANSMITED )
+   {
+      if ( pPHVS->uCurrentBlockIndex == m_uLastTopBlockRequested )
+      {
+         log_line("[ProcessorRxVideo] Recv retr video pckt [%u/%u] [eof: %d] after it was requested for retr on retr id %u",
+               pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex,
+               (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_END_OF_TRANSMISSION_FRAME) ?
+               (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK): -1,
+               pPHVS->uStreamInfo);
+      }
+      if ( m_pVideoRxBuffer->hasVideoPacket(pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex) ||
+           (pPHVS->uCurrentBlockIndex < m_pVideoRxBuffer->getBufferBottomVideoBlockIndex()) )
+      {
+         g_SMControllerRTInfo.uOutputedVideoPacketsRetransmittedDiscarded[g_SMControllerRTInfo.iCurrentIndex]++;
+         log_line("[ProcessorRxVideo] Discard retr video pckt [%u/%u] [eof: %d] (part of retr id %u) as it's already received or outputed.",
+               pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex,
+               (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_END_OF_TRANSMISSION_FRAME) ?
+               (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK): -1,
+               pPHVS->uStreamInfo);
+      }
+   }
    #if defined(RUBY_BUILD_HW_PLATFORM_PI)
    if (((pPHVS->uVideoStreamIndexAndType >> 4) & 0x0F) == VIDEO_TYPE_H265 )
    {
@@ -691,6 +717,8 @@ void ProcessorRxVideo::updateControllerRTInfoAndVideoDecodingStats(u8* pRadioPac
       return;
    t_packet_header_video_segment* pPHVS = (t_packet_header_video_segment*) (pRadioPacket+sizeof(t_packet_header));    
 
+   //log_line("DBG flag %d: %u", pPHVS->uStreamInfoFlags, pPHVS->uStreamInfo);
+
    if ( g_SM_VideoDecodeStats.video_streams[m_iIndexVideoDecodeStats].PHVS.uCurrentVideoLinkProfile != pPHVS->uCurrentVideoLinkProfile )
    {
       // Video profile changed on the received stream
@@ -736,6 +764,20 @@ void ProcessorRxVideo::updateControllerRTInfoAndVideoDecodingStats(u8* pRadioPac
    if ( pPHVS->uStreamInfoFlags == VIDEO_STREAM_INFO_FLAG_VIDEO_PROFILE_FLAGS )
    {
       g_SM_VideoDecodeStats.video_streams[m_iIndexVideoDecodeStats].uCurrentVideoProfileEncodingFlags = pPHVS->uStreamInfo;
+   }
+
+   if ( pPHVS->uStreamInfoFlags == VIDEO_STREAM_INFO_FLAG_SET_VIDEO_BITRATE )
+   {
+      if ( g_SM_VideoDecodeStats.video_streams[m_iIndexVideoDecodeStats].uLastSetVideoBitrate != pPHVS->uStreamInfo )
+         log_line("[ProcessorRxVideo] Detected video stream set bitrate changed. From %.3f Mbps to %.3f Mbps", (float)g_SM_VideoDecodeStats.video_streams[m_iIndexVideoDecodeStats].uLastSetVideoBitrate/1000.0/1000.0, (float)pPHVS->uStreamInfo/1000.0/1000.0);
+      g_SM_VideoDecodeStats.video_streams[m_iIndexVideoDecodeStats].uLastSetVideoBitrate = pPHVS->uStreamInfo;
+   }
+
+   if ( pPHVS->uStreamInfoFlags == VIDEO_STREAM_INFO_FLAG_SET_KF_MS )
+   {
+      if ( g_SM_VideoDecodeStats.video_streams[m_iIndexVideoDecodeStats].uLastSetVideoKeyframeMs != pPHVS->uStreamInfo )
+         log_line("[ProcessorRxVideo] Detected video stream set keyframe changed. From %u ms to %u ms", g_SM_VideoDecodeStats.video_streams[m_iIndexVideoDecodeStats].uLastSetVideoKeyframeMs, pPHVS->uStreamInfo);
+      g_SM_VideoDecodeStats.video_streams[m_iIndexVideoDecodeStats].uLastSetVideoKeyframeMs = pPHVS->uStreamInfo;
    }
 }
 
@@ -1029,8 +1071,9 @@ int ProcessorRxVideo::checkAndRequestMissingPackets(bool bForceSyncNow)
          }
          m_uLastTopBlockRequested = pVideoBlock->uVideoBlockIndex;
          m_iMaxRecvPacketTopBlockWhenRequested = pVideoBlock->iMaxReceivedDataOrECPacketIndex;
-         log_line("[ProcessorRxVideo] Top block (%u, scheme %d/%d) has %d/%d recv data/ec packets, max recv index: %d, eof: %d, last recv packet %u ms ago, last retr check %u ms ago, last check for video rx %u ms ago, will request %d packets.",
+         log_line("[ProcessorRxVideo] Top block (%u, scheme %d/%d, %d blocks in Rx buffer, bottom block is: %u) has %d/%d recv data/ec packets, max recv index: %d, eof: %d, last recv packet %u ms ago, last retr check %u ms ago, last check for video rx %u ms ago, will request %d packets.",
              pVideoBlock->uVideoBlockIndex, pVideoBlock->iBlockDataPackets, pVideoBlock->iBlockECPackets,
+             iCountBlocks, m_pVideoRxBuffer->getBufferBottomVideoBlockIndex(),
              pVideoBlock->iRecvDataPackets, pVideoBlock->iRecvECPackets, pVideoBlock->iMaxReceivedDataOrECPacketIndex,
              pVideoBlock->iEndOfFrameDetectedAtPacketIndex,
              g_TimeNow - pVideoBlock->uReceivedTime, g_TimeNow - uTimePrevCheck, g_TimeNow - router_get_last_time_checked_for_video_packets(),

@@ -504,6 +504,25 @@ bool VideoRxPacketsBuffer::_add_video_packet_to_buffer(int iBufferIndex, u8* pPa
    return true;
 }
 
+bool VideoRxPacketsBuffer::hasVideoPacket(u32 uVideoBlockIndex, u32 uVideoBlockPacketIndex)
+{
+   if ( m_bBuffersEmpty )
+      return false;
+   if ( (-1 != m_iTopBufferIndex) && (uVideoBlockIndex > m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex) )
+      return false;
+
+   if ( (-1 != m_iBottomBufferIndex) && (uVideoBlockIndex < m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex) )
+      return false;
+
+   u32 uDiffBlocks = uVideoBlockIndex - m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex;
+   int iBufferIndex = m_iBottomBufferIndex + (int) uDiffBlocks;
+   iBufferIndex = iBufferIndex % MAX_RXTX_BLOCKS_BUFFER;
+
+   if ( m_VideoBlocks[iBufferIndex].packets[uVideoBlockPacketIndex].bEmpty )
+      return false;
+   return true;
+}
+
 // Returns true if the packet has the highest video block/packet index received (in order)
 bool VideoRxPacketsBuffer::checkAddVideoPacket(u8* pPacket, int iPacketLength)
 {

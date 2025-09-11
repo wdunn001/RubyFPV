@@ -1127,7 +1127,7 @@ bool handle_last_command_result()
          
          for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
          {
-            sprintf(szBuff, "Radio Interface %d: %s, USB port %s,  %s, driver %s", i+1, g_pCurrentModel->radioInterfacesParams.interface_szMAC[i], g_pCurrentModel->radioInterfacesParams.interface_szPort[i], str_get_radio_type_description(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i]), str_get_radio_driver_description(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i]));
+            sprintf(szBuff, "Radio Interface %d: %s, USB port %s,  %s, driver %s", i+1, g_pCurrentModel->radioInterfacesParams.interface_szMAC[i], g_pCurrentModel->radioInterfacesParams.interface_szPort[i], str_get_radio_type_description(g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i]), str_get_radio_driver_description((g_pCurrentModel->radioInterfacesParams.interface_radiotype_and_driver[i]>>8) & 0xFF));
             s_pMenuVehicleHWInfo->addTopLine(szBuff);
             sprintf(szBuff, ". . . currently at %s, supported bands: ", str_format_frequency(g_pCurrentModel->radioInterfacesParams.interface_current_frequency_khz[i]));
             if ( g_pCurrentModel->radioInterfacesParams.interface_supported_bands[i] & RADIO_HW_SUPPORTED_BAND_433 )
@@ -1661,53 +1661,28 @@ bool handle_last_command_result()
        {
          warnings_remove_configuring_radio_link(true);
          link_reset_reconfiguring_radiolink();
-            
-         if ( s_CommandParam & 0x80000000 ) // New format
+              
+         u32 tmpLink = (s_CommandParam>>24) & 0xFF;
+         u32 tmpFreq = (s_CommandParam & 0xFFFFFF);
+         log_line("[Commands] Received response Ok from vehicle to the link frequency change (new format). Vehicle radio link %u new freq: %s", tmpLink+1, str_format_frequency(tmpFreq));
+         if ( (int)tmpLink < g_pCurrentModel->radioLinksParams.links_count )
          {
-            u32 tmpLink = (s_CommandParam>>24) & 0x7F;
-            u32 tmpFreq = (s_CommandParam & 0xFFFFFF);
-            log_line("[Commands] Received response Ok from vehicle to the link frequency change (new format). Vehicle radio link %u new freq: %s", tmpLink+1, str_format_frequency(tmpFreq));
-            if ( (int)tmpLink < g_pCurrentModel->radioLinksParams.links_count )
+            u32 uMainConnectFrequency = get_model_main_connect_frequency(g_pCurrentModel->uVehicleId);
+            if ( g_pCurrentModel->radioLinksParams.link_frequency_khz[tmpLink] == uMainConnectFrequency )
+               set_model_main_connect_frequency(g_pCurrentModel->uVehicleId, tmpFreq);
+            g_pCurrentModel->radioLinksParams.link_frequency_khz[tmpLink] = tmpFreq;
+            for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
             {
-               u32 uMainConnectFrequency = get_model_main_connect_frequency(g_pCurrentModel->uVehicleId);
-               if ( g_pCurrentModel->radioLinksParams.link_frequency_khz[tmpLink] == uMainConnectFrequency )
-                  set_model_main_connect_frequency(g_pCurrentModel->uVehicleId, tmpFreq);
-               g_pCurrentModel->radioLinksParams.link_frequency_khz[tmpLink] = tmpFreq;
-               for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
-               {
-                  if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] == (int)tmpLink )
-                     g_pCurrentModel->radioInterfacesParams.interface_current_frequency_khz[i] = tmpFreq;
-               }
-               saveControllerModel(g_pCurrentModel);
-               u32 data[2];
-               data[0] = tmpLink;
-               data[1] = tmpFreq;
-               send_control_message_to_router_and_data(PACKET_TYPE_LOCAL_CONTROL_LINK_FREQUENCY_CHANGED, (u8*)(&data[0]), 2*sizeof(u32));
+               if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] == (int)tmpLink )
+                  g_pCurrentModel->radioInterfacesParams.interface_current_frequency_khz[i] = tmpFreq;
             }
+            saveControllerModel(g_pCurrentModel);
+            u32 data[2];
+            data[0] = tmpLink;
+            data[1] = tmpFreq;
+            send_control_message_to_router_and_data(PACKET_TYPE_LOCAL_CONTROL_LINK_FREQUENCY_CHANGED, (u8*)(&data[0]), 2*sizeof(u32));
          }
-         else
-         {
-            u32 tmpLink = (s_CommandParam>>16);
-            u32 tmpFreq = (s_CommandParam & 0xFFFF);
-            log_line("[Commands] Received response Ok from vehicle to the link frequency change (old format). Vehicle radio link %u new freq: %s", tmpLink+1, str_format_frequency(tmpFreq));
-            if ( (int)tmpLink < g_pCurrentModel->radioLinksParams.links_count )
-            {
-               u32 uMainConnectFrequency = get_model_main_connect_frequency(g_pCurrentModel->uVehicleId);
-               if ( g_pCurrentModel->radioLinksParams.link_frequency_khz[tmpLink] == uMainConnectFrequency )
-                  set_model_main_connect_frequency(g_pCurrentModel->uVehicleId, tmpFreq*1000);
-               g_pCurrentModel->radioLinksParams.link_frequency_khz[tmpLink] = tmpFreq*1000;
-               for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
-               {
-                  if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] == (int)tmpLink )
-                     g_pCurrentModel->radioInterfacesParams.interface_current_frequency_khz[i] = tmpFreq;
-               }
-               saveControllerModel(g_pCurrentModel);
-               u32 data[2];
-               data[0] = tmpLink;
-               data[1] = tmpFreq;
-               send_control_message_to_router_and_data(PACKET_TYPE_LOCAL_CONTROL_LINK_FREQUENCY_CHANGED, (u8*)(&data[0]), 2*sizeof(u32));
-            }
-         }
+        
          break;
       }
 

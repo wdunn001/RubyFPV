@@ -56,11 +56,12 @@ class MenuNegociateRadio: public Menu
       void _reset_tests_and_state();
       void _getTestType(int iTestIndex, char* szType);
       char* _getTestType(int iTestIndex);
-      void _storeCurrentTestData();
+      void _storeCurrentTestDataFromRadioStats();
       void _logTestData(int iTestIndex);
       float _getMaxComputedQualityForDatarate(int iDatarate, int* pTestIndex);
       float _getMinComputedQualityForDatarate(int iDatarate, int* pTestIndex);
       void _computeQualities();
+      bool _compute_radio_flags_to_apply();
       bool _compute_settings_to_apply();
       
       void _send_keep_alive_to_vehicle();
@@ -70,7 +71,7 @@ class MenuNegociateRadio: public Menu
       void _send_apply_settings_to_vehicle();
 
       void _startTest(int iTestIndex);
-      void _endCurrentTest();
+      void _endCurrentTest(bool bUpdateTestState);
       void _currentTestUpdateWhenRunning();
       void _advance_to_next_test();
       
@@ -103,12 +104,15 @@ class MenuNegociateRadio: public Menu
 
       type_negociate_radio_step m_TestsInfo[MAX_NEGOCIATE_TESTS];
       int m_iTestsCount;
-      int m_iIndexFirstDatarateLegacyTest;
-      int m_iIndexLastDatarateLegacyTest;
-      int m_iIndexFirstDatarateMCSTest;
-      int m_iIndexLastDatarateMCSTest;
       int m_iIndexFirstRadioFlagsTest;
+      int m_iIndexLastRadioFlagsTest;
+      int m_iIndexFirstDatarateLegacyTest;
+      int m_iIndexFirstDatarateMCSTest;
+      int m_iIndexLastDatarateLegacyTest;
+      int m_iIndexLastDatarateMCSTest;
       int m_iIndexFirstRadioPowersTest;
+      int m_iIndexFirstRadioPowersTestMCS;
+      int m_iIndexLastRadioPowersTestMCS;
       int m_iTestIndexSTBCV;
       int m_iTestIndexLDPVV;
       int m_iTestIndexSTBCLDPCV;

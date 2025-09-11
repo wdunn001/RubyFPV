@@ -86,9 +86,15 @@ u32 s_uDebugUDPInputReads = 0;
 u32 s_uLastNALType = 0;
 bool s_bLastReadIsSingleNAL = false;
 bool s_bLastReadIsEndNAL = false;
+bool s_bLastReadIsStartNAL = false;
 u32 s_uTimeLastMajesticRecvData = 0;
 u32 s_uTimeLastCheckMajesticProcess = 0;
 int s_iCountMajestigProcessNotRunningChecks = 0;
+
+u8* s_pTempBufferMajesticNALFrame = NULL;
+int s_iTempBufferMajesticNALFrameMaxSize = 255000;
+int s_iTempBufferMajesticNALFrameBytes = 0;
+u32 s_uTempBufferMajesticNALFlags = 0;
 
 u32 s_uLastVideoSourceReadTimestamps[5];
 u32 s_uLastAlarmUDPOveflowTimestamp = 0;
@@ -182,15 +188,33 @@ int _video_source_majestic_open(int iUDPPort)
    return s_fInputVideoStreamUDPSocket;
 }
 
-void video_source_majestic_start_program()
+// Returns initial set video bitrate
+u32 video_source_majestic_start_program(u32 uOverwriteInitialBitrate, int iOverwriteInitialKFMs, int iOverwriteInitialQPDelta, int* pInitialKFSet)
 {
    log_line("[VideoSourceMaj] Start program: Majestic file size: %d bytes", get_filesize("/usr/bin/majestic") );
 
    if ( 0 != hardware_camera_maj_validate_config() )
    {
       log_softerror_and_alarm("[VideoSourceMaj] Start program: Invalid majestic config. Don't start it.");
-      return;
+      return 0;
    }
+
+   s_iTempBufferMajesticNALFrameBytes = 0;
+   s_uTempBufferMajesticNALFlags = 0;
+   if ( NULL == s_pTempBufferMajesticNALFrame )
+   {
+      s_pTempBufferMajesticNALFrame = (u8*)malloc(s_iTempBufferMajesticNALFrameMaxSize);
+      if ( NULL == s_pTempBufferMajesticNALFrame )
+      {
+         log_error_and_alarm("[VideoSourceMaj] Failed to allocate %d bytes buffer for temp majestic NAL frame.", s_iTempBufferMajesticNALFrameMaxSize);
+         if ( s_iTempBufferMajesticNALFrameMaxSize > 64000 )
+            s_iTempBufferMajesticNALFrameMaxSize /= 2;
+         return 0;
+      }
+      log_line("[VideoSourceMaj] Allocated %d bytes for temp majestic NAL frame.", s_iTempBufferMajesticNALFrameMaxSize);
+   }
+   else
+      log_line("[VideoSourceMaj] Temp majestic NAL frame buffer is %d bytes", s_iTempBufferMajesticNALFrameMaxSize);
 
    hardware_set_oipc_gpu_boost(g_pCurrentModel->processesPriorities.iFreqGPU);
 
@@ -198,10 +222,19 @@ void video_source_majestic_start_program()
    //if ( (NULL != g_pCurrentModel) && (g_pCurrentModel->uDeveloperFlags & DEVELOPER_FLAGS_BIT_LOG_ONLY_ERRORS) )
    //   bEnableLog = false;
 
+   log_line("[VideoSourceMaj] Start and set params for majestic.");
+   log_line("[VideoSourceMaj] Overwrite initial bitrate: %.3f", (float)uOverwriteInitialBitrate/1000.0/1000.0);
+   log_line("[VideoSourceMaj] Overwrite initial keyframe: %d ms", iOverwriteInitialKFMs);
+   log_line("[VideoSourceMaj] Overwrite initial QPDelta: %d", iOverwriteInitialQPDelta);
    hardware_camera_maj_add_log("Initialize...", false);
 
+   hardware_camera_maj_set_temp_values(uOverwriteInitialBitrate, iOverwriteInitialKFMs, iOverwriteInitialQPDelta);
    video_source_majestic_apply_all_parameters();
    hardware_camera_maj_start_capture_program(false);
+
+   u32 uInitialVideoBitrate = hardware_camera_maj_get_current_bitrate();
+   if ( NULL != pInitialKFSet )
+      *pInitialKFSet = hardware_camera_maj_get_current_keyframe();
 
    int iPID = hardware_camera_maj_get_current_pid();
    if ( 0 == iPID )
@@ -209,7 +242,7 @@ void video_source_majestic_start_program()
       log_softerror_and_alarm("[VideoSourceMaj] Start program: Can't find the PID of majestic");
       s_uTimeMajesticStarted = 0;
       s_bIsRestartingMajestic = false;
-      return;
+      return 0;
    }
    log_line("[VideoSourceMaj] Started majestic capture program, PID: %d", iPID);
    hardware_camera_maj_add_log("Majestic is started.", false);
@@ -232,7 +265,8 @@ void video_source_majestic_start_program()
    s_uTimeMajesticStarted = g_TimeNow;
    s_bIsRestartingMajestic = false;
 
-   log_line("[VideoSourceMaj] Start program: Completed."); 
+   log_line("[VideoSourceMaj] Start program: Completed. Initial video bitrate set to majestic: %.3f", (float)uInitialVideoBitrate/1000.0/1000.0);
+   return uInitialVideoBitrate;
 }
 
 void video_source_majestic_apply_all_parameters()
@@ -272,8 +306,8 @@ void _restart_majestic_procedure()
       hardware_camera_maj_stop_capture_program();
    }
 
-   video_source_majestic_start_program();
-   
+   video_sources_start_capture();
+
    log_line("[VideoSourceMaj] Restart procedure completed.");
 }
 
@@ -473,6 +507,7 @@ int _video_source_majestic_parse_rtp_data(u8* pInputRawData, int iInputBytes)
 {
    s_bLastReadIsSingleNAL = false;
    s_bLastReadIsEndNAL = false;
+   s_bLastReadIsStartNAL = false;
 
    if ( iInputBytes <= 12 )
    {
@@ -539,6 +574,8 @@ int _video_source_majestic_parse_rtp_data(u8* pInputRawData, int iInputBytes)
 
       s_bLastReadIsSingleNAL = true;
       s_bLastReadIsEndNAL = true;
+      s_bLastReadIsStartNAL = true;
+
       // H264 frame type: lower 5 bits (&0x1F) of uNALOutputHeader[4]: 5 - Iframe, 1 - Pframe
       s_uLastNALType = pInputRawData[0] & 0x1F;
 
@@ -554,6 +591,8 @@ int _video_source_majestic_parse_rtp_data(u8* pInputRawData, int iInputBytes)
 
    s_bLastReadIsSingleNAL = false;
    s_bLastReadIsEndNAL = false;
+   s_bLastReadIsStartNAL = false;
+
    
    u8 uFUStartBit = 0;
    u8 uFUEndBit = 0;
@@ -604,6 +643,8 @@ int _video_source_majestic_parse_rtp_data(u8* pInputRawData, int iInputBytes)
       iInputBytes--;
    }
 
+   if ( uFUStartBit )
+      s_bLastReadIsStartNAL = true;
    if ( uFUEndBit )
       s_bLastReadIsEndNAL = true;
 
@@ -769,9 +810,59 @@ void video_source_majestic_clear_input_buffers()
    log_line("[VideoSourceMaj] Done clearing input buffers. Cleared %d packets, total %d bytes.", iCount, iBytes);
 }
 
+bool video_source_majestic_read_process_stream(bool* pbEndOfFrameDetected, int iHasPendingDataPacketsToSend)
+{
+   if ( NULL != pbEndOfFrameDetected )
+      *pbEndOfFrameDetected = false;
+
+   bool bEndOfFrame = false;
+   int iReadSize = 0;
+   u8* pVideoData = video_source_majestic_read(&iReadSize, true);
+   while ( (iReadSize > 0) && (NULL != pVideoData) )
+   {
+      bool bSingle = video_source_majestic_last_read_is_single_nal();
+      bool bStart = video_source_majestic_last_read_is_start_nal();
+      bool bEnd = video_source_majestic_last_read_is_end_nal();
+      u32 uNALType = video_source_majestic_get_last_nal_type();
+
+      if ( (uNALType == 7) || (uNALType == 8) )
+         s_uTempBufferMajesticNALFlags |= VIDEO_STATUS_FLAGS2_IS_NAL_OTHER;
+      else if ( uNALType == 1 )
+         s_uTempBufferMajesticNALFlags |= VIDEO_STATUS_FLAGS2_IS_NAL_P;
+      else
+         s_uTempBufferMajesticNALFlags |= VIDEO_STATUS_FLAGS2_IS_NAL_I;
+      
+      if ( s_iTempBufferMajesticNALFrameBytes + iReadSize < s_iTempBufferMajesticNALFrameMaxSize )
+      {
+         memcpy(&(s_pTempBufferMajesticNALFrame[s_iTempBufferMajesticNALFrameBytes]), pVideoData, iReadSize);
+         s_iTempBufferMajesticNALFrameBytes += iReadSize;
+      }
+
+      if ( bEnd && (s_iTempBufferMajesticNALFrameBytes > 0) )
+      if ( (uNALType != 7) && (uNALType != 8) )
+      {
+         if ( NULL != g_pVideoTxBuffers )
+            g_pVideoTxBuffers->fillVideoPacketsFromNALFrames(s_pTempBufferMajesticNALFrame, s_iTempBufferMajesticNALFrameBytes, s_uTempBufferMajesticNALFlags, iHasPendingDataPacketsToSend);
+         if ( NULL != pbEndOfFrameDetected )
+            *pbEndOfFrameDetected = true;
+         s_iTempBufferMajesticNALFrameBytes = 0;
+         s_uTempBufferMajesticNALFlags = 0;
+         return true;
+      }
+      iReadSize = 0;
+      pVideoData = video_source_majestic_read(&iReadSize, true);
+   }
+   return false;
+}
+
 bool video_source_majestic_last_read_is_single_nal()
 {
    return s_bLastReadIsSingleNAL;
+}
+
+bool video_source_majestic_last_read_is_start_nal()
+{
+   return s_bLastReadIsStartNAL;
 }
 
 bool video_source_majestic_last_read_is_end_nal()

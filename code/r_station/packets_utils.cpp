@@ -62,6 +62,7 @@ u32 s_TimeLastLogAlarmNoInterfacesCanSend = 0;
 u32 s_StreamsTxPacketIndex[MAX_RADIO_STREAMS];
 u16 s_StreamsLastTxTime[MAX_RADIO_STREAMS];
 int s_LastSetAtherosCardsDatarates[MAX_RADIO_INTERFACES];
+int s_iLastComputedTxPowerMwPerRadioInterface[MAX_RADIO_INTERFACES];
 int s_iLastRawTxPowerPerRadioInterface[MAX_RADIO_INTERFACES];
 
 bool s_bFirstTimeLogTxAssignment = true;
@@ -77,9 +78,9 @@ void packet_utils_init()
    {
       s_LastSetAtherosCardsDatarates[i] = 5000;
       s_iLastRawTxPowerPerRadioInterface[i] = 0;
+      s_iLastComputedTxPowerMwPerRadioInterface[i] = 0;
    }
 }
-
 
 void _computeBestTXCardsForEachLocalRadioLink(int* pIndexCardsForRadioLinks)
 {
@@ -90,8 +91,51 @@ void _computeBestTXCardsForEachLocalRadioLink(int* pIndexCardsForRadioLinks)
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
       iBestRXQualityForRadioLink[i] = -1000000;
 
-   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
-      pIndexCardsForRadioLinks[i] = -1;
+   u32 uBoardType = hardware_getBoardType();
+
+   // Compute desired tx powers
+
+   for( int iRadioInterfaceIndex=0; iRadioInterfaceIndex<MAX_RADIO_INTERFACES; iRadioInterfaceIndex++ )
+   {
+      if ( (NULL == g_pCurrentModel) || g_bSearching )
+         pIndexCardsForRadioLinks[iRadioInterfaceIndex] = iRadioInterfaceIndex;
+      else
+         pIndexCardsForRadioLinks[iRadioInterfaceIndex] = -1;
+      s_iLastComputedTxPowerMwPerRadioInterface[iRadioInterfaceIndex] = 0;
+
+      if ( ! hardware_radio_index_is_wifi_radio(iRadioInterfaceIndex) )
+         continue;
+
+      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(iRadioInterfaceIndex);
+      t_ControllerRadioInterfaceInfo* pCRII = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
+      if ( (NULL == pRadioHWInfo) || (NULL == pCRII) )
+         continue;
+
+      if ( ! pRadioHWInfo->isConfigurable )
+         continue;
+
+      ControllerSettings* pCS = get_ControllerSettings();
+      if ( (NULL == pCS) || (NULL == g_pCurrentModel) )
+         continue;
+
+      u32 cardFlags = controllerGetCardFlags(pRadioHWInfo->szMAC);
+      if ( (cardFlags & RADIO_HW_CAPABILITY_FLAG_DISABLED) ||
+           ( !(cardFlags & RADIO_HW_CAPABILITY_FLAG_CAN_TX)) ||
+           ( !(cardFlags & RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA)) )
+         continue;
+
+      int iVehicleRadioLinkId = g_SM_RadioStats.radio_interfaces[iRadioInterfaceIndex].assignedVehicleRadioLinkId;
+      int iCardModel = pCRII->cardModel;
+
+      s_iLastComputedTxPowerMwPerRadioInterface[iRadioInterfaceIndex] = tx_powers_convert_raw_to_mw(uBoardType, iCardModel, pCRII->iRawPowerLevel);
+      if ( g_bSearching )
+         s_iLastComputedTxPowerMwPerRadioInterface[iRadioInterfaceIndex] = tx_powers_convert_raw_to_mw(uBoardType, iCardModel, DEFAULT_RADIO_TX_POWER_CONTROLLER);
+      else if ( ! pCS->iFixedTxPower )
+         s_iLastComputedTxPowerMwPerRadioInterface[iRadioInterfaceIndex] = tx_power_compute_uplink_power_for_model_link(g_pCurrentModel, iVehicleRadioLinkId, iRadioInterfaceIndex, iCardModel);
+      if ( isNegociatingRadioLink() )
+         s_iLastComputedTxPowerMwPerRadioInterface[iRadioInterfaceIndex] = DEFAULT_TX_POWER_MW_NEGOCIATE_RADIO * 4;
+      //log_line("DBG computed tx power for card %d (%s) %s, radio link %d: %d mW", iRadioInterfaceIndex+1, str_get_radio_card_model_string(iCardModel), pRadioHWInfo->szName, iVehicleRadioLinkId+1, s_iLastComputedTxPowerMwPerRadioInterface[iRadioInterfaceIndex]);
+   }
 
    int iCountRadioLinks = g_SM_RadioStats.countLocalRadioLinks;
    if ( iCountRadioLinks < 1 )
@@ -100,27 +144,48 @@ void _computeBestTXCardsForEachLocalRadioLink(int* pIndexCardsForRadioLinks)
    {
       int iVehicleRadioLinkId = g_SM_RadioStats.radio_links[iRadioLink].matchingVehicleRadioLinkId;
 
+      if ( (NULL == g_pCurrentModel) || g_bSearching )
+         continue;
+
       // Radio link is downlink only or a relay link ? Controller can't send data on it (uplink)
 
-      if ( NULL != g_pCurrentModel )
       if ( ! (g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLinkId] & RADIO_HW_CAPABILITY_FLAG_CAN_TX) )
          continue;
-       
-      if ( NULL != g_pCurrentModel )
       if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLinkId] & RADIO_HW_CAPABILITY_FLAG_USED_FOR_RELAY )
          continue;
       
+      // Find max power cards for this link
+      int iMaxTxPowerMw = 0;
+      for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+      {
+         int iRadioLinkForCard = g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId;
+         if ( (iRadioLinkForCard < 0) || (iRadioLinkForCard != iRadioLink) )
+            continue;
+
+         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+         if ( NULL == pRadioHWInfo )
+             continue;
+         u32 cardFlags = controllerGetCardFlags(pRadioHWInfo->szMAC);
+
+         if ( (cardFlags & RADIO_HW_CAPABILITY_FLAG_DISABLED) ||
+              ( !(cardFlags & RADIO_HW_CAPABILITY_FLAG_CAN_TX)) ||
+              ( !(cardFlags & RADIO_HW_CAPABILITY_FLAG_CAN_USE_FOR_DATA)) )
+            continue;
+
+         if ( (0 == iMaxTxPowerMw) || (s_iLastComputedTxPowerMwPerRadioInterface[i] > iMaxTxPowerMw) )
+            iMaxTxPowerMw = s_iLastComputedTxPowerMwPerRadioInterface[i];
+      }
+
+      // Iterate all radio interfaces assigned to this local radio link, take into account only ones with high power
+      int iCountInterfaceMaxPower = 0;
+      int iIndexInterfacesMaxPower = -1;
       int iMinPrefferedIndex = 10000;
       int iPrefferedCardIndex = -1;
-
-      // Iterate all radio interfaces assigned to this local radio link
-
       for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
       {
          radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
          if ( NULL == pRadioHWInfo )
              continue;
-
          u32 cardFlags = controllerGetCardFlags(pRadioHWInfo->szMAC);
 
          if ( (cardFlags & RADIO_HW_CAPABILITY_FLAG_DISABLED) ||
@@ -131,28 +196,33 @@ void _computeBestTXCardsForEachLocalRadioLink(int* pIndexCardsForRadioLinks)
          if ( ! pRadioHWInfo->isTxCapable )
             continue;
 
-         if ( NULL == g_pCurrentModel )
-         {
-            pIndexCardsForRadioLinks[iRadioLink] = i;
-            break;
-         }
-
          int iRadioLinkForCard = g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId;
          if ( (iRadioLinkForCard < 0) || (iRadioLinkForCard != iRadioLink) )
             continue;
 
          int iCardTxIndex = controllerIsCardTXPreferred(pRadioHWInfo->szMAC);
-         if ( iCardTxIndex > 0 && iCardTxIndex < iMinPrefferedIndex )
+         if ( (iCardTxIndex > 0) && (iCardTxIndex < iMinPrefferedIndex) )
          {
             iMinPrefferedIndex = iCardTxIndex;
             iPrefferedCardIndex = i;
          }
+
+         if ( (0 != iMaxTxPowerMw) && (s_iLastComputedTxPowerMwPerRadioInterface[i] >= (iMaxTxPowerMw*9)/10) )
+         {
+            iCountInterfaceMaxPower++;
+            iIndexInterfacesMaxPower = i;
+         }
       }
+
+      if ( -1 == iPrefferedCardIndex )
+      if ( (1 == iCountInterfaceMaxPower) && (iIndexInterfacesMaxPower >= 0) )
+         iPrefferedCardIndex = iIndexInterfacesMaxPower;
+
       if ( iPrefferedCardIndex >= 0 )
       {
          pIndexCardsForRadioLinks[iRadioLink] = iPrefferedCardIndex;
          if ( s_bFirstTimeLogTxAssignment )
-            log_line("Assigned preffered Tx card %d as Tx card for radio link %d.", iPrefferedCardIndex+1, iRadioLink+1);
+            log_line("Assigned preferred Tx radio interface %d as Tx card for radio link %d.", iPrefferedCardIndex+1, iRadioLink+1);
          continue;
       }
    
@@ -176,6 +246,9 @@ void _computeBestTXCardsForEachLocalRadioLink(int* pIndexCardsForRadioLinks)
          if ( (iRadioLinkForCard < 0) || (iRadioLinkForCard != iRadioLink) )
             continue;
 
+         if ( (0 == iMaxTxPowerMw) || (s_iLastComputedTxPowerMwPerRadioInterface[i] < (iMaxTxPowerMw*9)/10) )
+            continue;
+
          if ( -1 == pIndexCardsForRadioLinks[iRadioLink] )
          {
             pIndexCardsForRadioLinks[iRadioLink] = i;
@@ -190,9 +263,9 @@ void _computeBestTXCardsForEachLocalRadioLink(int* pIndexCardsForRadioLinks)
       if ( s_bFirstTimeLogTxAssignment )
       {
          if ( -1 == pIndexCardsForRadioLinks[iRadioLink] )
-            log_softerror_and_alarm("No Tx card was assigned to local radio link %d.", iRadioLink+1);
+            log_softerror_and_alarm("No Tx radio interface was assigned to local radio link %d.", iRadioLink+1);
          else
-            log_line("Assigned radio card %d as best Tx card for local radio link %d.", pIndexCardsForRadioLinks[iRadioLink]+1, iRadioLink+1);
+            log_line("Assigned radio interface %d as best Tx card for local radio link %d.", pIndexCardsForRadioLinks[iRadioLink]+1, iRadioLink+1);
       }
    }
    s_bFirstTimeLogTxAssignment = false;
@@ -317,39 +390,10 @@ int _compute_packet_uplink_datarate_radioflags_tx_power(int iVehicleRadioLink, i
    if ( iCardModel < 0 )
       iCardModel = -iCardModel;
 
-   int iRadioInterfaceRawTxPowerToUse = pCRII->iRawPowerLevel;
-   bool bUpdatedControllerTxPowers = false;
-
-   if ( g_bSearching )
-      iRadioInterfaceRawTxPowerToUse = DEFAULT_RADIO_TX_POWER_CONTROLLER;
-   else if ( ! pCS->iFixedTxPower )
-   {
-      int iVehicleLinkMwPower = get_vehicle_radio_link_current_tx_power_mw(g_pCurrentModel, iVehicleRadioLink);
-      iVehicleLinkMwPower *= 4;
-
-      int iCardMaxPowerMw = tx_powers_get_max_usable_power_mw_for_card(hardware_getBoardType(), iCardModel);
-      int iCardPowerMwToSet = iVehicleLinkMwPower;
-      if ( iCardPowerMwToSet > iCardMaxPowerMw )
-         iCardPowerMwToSet = iCardMaxPowerMw;
-
-      iRadioInterfaceRawTxPowerToUse = tx_powers_convert_mw_to_raw(hardware_getBoardType(), iCardModel, iCardPowerMwToSet);
-      if ( iRadioInterfaceRawTxPowerToUse != pCRII->iRawPowerLevel )
-      {
-         // Do not update stored fixed raw power, preserve it for when changing models or setting power to fixed again.
-         //pCRII->iRawPowerLevel = iRadioInterfaceRawTxPowerToUse;
-         //bUpdatedControllerTxPowers = true;
-      }
-   }
-
-   if ( bUpdatedControllerTxPowers )
-   {
-      log_line("Controller raw tx powers have been recomputed for radio interface %d to raw %d. Saved changes, notify central.", iRadioInterfaceIndex, pCRII->iRawPowerLevel);
-      save_ControllerInterfacesSettings();
-      send_message_to_central(PACKET_TYPE_LOCAL_CONTROL_UPDATED_RADIO_TX_POWERS, 0, false);
-   }
-
+   int iRadioInterfaceRawTxPowerToUse = tx_powers_convert_mw_to_raw(hardware_getBoardType(), iCardModel, s_iLastComputedTxPowerMwPerRadioInterface[iRadioInterfaceIndex]);
+   
    //-----------------------------------------------
-   // Tx power - end, apply it
+   // Tx power, apply it
 
    if ( iRadioInterfaceRawTxPowerToUse == s_iLastRawTxPowerPerRadioInterface[iRadioInterfaceIndex] )
       return iDataRateTx;
@@ -619,8 +663,6 @@ int send_packet_to_radio_interfaces(u8* pPacketData, int nPacketLength, int iSen
       if ( ! pRadioHWInfo->openedForWrite )
          continue;
 
-      g_SM_RadioStats.radio_links[iLocalRadioLinkId].lastTxInterfaceIndex = iRadioInterfaceIndex;
-
       radio_stats_set_tx_card_for_radio_link(&g_SM_RadioStats, iLocalRadioLinkId, iRadioInterfaceIndex);
 
       for( int i=0; i<=iRepeatCount; i++ )
@@ -676,21 +718,20 @@ int send_packet_to_radio_interfaces(u8* pPacketData, int nPacketLength, int iSen
    for( int i=0; i<g_SM_RadioStats.countLocalRadioLinks; i++ )
    {
       int iVehicleRadioLinkId = g_SM_RadioStats.radio_links[i].matchingVehicleRadioLinkId;
-
-      int nicIndex = iTXInterfaceIndexForLocalRadioLinks[i];
-      if ( nicIndex < 0 || nicIndex > hardware_get_radio_interfaces_count() )
+      int iRadioInterfaceIndex = iTXInterfaceIndexForLocalRadioLinks[i];
+      if ( (iRadioInterfaceIndex < 0) || (iRadioInterfaceIndex > hardware_get_radio_interfaces_count()) )
       {
          log_softerror_and_alarm("No radio interfaces assigned for Tx on local radio link %d.", i+1);
          continue;          
       }
-      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(nicIndex);
+      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(iRadioInterfaceIndex);
       if ( NULL == pRadioHWInfo )
       {
-         log_softerror_and_alarm("Can't get NIC info for radio interface %d", nicIndex+1);
+         log_softerror_and_alarm("Can't get NIC info for radio interface %d", iRadioInterfaceIndex+1);
          continue;
       }
       log_softerror_and_alarm("Current radio interface used for TX on local radio link %d, vehicle radio link %d: %d, freq: %s",
-         i+1, iVehicleRadioLinkId+1, nicIndex+1, str_format_frequency(pRadioHWInfo->uCurrentFrequencyKhz));    
+         i+1, iVehicleRadioLinkId+1, iRadioInterfaceIndex+1, str_format_frequency(pRadioHWInfo->uCurrentFrequencyKhz));    
       str_get_radio_capabilities_description(g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLinkId], szTmp);
       log_softerror_and_alarm("Current vehicle radio link %d capabilities: %s", iVehicleRadioLinkId+1, szTmp);
    }

@@ -38,6 +38,7 @@
 #include "../radio/radiopacketsqueue.h"
 #include "../radio/radio_rx.h"
 #include "../radio/radio_tx.h"
+#include "../common/models_connect_frequencies.h"
 #include "../common/string_utils.h"
 #include "timers.h"
 #include "shared_vars.h"
@@ -118,7 +119,17 @@ void _test_link_end_and_notify()
       
          g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps = uMaxVideoBitrate;
       }
+
+
+      for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
+      {
+         if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] == s_iTestLinkIndex )
+            g_pCurrentModel->radioInterfacesParams.interface_current_frequency_khz[i] = s_RadioLinksParamsToTest.link_frequency_khz[s_iTestLinkIndex];
+      }
       saveControllerModel(g_pCurrentModel);
+
+      if ( s_RadioLinksParamsOriginal.link_frequency_khz[s_iTestLinkIndex] == get_model_main_connect_frequency(g_pCurrentModel->uVehicleId) )
+         set_model_main_connect_frequency(g_pCurrentModel->uVehicleId, s_RadioLinksParamsToTest.link_frequency_khz[s_iTestLinkIndex]);
    }
 
    test_link_send_end_message_to_central(s_bTestLinkCurrentTestSucceeded);

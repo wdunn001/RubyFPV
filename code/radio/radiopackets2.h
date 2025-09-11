@@ -277,6 +277,8 @@ typedef struct
 #define VIDEO_STREAM_INFO_FLAG_FEC_TIME 3
 #define VIDEO_STREAM_INFO_FLAG_VIDEO_PROFILE_FLAGS 4
 #define VIDEO_STREAM_INFO_FLAG_RETRANSMISSION_ID 5
+#define VIDEO_STREAM_INFO_FLAG_SET_VIDEO_BITRATE 6
+#define VIDEO_STREAM_INFO_FLAG_SET_KF_MS 7
 
 //  [packet header][video segment header][video seg header important][video data][000]
 //  | pPH          | pPHVS               | pPHVSImp                  |pActualVideoData
@@ -572,7 +574,7 @@ typedef struct // introduced in version 11.2
    u8  uplink_mavlink_rc_rssi; // 0...100, 255 - not available
    u8  uplink_mavlink_rx_rssi; // 0...100, 255 - not available
    
-   int iTxPowers[MAX_RADIO_INTERFACES]; // current Tx powers, per radio link, in mW
+   int iTxPowers[MAX_RADIO_INTERFACES]; // current Tx powers, per radio link, in mW. positive: as set, negative: adjusted down
    u16 txTimePerSec; // miliseconds
    u16 uExtraRubyFlags; // see above
       // bits 0..3 : structure version (0 for now, first one, starting at v3)
@@ -690,7 +692,7 @@ typedef struct
 
 
 #define PACKET_TYPE_TELEMETRY_MSP 43
-
+// Has a t_packet_header_telemetry_msp header and then data
 #define MSP_FLAGS_FC_TYPE_MASK ((u32)0x07)
 #define MSP_FLAGS_FC_TYPE_BETAFLIGHT 1
 #define MSP_FLAGS_FC_TYPE_INAV 2
@@ -703,7 +705,7 @@ typedef struct
    // bit 0..2: FC type (see above): 1 BF, 2 INAV, 3 Ardupilot
    u8 uRows;
    u8 uCols;
-   u32 uDummy;
+   u32 uSegmentIdAndExtraInfo; // byte 0..1: size, byte 2: checksum
 } __attribute__((packed)) t_packet_header_telemetry_msp;
 
 

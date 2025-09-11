@@ -8,7 +8,8 @@ u32 video_source_csi_get_debug_videobitrate();
 
 // Returns the buffer and number of bytes read
 u8* video_source_csi_read(int* piReadSize);
-void video_source_csi_start_program();
+// Returns initial set video bitrate
+u32 video_source_csi_start_program(u32 uOverwriteInitialBitrate, int iOverwriteInitialKFMs, int* pInitialKFSet);
 void video_source_csi_stop_program();
 u32 video_source_cs_get_program_start_time();
 void video_source_csi_request_restart_program();

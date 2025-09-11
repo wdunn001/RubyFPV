@@ -4,11 +4,7 @@
 extern "C" {
 #endif 
 
-int hw_launch_process(const char *szFile);
-int hw_launch_process1(const char *szFile, const char* szParam1);
-int hw_launch_process2(const char *szFile, const char* szParam1, const char* szParam2);
-int hw_launch_process3(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3);
-int hw_launch_process4(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3, const char* szParam4);
+int hw_execute_process(const char *szCommand, char* szOutput);
 int hw_process_exists(const char* szProcName);
 char* hw_process_get_pids_inline(const char* szProcName);
 void hw_process_get_pids(const char* szProcName, char* szOutput);

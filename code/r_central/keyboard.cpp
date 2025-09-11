@@ -549,12 +549,6 @@ u32 keyboard_get_triggered_input_events()
    return s_uKeyboardInputEventsSum;
 }
 
-u32 keyboard_add_triggered_input_event(u32 uEventId)
-{
-   s_uKeyboardInputEventsSum |= uEventId;
-   return s_uKeyboardInputEventsSum;
-}
-
 u32 keyboard_add_triggered_gpio_input_events()
 {
    if ( isKeyMenuPressed() )

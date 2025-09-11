@@ -48,6 +48,8 @@
 #define CARD_MODEL_RTL8812AU_OIPC_USIGHT 18
 #define CARD_MODEL_RTL8812AU_OIPC_USIGHT2 19
 #define CARD_MODEL_RTL8733BU    20
+#define CARD_MODEL_BONNET_LOW_POWER 21
+#define CARD_MODEL_BONNET_HIGH_POWER 22
 
 #define CARD_MODEL_SIK_RADIO 100
 #define CARD_MODEL_SERIAL_RADIO 101
@@ -154,6 +156,7 @@ typedef struct
    char szMAC[MAX_MAC_LENGTH]; // MAC or serial port name or SPI name
    char szProductId[12];
    char szUSBPort[MAX_RADIO_PORT_NAME_LENGTH];  // [A-X], [A-X][1-9], ... or serial port name or SPI name
+   int iUSBHubPort;
    int iRadioType;
    int iRadioDriver;
    u32 uHardwareParamsList[MAX_RADIO_HW_PARAMS];
@@ -209,7 +212,6 @@ void hardware_install_drivers(int iEchoToConsole);
 int hardware_initialize_radio_interface(int iInterfaceIndex, u32 uDelayMS);
 
 int hardware_radio_get_driver_id_card_model(int iCardModel);
-int hardware_radio_get_driver_id_for_product_id(const char* szProdId);
 
 int hardware_get_radio_interfaces_count();
 int hardware_get_supported_radio_interfaces_count();

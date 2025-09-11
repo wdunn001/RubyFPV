@@ -42,7 +42,7 @@
 
 
 MenuVehicleRadioRuntimeCapabilities::MenuVehicleRadioRuntimeCapabilities(void)
-:Menu(MENU_ID_VEHICLE_RADIO_RUNTIME_CAPS, "Radio Runtime Capabilities", NULL)
+:Menu(MENU_ID_VEHICLE_RADIO_RUNTIME_CAPS, "Developer: Radio Runtime Capabilities", NULL)
 {
    m_Width = 0.6;
    m_Height = 0.64;

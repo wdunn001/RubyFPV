@@ -80,7 +80,7 @@ typedef struct
    u32 lowestAllowedAdaptiveVideoBitrate;
    u32 uMaxAutoKeyframeIntervalMs; // in milisec
    u32 uVideoExtraFlags; // Check VIDEO_FLAG_* enum
-    // bit 0: not used
+    // bit 0: enable focus mode: B&W
     // bit 1: not used
     // bit 2: enable HDMI output on vehicle side (if possible)
     // bit 3: retransmissions are started fast/aggresive
@@ -464,6 +464,7 @@ typedef struct
 
    int iMaxSupportedLegacyDataRate;
    int iMaxSupportedMCSDataRate;
+   u32 uSupportedMCSFlags;
    float fQualitiesLegacy[MODEL_MAX_STORED_QUALITIES_LINKS][MODEL_MAX_STORED_QUALITIES_VALUES];
    float fQualitiesMCS[MODEL_MAX_STORED_QUALITIES_LINKS][MODEL_MAX_STORED_QUALITIES_VALUES];
    int iMaxTxPowerMwLegacy[MODEL_MAX_STORED_QUALITIES_LINKS][MODEL_MAX_STORED_QUALITIES_VALUES];
@@ -647,6 +648,7 @@ class Model
       void resetTelemetryParams();
       void resetRCParams();
       void resetVideoParamsToDefaults();
+      void resetAdaptiveVideoParams(int iVideoProfile);
       void resetVideoLinkProfiles();
       void resetVideoLinkProfile(int iProfile);
       void resetCameraToDefaults(int iCameraIndex);

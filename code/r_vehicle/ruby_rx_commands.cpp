@@ -1898,7 +1898,7 @@ bool process_command(u8* pBuffer, int length)
 
    if ( uCommandType == COMMAND_ID_SET_RADIO_LINK_FREQUENCY )
    {
-      u32 uLinkIndex = ((pPHC->command_param)>>24) & 0x7F;
+      u32 uLinkIndex = ((pPHC->command_param)>>24) & 0xFF;
       u32 uNewFreq = (pPHC->command_param) & 0xFFFFFF;
       log_line("Received command to change frequency on radio link %u to %s", uLinkIndex+1, str_format_frequency(uNewFreq));
 
@@ -1939,12 +1939,14 @@ bool process_command(u8* pBuffer, int length)
 
       log_line("Switching vehicle radio link %u to %s.", uLinkIndex+1, str_format_frequency(uNewFreq));
       for( int i=0; i<g_pCurrentModel->radioInterfacesParams.interfaces_count; i++ )
+      {
          if ( g_pCurrentModel->radioInterfacesParams.interface_link_id[i] == (int)uLinkIndex )
          {
             if ( ! g_pCurrentModel->radioLinkIsSiKRadio(i) )
                radio_utils_set_interface_frequency(g_pCurrentModel, i, (int)uLinkIndex, uNewFreq, g_pProcessStats, 0);
             g_pCurrentModel->radioInterfacesParams.interface_current_frequency_khz[i] = uNewFreq;
          }
+      }
       hardware_save_radio_info();
 
       g_pCurrentModel->radioLinksParams.link_frequency_khz[uLinkIndex] = uNewFreq;

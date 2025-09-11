@@ -183,6 +183,10 @@ bool _check_radio_config(Model* pModel)
    
    if ( check_update_hardware_nics_vehicle(pModel) || recheck_disabled_radio_interfaces(pModel) )
    {
+      pModel->radioRuntimeCapabilities.uFlagsRuntimeCapab &= ~MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED;
+      pModel->radioRuntimeCapabilities.uFlagsRuntimeCapab &= ~MODEL_RUNTIME_RADIO_CAPAB_FLAG_DIRTY;
+      pModel->radioLinksParams.uGlobalRadioLinksFlags &= ~MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS;
+
       log_line("[HW Radio Check] Hardware radio interfaces configuration check complete and configuration was changed. This is the new hardware radio interfaces and radio links configuration:");
       log_full_current_radio_configuration(pModel);
       _set_default_sik_params_for_vehicle(pModel);
@@ -456,6 +460,10 @@ int r_start_vehicle(int argc, char *argv[])
           (int)((modelVehicle.uDeveloperFlags >> DEVELOPER_FLAGS_WIFI_GUARD_DELAY_MASK_SHIFT) & 0xFF) );
    log_line("Start sequence: Model has vehicle developer mode flag: %s", (modelVehicle.uDeveloperFlags & DEVELOPER_FLAGS_BIT_ENABLE_DEVELOPER_MODE)?"on":"off");
 
+   log_line("Start sequence: Initial vehicle radio links configuration before any radio checks:");
+   modelVehicle.logVehicleRadioInfo();
+   g_pCurrentModel = &modelVehicle;
+
    if ( modelVehicle.uModelFlags & MODEL_FLAG_DISABLE_ALL_LOGS )
    {
       log_line("Log is disabled on vehicle. Disabled logs.");
@@ -649,6 +657,9 @@ int r_start_vehicle(int argc, char *argv[])
    }
 
    bMustSave |= _check_radio_config(&modelVehicle);
+
+   log_line("Start sequence: Vehicle radio links configuration after the radio checks:");
+   modelVehicle.logVehicleRadioInfo();
 
    log_line("Start sequence: Setting all the radio cards params (%s)...", (modelVehicle.relay_params.isRelayEnabledOnRadioLinkId >= 0)?"relaying enabled":"no relay links");
 

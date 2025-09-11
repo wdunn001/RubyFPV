@@ -735,8 +735,9 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
             sprintf(cmd, "iwconfig %s freq %u000 2>&1", pRadioInfo->szName, uFrequencyKhz);            
             #endif
          }
-         hw_execute_bash_command_raw(cmd, szOutput);
-
+         //hw_execute_bash_command_raw(cmd, szOutput);
+         hw_execute_process(cmd, szOutput);
+         
          if ( 5 < strlen(szOutput) )
             log_softerror_and_alarm("Received a response from set freq command: [%s]", szOutput);
            
@@ -765,7 +766,8 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
          {
              hardware_initialize_radio_interface(i, delayMs);
              hardware_sleep_ms(delayMs);
-             hw_execute_bash_command_raw(cmd, szOutput);
+             //hw_execute_bash_command_raw(cmd, szOutput);
+             hw_execute_process(cmd, szOutput);
          }
          if ( NULL != strstr(szOutput, "failed") )
          {

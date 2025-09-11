@@ -43,15 +43,18 @@ extern int s_fIPCToRouter;
 extern t_packet_header_ruby_telemetry_extended_v5 sPHRTE;
 extern u32 s_CountMessagesFromFCPerSecond;
 
-u8 s_uMSPRawStream[256]; // Max size is one byte long
-int s_iMSPRawStreamFilledBytes = 0;
+u8 s_uMSPRawInputStream[256]; // Max size is one byte long
+int s_iMSPRawInputStreamFilledBytes = 0;
 int s_iMSPState = 0;
 int s_iMSPDirection = 0;
-int s_iMSPCommandDataSize = 0;
-int s_iMSPParsedDataSize = 0;
-u8 s_uMSPCommandData[256]; // Max size is one byte long
+u8  s_uMSPCommand = 0;
+u8  s_uMSPPreviousCommand = 0xFF;
+u8  s_uMSPDisplayPortCommand = 0xFF;
+u8  s_uMSPPreviousDisplayPortCommand = 0xFF;
+int s_iMSPCommandPayloadSize = 0;
+int s_iMSPParsedPayloadSoFar = 0;
+u8 s_uMSPCommandPayload[256]; // Max size is one byte long
 u8 s_uMSPChecksum = 0;
-u8 s_uMSPCommand = 0;
 u32 s_uLastMSPCommandReceivedTime = 0;
 
 u8 s_uMSPOutputBuffer[MAX_PACKET_PAYLOAD];
@@ -110,13 +113,16 @@ void _send_msp_to_fc(u8 uCommand, u8* pData, int iDataLength)
 
 void telemetry_msp_on_open_port(int iSerialPortFile)
 {
-   s_iMSPRawStreamFilledBytes = 0;
+   s_iMSPRawInputStreamFilledBytes = 0;
    s_iMSPOutputBufferFilledBytes = 0;
    s_uTimeLastSentMSPPacketToRouter = g_TimeNow;
-   s_iMSPState = MSP_STATE_NONE;
+   s_iMSPState = MSP_STATE_WAIT_HEADER1;
    s_bMSPGotFCInfo = false;
    s_uMSPLastRequestBatteryInfoTime = 0;
    s_bMSPSentOSDCanvasSize = false;
+   s_uMSPPreviousCommand = 0xFF;
+   s_uMSPDisplayPortCommand = 0xFF;
+   s_uMSPPreviousDisplayPortCommand = 0xFF;
 
    memset(&s_PHTMSP, 0, sizeof(t_packet_header_telemetry_msp));
    s_PHTMSP.uCols = 60;
@@ -181,6 +187,13 @@ void _send_msp_telemetry_packet_to_controller()
    PH.vehicle_id_src = g_pCurrentModel->uVehicleId;
    PH.vehicle_id_dest = 0;
    PH.total_length = sizeof(t_packet_header) + sizeof(t_packet_header_telemetry_msp) + s_iMSPOutputBufferFilledBytes;
+
+   u16 uId = s_PHTMSP.uSegmentIdAndExtraInfo & 0xFFFF;
+   uId++;
+   s_PHTMSP.uSegmentIdAndExtraInfo = (s_PHTMSP.uSegmentIdAndExtraInfo & 0xFFFF0000) | uId;
+
+   s_PHTMSP.uSegmentIdAndExtraInfo = (s_PHTMSP.uSegmentIdAndExtraInfo & 0xFF00FFFF) | (((u32)base_compute_crc8(s_uMSPOutputBuffer, s_iMSPOutputBufferFilledBytes))<<16);
+   
    u8 buffer[MAX_PACKET_TOTAL_SIZE];
    memcpy(buffer, &PH, sizeof(t_packet_header));
    memcpy(buffer+sizeof(t_packet_header), &s_PHTMSP, sizeof(t_packet_header_telemetry_msp));
@@ -211,23 +224,27 @@ void _add_msp_data_to_output(u8* pData, int iDataLength, bool bSendNow)
    memcpy(&s_uMSPOutputBuffer[s_iMSPOutputBufferFilledBytes], pData, iDataLength);
    s_iMSPOutputBufferFilledBytes += iDataLength;
 
-   if ( bSendNow && (g_TimeNow > s_uTimeLastSentMSPPacketToRouter + 50) )
+   if ( bSendNow )
       _send_msp_telemetry_packet_to_controller();
 }
 
 void _parse_msp_osd_command()
 {
-   if ( (s_uMSPCommand != MSP_CMD_DISPLAYPORT) || (s_iMSPCommandDataSize < 1) || (s_iMSPDirection != MSP_DIR_FROM_FC) )
+   if ( (s_uMSPCommand != MSP_CMD_DISPLAYPORT) || (s_iMSPCommandPayloadSize < 1) || (s_iMSPDirection != MSP_DIR_FROM_FC) )
       return;
    
-   bool bSendNow = false;
+   s_uMSPPreviousDisplayPortCommand = s_uMSPDisplayPortCommand;
+   s_uMSPDisplayPortCommand = s_uMSPCommandPayload[0];
 
-   switch ( s_uMSPCommandData[0] )
+   bool bSendNow = false;
+   bool bSkip = false;
+
+   switch ( s_uMSPDisplayPortCommand )
    {
       case MSP_DISPLAYPORT_DRAW_STRING:
          {
-            int x = s_uMSPCommandData[2];
-            int y = s_uMSPCommandData[1];
+            int y = s_uMSPCommandPayload[1];
+            int x = s_uMSPCommandPayload[2];
             if ( x >= s_PHTMSP.uCols )
             {
                if ( x >= 50 )
@@ -248,29 +265,34 @@ void _parse_msp_osd_command()
                else
                   s_PHTMSP.uRows = 16;
             }
+            char szData[128];
+            memset(szData, 0, 128);
+            memcpy(szData, &s_uMSPCommandPayload[4], s_iMSPCommandPayloadSize-4);
+            if ( s_iMSPCommandPayloadSize <= 4 )
+               bSkip = true;
          }
          break;
 
       case MSP_DISPLAYPORT_SET_OPTIONS:
          {
-            if ( s_iMSPCommandDataSize >= 3 )
+            if ( s_iMSPCommandPayloadSize >= 3 )
             {
-               if ( s_uMSPCommandData[2] == MSP_SD_OPTION_30_16 )
+               if ( s_uMSPCommandPayload[2] == MSP_SD_OPTION_30_16 )
                {
                   s_PHTMSP.uCols = 30;
                   s_PHTMSP.uRows = 16;
                }
-               if ( s_uMSPCommandData[2] == MSP_HD_OPTION_50_18 )
+               if ( s_uMSPCommandPayload[2] == MSP_HD_OPTION_50_18 )
                {
                   s_PHTMSP.uCols = 50;
                   s_PHTMSP.uRows = 18;
                }
-               if ( s_uMSPCommandData[2] == MSP_HD_OPTION_30_16 )
+               if ( s_uMSPCommandPayload[2] == MSP_HD_OPTION_30_16 )
                {
                   s_PHTMSP.uCols = 30;
                   s_PHTMSP.uRows = 16;
                }
-               if ( s_uMSPCommandData[2] == MSP_HD_OPTION_60_22 )
+               if ( s_uMSPCommandPayload[2] == MSP_HD_OPTION_60_22 )
                {
                   s_PHTMSP.uCols = 60;
                   s_PHTMSP.uRows = 22;
@@ -278,7 +300,21 @@ void _parse_msp_osd_command()
             }
          }
          break;
+
+      case MSP_DISPLAYPORT_CLEAR:
+         //bSendNow = true;
+         break;
+
+      case MSP_DISPLAYPORT_KEEPALIVE:
+         if ( s_uMSPPreviousDisplayPortCommand != MSP_DISPLAYPORT_DRAW_SCREEN )
+            bSendNow = true;
+         break;
+
       case MSP_DISPLAYPORT_DRAW_SCREEN:
+         if ( s_uMSPPreviousDisplayPortCommand != MSP_DISPLAYPORT_KEEPALIVE )
+            bSendNow = true;
+         break;
+
       case MSP_DISPLAYPORT_DRAW_SYSTEM:
          bSendNow = true;
          break;
@@ -286,7 +322,8 @@ void _parse_msp_osd_command()
       default: break;
    }
 
-   _add_msp_data_to_output(s_uMSPRawStream, s_iMSPRawStreamFilledBytes, bSendNow);
+   if ( ! bSkip )
+      _add_msp_data_to_output(s_uMSPRawInputStream, s_iMSPRawInputStreamFilledBytes, bSendNow);
 }
 
 void _parse_msp_command()
@@ -298,7 +335,7 @@ void _parse_msp_command()
    {
       case MSP_CMD_STATUS:
        {
-          int iArmed = (s_uMSPCommandData[6] & 0x01);
+          int iArmed = (s_uMSPCommandPayload[6] & 0x01);
           // To remove
           //iArmed = (g_TimeNow/1000/5) % 2;
 
@@ -331,15 +368,15 @@ void _parse_msp_command()
       case MSP_CMD_FC_VARIANT:
          {
             char szBuff[5];
-            strncpy(szBuff, (char*)s_uMSPCommandData, 4);
+            strncpy(szBuff, (char*)s_uMSPCommandPayload, 4);
             szBuff[4] = 0;
             log_line("[Telem] Got MSP FC variant: (%s)", szBuff);
             s_PHTMSP.uFlags &= ~MSP_FLAGS_FC_TYPE_MASK;
-            if ( strncmp("BTFL", (char*)s_uMSPCommandData, s_iMSPCommandDataSize) == 0 )
+            if ( strncmp("BTFL", (char*)s_uMSPCommandPayload, s_iMSPCommandPayloadSize) == 0 )
                s_PHTMSP.uFlags |= MSP_FLAGS_FC_TYPE_BETAFLIGHT;
-            else if ( strncmp("ARDU", (char*)s_uMSPCommandData, s_iMSPCommandDataSize) == 0 )
+            else if ( strncmp("ARDU", (char*)s_uMSPCommandPayload, s_iMSPCommandPayloadSize) == 0 )
                s_PHTMSP.uFlags |= MSP_FLAGS_FC_TYPE_ARDUPILOT;
-            else if ( strncmp("PITL", (char*)s_uMSPCommandData, s_iMSPCommandDataSize) == 0 )
+            else if ( strncmp("PITL", (char*)s_uMSPCommandPayload, s_iMSPCommandPayloadSize) == 0 )
                s_PHTMSP.uFlags |= MSP_FLAGS_FC_TYPE_PITLAB;
             else
                s_PHTMSP.uFlags |= MSP_FLAGS_FC_TYPE_INAV;
@@ -351,8 +388,8 @@ void _parse_msp_command()
       case MSP_CMD_API_VERSION:
          {
             s_bMSPGotFCInfo = true;
-            for( int i=0; i<s_iMSPCommandDataSize; i++ )
-               log_line("[Telem] Got MSP API version, byte[%d]=%d", i, s_uMSPCommandData[i]);
+            for( int i=0; i<s_iMSPCommandPayloadSize; i++ )
+               log_line("[Telem] Got MSP API version, byte[%d]=%d", i, s_uMSPCommandPayload[i]);
 
             if ( ! s_bMSPSentOSDCanvasSize )
             {
@@ -376,30 +413,31 @@ bool telemetry_msp_on_new_serial_data(u8* pData, int iDataLength)
 
    for( int i=0; i<iDataLength; i++ )
    {
-      s_uMSPRawStream[s_iMSPRawStreamFilledBytes] = *pData;
-      s_iMSPRawStreamFilledBytes++;
-      if ( s_iMSPRawStreamFilledBytes >= 256 )
-         s_iMSPRawStreamFilledBytes = 0;
+      s_uMSPRawInputStream[s_iMSPRawInputStreamFilledBytes] = *pData;
+      s_iMSPRawInputStreamFilledBytes++;
+      if ( s_iMSPRawInputStreamFilledBytes >= 256 )
+         s_iMSPRawInputStreamFilledBytes = 0;
 
       switch(s_iMSPState)
       {
-         case MSP_STATE_NONE:
          case MSP_STATE_ERROR:
-            s_iMSPRawStreamFilledBytes = 0;
+         case MSP_STATE_WAIT_HEADER1:
+            s_iMSPRawInputStreamFilledBytes = 0;
             if ( *pData == '$' )
             {
-               s_uMSPRawStream[0] = *pData;
-               s_iMSPRawStreamFilledBytes = 1;
-               s_iMSPState = MSP_STATE_WAIT_HEADER;
+               s_uMSPRawInputStream[0] = *pData;
+               s_iMSPRawInputStreamFilledBytes = 1;
+               s_iMSPState = MSP_STATE_WAIT_HEADER2;
             }
             break;
 
-         case MSP_STATE_WAIT_HEADER:
+         case MSP_STATE_WAIT_HEADER2:
             if ( *pData == 'M' )
                s_iMSPState = MSP_STATE_WAIT_DIR;
             else
             {
                s_iMSPState = MSP_STATE_ERROR;
+               s_iMSPRawInputStreamFilledBytes = 0;
             }
             break;
 
@@ -416,31 +454,33 @@ bool telemetry_msp_on_new_serial_data(u8* pData, int iDataLength)
             }
             else
             {
-               s_iMSPState = MSP_STATE_NONE;
+               s_iMSPState = MSP_STATE_WAIT_HEADER1;
+               s_iMSPRawInputStreamFilledBytes = 0;
             }
             break;
 
          case MSP_STATE_WAIT_SIZE:
-            s_iMSPCommandDataSize = (int) *pData;
+            s_iMSPCommandPayloadSize = (int) *pData;
             s_uMSPChecksum = *pData;
             s_iMSPState = MSP_STATE_WAIT_TYPE;
             break;
 
          case MSP_STATE_WAIT_TYPE:
+            s_uMSPPreviousCommand = s_uMSPCommand;
             s_uMSPCommand = *pData;
             s_uMSPChecksum ^= *pData;
-            s_iMSPParsedDataSize = 0;
-            if ( s_iMSPCommandDataSize > 0 )
+            s_iMSPParsedPayloadSoFar = 0;
+            if ( s_iMSPCommandPayloadSize > 0 )
                s_iMSPState = MSP_STATE_PARSE_DATA;
             else
                s_iMSPState = MSP_STATE_WAIT_CHECKSUM;
             break;
 
          case MSP_STATE_PARSE_DATA:
-            s_uMSPCommandData[s_iMSPParsedDataSize] = *pData;
-            s_iMSPParsedDataSize++;
+            s_uMSPCommandPayload[s_iMSPParsedPayloadSoFar] = *pData;
+            s_iMSPParsedPayloadSoFar++;
             s_uMSPChecksum ^= *pData;
-            if ( s_iMSPParsedDataSize >= s_iMSPCommandDataSize )
+            if ( s_iMSPParsedPayloadSoFar >= s_iMSPCommandPayloadSize )
                s_iMSPState = MSP_STATE_WAIT_CHECKSUM;
             break;
 
@@ -456,7 +496,8 @@ bool telemetry_msp_on_new_serial_data(u8* pData, int iDataLength)
                   _parse_msp_command();
                bReturn = true;
             }
-            s_iMSPState = MSP_STATE_NONE;
+            s_iMSPState = MSP_STATE_WAIT_HEADER1;
+            s_iMSPRawInputStreamFilledBytes = 0;
             break;
 
          default:
@@ -464,6 +505,7 @@ bool telemetry_msp_on_new_serial_data(u8* pData, int iDataLength)
       }
       pData++;
    }
+
    return bReturn;
 }
 

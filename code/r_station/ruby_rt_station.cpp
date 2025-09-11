@@ -259,7 +259,10 @@ void _compute_radio_interfaces_assignment()
    }
 
    log_line("Vehicle has %d active (enabled and not relay) radio links (out of %d radio links)", iCountVehicleActiveUsableRadioLinks, g_pCurrentModel->radioLinksParams.links_count);
-      
+   if ( -1 == iStoredMainRadioLinkForModel )
+      log_line("Could not find main connect radio link for vehicle, main connect frequency is: %s", str_format_frequency(uStoredMainFrequencyForModel));
+   else
+      log_line("Found vehicle main connect radio link for frequency %s: vehicle radio link %d", str_format_frequency(uStoredMainFrequencyForModel), iStoredMainRadioLinkForModel+1);
    if ( 0 == iCountVehicleActiveUsableRadioLinks )
    {
       log_error_and_alarm("Vehicle has no active (enabled and not relay) radio links (out of %d radio links)", g_pCurrentModel->radioLinksParams.links_count);
@@ -757,7 +760,7 @@ bool links_set_cards_frequencies_and_params(int iVehicleLinkId)
       }
 
       int nAssignedVehicleRadioLinkId = g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId;
-      if ( nAssignedVehicleRadioLinkId < 0 || nAssignedVehicleRadioLinkId >= g_pCurrentModel->radioLinksParams.links_count )
+      if ( (nAssignedVehicleRadioLinkId < 0) || (nAssignedVehicleRadioLinkId >= g_pCurrentModel->radioLinksParams.links_count) )
       {
          log_line("Links: Radio interface %d is not assigned to any vehicle radio link. Skipping it.", i+1);
          continue;
@@ -840,6 +843,11 @@ bool links_set_cards_frequencies_and_params(int iVehicleLinkId)
       memcpy((u8*)g_pSM_RadioStats, (u8*)&g_SM_RadioStats, sizeof(shared_mem_radio_stats));
 
    hardware_save_radio_info();
+
+   if ( (iVehicleLinkId < 0) || (iVehicleLinkId >= hardware_get_radio_interfaces_count()) )
+      log_line("Links: Done setting all cards frequencies and params according to vehicle radio links.");
+   else
+      log_line("Links: Done setting cards frequencies and params only for vehicle radio link %d", iVehicleLinkId+1);
 
    return true;
 }
@@ -987,14 +995,6 @@ void _process_and_send_packet(u8* pPacketBuffer, int iPacketLength)
    preprocess_radio_out_packet(pPacketBuffer, iPacketLength);
 
    int send_count = 1;
-   
-   if ( (pPH->packet_flags & PACKET_FLAGS_MASK_MODULE) == PACKET_COMPONENT_COMMANDS )
-   if ( pPH->packet_type == PACKET_TYPE_COMMAND )
-   {
-      t_packet_header_command* pPHC = (t_packet_header_command*)(pPacketBuffer + sizeof(t_packet_header));
-      if ( pPHC->command_type == COMMAND_ID_SET_RADIO_LINK_FREQUENCY )
-         send_count = 5;
-   }
 
    if ( (pPH->packet_type == PACKET_TYPE_VEHICLE_RECORDING) )
       send_count = 2;
@@ -2003,7 +2003,7 @@ void _main_loop_try_recevive_video_data()
    u32 uTimeStart = g_TimeNow;
    u32 uMaxWait = 2;
    u32 uReadTimeoutMicros = 600;
-   int iMaxCountToConsume = 5;
+   int iMaxCountToConsume = 10;
    int iTotalConsumedHighPriority = 0;
    int iTotalConsumedRegPriority = 0;
    int iTotalConsumeLoops = 0;
@@ -2014,6 +2014,7 @@ void _main_loop_try_recevive_video_data()
    while ( (g_TimeNow < uTimeStart + uMaxWait) && ((iTotalConsumedRegPriority+iTotalConsumedHighPriority) < iMaxCountToConsume) && (!g_bQuit) )
    {
       iTotalConsumeLoops++;
+      s_uTimeLastCheckForVideoPackets = g_TimeNow;
 
       //---------------------------------------------
       // Check and process first:
@@ -2026,7 +2027,6 @@ void _main_loop_try_recevive_video_data()
       g_pProcessStats->uLoopCounter3 += iConsumedReg;
       
       g_TimeNow = get_current_timestamp_ms();
-      s_uTimeLastCheckForVideoPackets = g_TimeNow;
 
       // No more received regular data (video packets)
       if ( (0 == iConsumedReg) && (iTotalConsumedRegPriority > 0) )

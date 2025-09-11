@@ -34,6 +34,7 @@
 #include "config.h"
 #include "hardware.h"
 #include "tx_powers.h"
+#include "../utils/utils_vehicle.h"
 #include <math.h>
 
 
@@ -108,6 +109,10 @@ static int s_iTxInfoRTL8812EURunCamV2[] =
 static int s_iTxInfoRTL8733BU[] =
    { 1,   1,   1,    4,    8,    12,  20,   22,   30,   60,    0,    0,    0}; // measured 20.jan.2025, ruby 10.3
    
+static int s_iTxInfoRTL8812AUBonnetLow[] =
+   { 1,   1,   2,    8,   20,   25,   35,   40,   45,    0,    0,    0,    0}; // measured 20.jan.2025, Ruby 11.2, Legacy 18Mb/MCS2 on 5700 Mhz
+static int s_iTxInfoRTL8812AUBonnetHigh[] =
+   { 1,   1,   3,    8,   20,   35,   55,   70,   90,  120,   150,   0,    0}; // measured 28.aug.2025, Ruby 11.2, Legacy 18Mb/MCS2 on 5700 Mhz
 
 // { 1,  10,  20,   30,   40,   45,   50,   53,   56,   60,   63,   68,   70};
 //------------------------------------------------------------------------
@@ -173,6 +178,8 @@ const int* _tx_powers_get_mw_table_for_card(u32 uBoardType, int iCardModel)
       case CARD_MODEL_RTL8812AU_AF1: piMwPowers = s_iTxInfoArcherRTL8812AU_AF1; break;
       case CARD_MODEL_RTL8733BU: piMwPowers = s_iTxInfoRTL8733BU; break;
       case CARD_MODEL_BLUE_8812EU: piMwPowers = s_iTxInfoRTL8812EU; break;
+      case CARD_MODEL_BONNET_LOW_POWER: piMwPowers = s_iTxInfoRTL8812AUBonnetLow; break;
+      case CARD_MODEL_BONNET_HIGH_POWER: piMwPowers = s_iTxInfoRTL8812AUBonnetHigh; break;
    }
    return piMwPowers;
 }
@@ -257,6 +264,8 @@ int tx_powers_convert_raw_to_mw(u32 uBoardType, int iCardModel, int iRawPower)
 {
    if ( iCardModel < 0 )
       iCardModel = -iCardModel;
+   if ( iRawPower < 0 )
+      iRawPower = -iRawPower;
    if ( _tx_powers_is_card_serial_radio(uBoardType, iCardModel) )
       return pow(10.0, ((float)iRawPower)/10.0);
    const int* piMwPowers = _tx_powers_get_mw_table_for_card(uBoardType, iCardModel);
@@ -323,4 +332,23 @@ void tx_power_get_current_mw_powers_for_model(Model* pModel, int* piOutputArray)
          iCardModel = -iCardModel;
       piOutputArray[i] = tx_powers_convert_raw_to_mw(pModel->hwCapabilities.uBoardType, iCardModel, pModel->radioInterfacesParams.interface_raw_power[i]);
    }
+}
+
+int tx_power_compute_uplink_power_for_model_link(Model* pModel, int iVehicleRadioLink, int iLocalRadioInterfaceIndex, int iCardModel)
+{
+   if ( (NULL == pModel) || (! hardware_radio_index_is_wifi_radio(iLocalRadioInterfaceIndex)) )
+      return 0;
+
+   if ( iCardModel < 0 )
+      iCardModel = -iCardModel;
+
+   u32 uBoardType = hardware_getBoardType();      
+   int iVehicleLinkMwPower = get_vehicle_radio_link_current_tx_power_mw(pModel, iVehicleRadioLink);
+   iVehicleLinkMwPower *= 4;
+
+   int iTxPowerMw = iVehicleLinkMwPower;
+   int iCardMaxPowerMw = tx_powers_get_max_usable_power_mw_for_card(uBoardType, iCardModel);
+   if ( iTxPowerMw > iCardMaxPowerMw )
+      iTxPowerMw = iCardMaxPowerMw;
+   return iTxPowerMw;
 }

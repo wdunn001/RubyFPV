@@ -406,8 +406,8 @@ int radio_set_out_datarate(int rate_bps, u8 uPacketType, u32 uTimeNow)
          char szBuff2[64];
          str_getDataRateDescription(rate_bps, 0, szBuff);
          str_getDataRateDescription(sRadioDataRate_bps, 0, szBuff2);
-         log_line("[Radio] Set Tx DR (%d) to: %s (to send %s) (prev was: %s, %u pckts sent on it), current radio frame flags: %s = %s",
-           s_iLogCount_RadioRate, szBuff, str_get_packet_type(uPacketType), szBuff2, s_uPacketsSentUsingCurrent_RadioRate, str_format_binary_number(sRadioFrameFlags), str_get_radio_frame_flags_description2(sRadioFrameFlags));
+         log_line("[Radio] Set Tx DR (%d) to: %s (to send %s) (prev was: %s, %u pckts sent on it), current radio frame flags: %s",
+           s_iLogCount_RadioRate, szBuff, str_get_packet_type(uPacketType), szBuff2, s_uPacketsSentUsingCurrent_RadioRate, str_get_radio_frame_flags_description2(sRadioFrameFlags));
          if ( s_iLogCount_RadioRate == 5 )
             log_line("[Radio] Too many radio datarate changes, pausing log.");
          s_iLogCount_RadioRate++;

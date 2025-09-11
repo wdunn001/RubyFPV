@@ -56,6 +56,7 @@
 
 // Video flags
 
+#define VIDEO_FLAG_ENABLE_FOCUS_MODE_BW      ((u32)0x01)
 #define VIDEO_FLAG_ENABLE_LOCAL_HDMI_OUTPUT  ((u32)(((u32)0x01)<<2))
 #define VIDEO_FLAG_RETRANSMISSIONS_FAST      ((u32)(((u32)0x01)<<3))
 #define VIDEO_FLAG_GENERATE_H265             ((u32)(((u32)0x01)<<4))

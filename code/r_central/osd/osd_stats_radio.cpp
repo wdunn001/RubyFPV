@@ -306,6 +306,37 @@ void osd_render_stats_full_rx_port()
 }
 
 
+float osd_render_stats_radio_interface_get_height_single_radio_int(shared_mem_radio_stats* pStats)
+{
+   if ( NULL == pStats )
+      return 0.0;
+
+   float height_text = g_pRenderEngine->textHeight(s_idFontStats);
+   float height_text_small = osd_getFontHeightSmall();
+   float hGraph = height_text * 1.8;
+
+   ControllerSettings* pCS = get_ControllerSettings();
+   Model* pActiveModel = osd_get_current_data_source_vehicle_model();
+
+   if ( NULL == pActiveModel )
+      return 0.0;
+
+   bool bIsMinimal = false;
+   if ( pActiveModel->osd_params.osd_flags2[osd_get_current_layout_index()] & OSD_FLAG2_SHOW_MINIMAL_RADIO_INTERFACES_STATS )
+      bIsMinimal = true;
+
+
+   float fHeightInterface = height_text*s_OSDStatsLineSpacing + hGraph;
+   if ( ! bIsMinimal )
+      fHeightInterface += height_text*s_OSDStatsLineSpacing;
+
+   if ( pCS->iDeveloperMode || s_bDebugStatsShowAll )
+   if ( ! bIsMinimal )
+      fHeightInterface += 3.0 * ( height_text_small*s_OSDStatsLineSpacing );
+
+   return fHeightInterface;
+}
+
 float osd_render_stats_radio_interfaces_get_height(shared_mem_radio_stats* pStats)
 {
    if ( NULL == pStats )
@@ -333,13 +364,7 @@ float osd_render_stats_radio_interfaces_get_height(shared_mem_radio_stats* pStat
    if ( (!bIsCompact) && (!bIsMinimal) )
       height += 2.0*height_text*s_OSDStatsLineSpacing + s_fOSDStatsMargin*0.6;
    
-   float fHeightInterface = height_text*s_OSDStatsLineSpacing + hGraph;
-   if ( ! bIsMinimal )
-      fHeightInterface += height_text*s_OSDStatsLineSpacing;
-
-   if ( pCS->iDeveloperMode || s_bDebugStatsShowAll )
-   if ( ! bIsMinimal )
-      fHeightInterface += 3.0 * ( height_text_small*s_OSDStatsLineSpacing );
+   float fHeightInterface = osd_render_stats_radio_interface_get_height_single_radio_int(pStats);
    
    for (int i=0; i<pStats->countLocalRadioInterfaces; i++ )
    {
@@ -523,8 +548,8 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
       //if ( 1 < pStats->countLocalRadioInterfaces )
       if ( (iLocalRadioLinkId >= 0) && (pStats->radio_links[iLocalRadioLinkId].lastTxInterfaceIndex == i) )
          bIsTxCard = true;
-         
-      if ( (iLocalRadioLinkId >= 0) && (pStats->radio_links[iLocalRadioLinkId].lastTxInterfaceIndex == i) && (1 < pStats->countLocalRadioInterfaces) )
+
+      if ( bIsTxCard && (iCountInterfacesAssignedToCurrentLocalLink > 1) && (1 < pStats->countLocalRadioInterfaces) )
       {
          float fmarginy = 0.002;
          float fmarginx = 0.008/g_pRenderEngine->getAspectRatio();
@@ -537,9 +562,7 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
          g_pRenderEngine->setFill(pC);
          g_pRenderEngine->setStroke(pC[0], pC[1], pC[2], 0.0);
 
-         float fHeightInterface = height_text*s_OSDStatsLineSpacing*2.0 + hGraph;
-         if ( pCS->iDeveloperMode || s_bDebugStatsShowAll )
-            fHeightInterface += 3.0 * ( height_text_small*s_OSDStatsLineSpacing );
+         float fHeightInterface = osd_render_stats_radio_interface_get_height_single_radio_int(pStats);
 
          g_pRenderEngine->drawRoundRect(xPos-fmarginx, ySt-1.5*fmarginy, rightMargin-xPos+2.0*fmarginx, fHeightInterface + 3.0*fmarginy + height_text*0.2, 0.05);
          osd_set_colors();
@@ -679,7 +702,7 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
 
          osd_set_colors();
 
-         if ( bIsTxCard && (iCountInterfacesAssignedToCurrentLocalLink>1) && (1 < pStats->countLocalRadioInterfaces) )
+         if ( bIsTxCard && (iCountInterfacesAssignedToCurrentLocalLink > 1) && (1 < pStats->countLocalRadioInterfaces) )
             g_pRenderEngine->drawIcon(xPos, y-height_text*0.2, hGraph*0.7/g_pRenderEngine->getAspectRatio() , hGraph*0.7, g_idIconUplink2);
 
          y += hGraph;
@@ -717,7 +740,7 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
          }
          g_pRenderEngine->drawTextLeft(rightMargin, y, s_idFontStats, szDR);
          float fWT = g_pRenderEngine->textWidth(s_idFontStats, szDR);
-         if ( bIsTxCard && (1 < pStats->countLocalRadioInterfaces) )
+         if ( bIsTxCard && (iCountInterfacesAssignedToCurrentLocalLink > 1) && (1 < pStats->countLocalRadioInterfaces) )
          {
             float fIconH = height_text*1.14;
             float fIconW = 0.6 * fIconH / g_pRenderEngine->getAspectRatio();
@@ -768,7 +791,7 @@ float osd_render_stats_radio_interfaces( float xPos, float yPos, const char* szT
       str_format_bitrate(pStats->radio_interfaces[i].rxBytesPerSec * 8, szBuff);
       g_pRenderEngine->drawTextLeft(rightMargin, y, s_idFontStats, szBuff);
       float fWT = g_pRenderEngine->textWidth(s_idFontStats, szBuff);
-      if ( bIsTxCard && (1 < pStats->countLocalRadioInterfaces) )
+      if ( bIsTxCard && (iCountInterfacesAssignedToCurrentLocalLink > 1) && (1 < pStats->countLocalRadioInterfaces) )
       {
          float fIconH = height_text*1.14;
          float fIconW = 0.6 * fIconH / g_pRenderEngine->getAspectRatio();

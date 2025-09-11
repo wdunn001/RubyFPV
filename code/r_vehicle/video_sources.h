@@ -21,5 +21,7 @@ u32 video_sources_get_last_set_video_bitrate();
 void video_sources_set_keyframe(int iKeyframeMs);
 int video_sources_get_last_set_keyframe();
 
+void video_sources_set_temporary_image_saturation_off(bool bTurnOff);
+
 // Returns true if full restart is needed
 bool video_sources_periodic_health_checks();

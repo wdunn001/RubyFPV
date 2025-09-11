@@ -65,6 +65,7 @@ typedef struct
 
    u32 uCurrentAdaptiveVideoTargetVideoBitrateBPS;
    u16 uCurrentAdaptiveVideoECScheme; // high: data, low: EC
+   int iCurrentDataratesForLinks[MAX_RADIO_INTERFACES];
    u8  uCurrentDRBoost;
    int iCurrentAdaptiveVideoKeyFrameMsTarget;
    u32 uPendingVideoBitrateToSet;

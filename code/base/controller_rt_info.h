@@ -78,6 +78,7 @@ typedef struct
    
    u8 uOutputedVideoPackets[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedVideoPacketsRetransmitted[SYSTEM_RT_INFO_INTERVALS];
+   u8 uOutputedVideoPacketsRetransmittedDiscarded[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedVideoBlocks[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedVideoBlocksSkippedBlocks[SYSTEM_RT_INFO_INTERVALS];
    u8 uOutputedVideoBlocksECUsed[SYSTEM_RT_INFO_INTERVALS];

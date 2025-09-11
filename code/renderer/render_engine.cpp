@@ -1141,7 +1141,6 @@ float RenderEngine::drawMessageLines(float xPos, float yPos, const char* text, f
       if (!*szParse)
          break;
 
-      char *szWordStart = szParse;
       memset(outputBuffer, 0, sizeof(outputBuffer));
 
       if (isChineseChar(szParse))

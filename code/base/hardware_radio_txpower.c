@@ -23,7 +23,8 @@ void hardware_radio_set_txpower_raw_rtl8812au(int iCardIndex, int iTxPower)
            (pRadioHWInfo->iRadioType == RADIO_TYPE_RALINK) )
       {
          sprintf(szComm, "iw dev %s set txpower fixed %d", pRadioHWInfo->szName, -100*iTxPower);
-         hw_execute_bash_command(szComm, NULL);
+         //hw_execute_bash_command(szComm, NULL);
+         hw_execute_process(szComm, NULL);
       }
    }
 

@@ -153,29 +153,7 @@ static bool s_bThreadSetTxPowerRunning = false;
 static int s_iThreadSetTxPowerInterfaceIndex = -1;
 static int s_iThreadSetTxPowerRawValue = 0;
 
-void* _thread_set_tx_power_async(void *argument)
-{
-   sched_yield();
-   s_bThreadSetTxPowerRunning = true;
-   log_line("[ThreadTxPower] Start: Set radio interface %d raw tx power to %d", s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
-   radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(s_iThreadSetTxPowerInterfaceIndex);
-   if ( ! pRadioHWInfo->isConfigurable )
-      return NULL;
-   if ( hardware_radio_driver_is_rtl8812au_card(pRadioHWInfo->iRadioDriver) )
-      hardware_radio_set_txpower_raw_rtl8812au(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
-   if ( hardware_radio_driver_is_rtl8812eu_card(pRadioHWInfo->iRadioDriver) )
-      hardware_radio_set_txpower_raw_rtl8812eu(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
-   if ( hardware_radio_driver_is_rtl8733bu_card(pRadioHWInfo->iRadioDriver) )
-      hardware_radio_set_txpower_raw_rtl8733bu(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
-   if ( hardware_radio_driver_is_atheros_card(pRadioHWInfo->iRadioDriver) )
-      hardware_radio_set_txpower_raw_atheros(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
-
-   log_line("[ThreadTxPower] End: Done setting radio interface %d raw tx power to %d", s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
-   s_bThreadSetTxPowerRunning = false;
-   return NULL;
-}
-
-void _compute_packet_tx_power_on_ieee(int iVehicleRadioLinkId, int iRadioInterfaceIndex, int iDataRateTx)
+bool _check_update_tx_pit_mode()
 {
    bool bIsInTxPITMode = false;
    g_pCurrentModel->uModelRuntimeStatusFlags &= ~(MODEL_RUNTIME_STATUS_FLAG_IN_PIT_MODE | MODEL_RUNTIME_STATUS_FLAG_IN_PIT_MODE_TEMPERATURE);
@@ -219,34 +197,137 @@ void _compute_packet_tx_power_on_ieee(int iVehicleRadioLinkId, int iRadioInterfa
          bIsInTxPITMode = true;
       }
    }
+   return bIsInTxPITMode;
+}
 
+void* _thread_set_tx_power_async(void *argument)
+{
+   sched_yield();
+   s_bThreadSetTxPowerRunning = true;
+   if ( s_iThreadSetTxPowerRawValue < 0 )
+   {
+      s_iThreadSetTxPowerRawValue = -s_iThreadSetTxPowerRawValue;
+      log_line("[ThreadTxPower] Start: Set radio interface %d raw tx power to %d (adjusted)", s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+   }
+   else
+      log_line("[ThreadTxPower] Start: Set radio interface %d raw tx power to %d", s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+   radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(s_iThreadSetTxPowerInterfaceIndex);
+   if ( ! pRadioHWInfo->isConfigurable )
+      return NULL;
+   if ( hardware_radio_driver_is_rtl8812au_card(pRadioHWInfo->iRadioDriver) )
+      hardware_radio_set_txpower_raw_rtl8812au(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+   if ( hardware_radio_driver_is_rtl8812eu_card(pRadioHWInfo->iRadioDriver) )
+      hardware_radio_set_txpower_raw_rtl8812eu(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+   if ( hardware_radio_driver_is_rtl8733bu_card(pRadioHWInfo->iRadioDriver) )
+      hardware_radio_set_txpower_raw_rtl8733bu(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+   if ( hardware_radio_driver_is_atheros_card(pRadioHWInfo->iRadioDriver) )
+      hardware_radio_set_txpower_raw_atheros(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+
+   log_line("[ThreadTxPower] End: Done setting radio interface %d raw tx power to %d", s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+   s_bThreadSetTxPowerRunning = false;
+   return NULL;
+}
+
+void _compute_packet_tx_power_on_ieee(int iVehicleRadioLinkId, int iRadioInterfaceIndex, int iDataRateTx)
+{
    if ( (iRadioInterfaceIndex < 0) || (iRadioInterfaceIndex >= g_pCurrentModel->radioInterfacesParams.interfaces_count) )
       return;
 
+   bool bIsInTxPITMode = _check_update_tx_pit_mode();
 
    int iRadioInterfacelModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[iRadioInterfaceIndex];
    if ( iRadioInterfacelModel < 0 )
       iRadioInterfacelModel = -iRadioInterfacelModel;
-   //int iRadioInterfacePowerMaxRaw = tx_powers_get_max_usable_power_raw_for_card(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel);
-   //int iRadioInterfacePowerMaxMw = tx_powers_get_max_usable_power_mw_for_card(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel);
-   //int iRadioInterfaceTxPowerMw = tx_powers_convert_raw_to_mw(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel, iRadioInterfaceRawTxPower);
 
    int iRadioInterfaceRawTxPowerToUse = g_pCurrentModel->radioInterfacesParams.interface_raw_power[iRadioInterfaceIndex];
    if ( bIsInTxPITMode )
       iRadioInterfaceRawTxPowerToUse = tx_powers_convert_mw_to_raw(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel, 5);
-
-   if ( negociate_radio_link_is_in_progress() )
+   else if ( negociate_radio_link_is_in_progress() && (negociate_radio_link_get_txpower_mw() > 0) )
+      iRadioInterfaceRawTxPowerToUse = -tx_powers_convert_mw_to_raw(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel, negociate_radio_link_get_txpower_mw());
+   else
    {
-      int iTxTestPowerMw = negociate_radio_link_get_txpower_mw();
-      if ( iTxTestPowerMw > 0 )
-         iRadioInterfaceRawTxPowerToUse = tx_powers_convert_mw_to_raw(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel, iTxTestPowerMw);
+      int iMaxUsablePowerMw = 0;
+      if ( g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED )
+      {
+         if ( iDataRateTx < 0 )
+         {
+            int iIndex = -iDataRateTx-1;
+            int iScale = 100;
+            iMaxUsablePowerMw = g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwMCS[0][iIndex];
+            while ( (iMaxUsablePowerMw <= 0) && (iIndex > 0) )
+            {
+               iIndex--;
+               if ( iScale == 100 )
+                  iScale = 30;
+               iScale -= 2;
+               iMaxUsablePowerMw = g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwMCS[0][iIndex];
+            }
+            iMaxUsablePowerMw = (iMaxUsablePowerMw * iScale)/100;
+         }
+         else if ( iDataRateTx > 0 )
+         {
+            int iIndex = -1;
+            int iScale = 100;
+            for( int i=0; i<getDataRatesCount(); i++ )
+            {
+               if ( getDataRatesBPS()[i] == iDataRateTx )
+               {
+                  iIndex = i;
+                  iMaxUsablePowerMw = g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwLegacy[0][iIndex];
+                  break;
+               }
+            }
+            while ( (iMaxUsablePowerMw <= 0) && (iIndex > 0) )
+            {
+               iIndex--;
+               if ( iScale == 100 )
+                  iScale = 30;
+               iScale -= 2;
+               iMaxUsablePowerMw = g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwLegacy[0][iIndex];
+            }
+            iMaxUsablePowerMw = (iMaxUsablePowerMw * iScale)/100;
+         }
+      }
+      else
+      {
+         iMaxUsablePowerMw = tx_powers_get_max_usable_power_mw_for_card(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel);
+         if ( iDataRateTx < 0 )
+         {
+            if ( iDataRateTx < -3 )
+                iMaxUsablePowerMw = (iMaxUsablePowerMw * 30)/100;
+            if ( iDataRateTx < -4 )
+            {
+               for( int k=-4; k>iDataRateTx; k-- )
+                  iMaxUsablePowerMw = (iMaxUsablePowerMw * 50)/100;
+            }
+         }
+         else if ( iDataRateTx > 0 )
+         {
+             if ( iDataRateTx > 18000000 )
+                iMaxUsablePowerMw = (iMaxUsablePowerMw * 30)/100;
+             if ( iDataRateTx > 24000000 )
+             {
+                for( int k=4; k<getDataRatesCount(); k++ )
+                {
+                   if ( iDataRateTx > getDataRatesBPS()[k] )
+                      iMaxUsablePowerMw = (iMaxUsablePowerMw * 50)/100;
+                   else
+                      break;
+                }
+             }
+         }
+         if ( iMaxUsablePowerMw < 1 )
+            iMaxUsablePowerMw = 1;
+      }
+      if ( iMaxUsablePowerMw > 0 )
+      {
+         int iMaxUsableRawPower = tx_powers_convert_mw_to_raw(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel, iMaxUsablePowerMw);
+         if ( iRadioInterfaceRawTxPowerToUse > iMaxUsableRawPower )
+            iRadioInterfaceRawTxPowerToUse = -iMaxUsableRawPower;
+      }
    }
 
    if ( iRadioInterfaceRawTxPowerToUse == s_iLastRawTxPowerPerRadioInterface[iRadioInterfaceIndex] )
-      return;
-
-   radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(iRadioInterfaceIndex);
-   if ( ! pRadioHWInfo->isConfigurable )
       return;
 
    if ( s_bThreadSetTxPowerRunning )
@@ -258,7 +339,6 @@ void _compute_packet_tx_power_on_ieee(int iVehicleRadioLinkId, int iRadioInterfa
    s_bThreadSetTxPowerRunning = true;
    s_iThreadSetTxPowerInterfaceIndex = iRadioInterfaceIndex;
    s_iThreadSetTxPowerRawValue = iRadioInterfaceRawTxPowerToUse;
-
    pthread_attr_t attr;
    hw_init_worker_thread_attrs(&attr);
    if ( 0 != pthread_create(&s_pThreadSetTxPower, &attr, &_thread_set_tx_power_async, NULL) )
@@ -268,6 +348,7 @@ void _compute_packet_tx_power_on_ieee(int iVehicleRadioLinkId, int iRadioInterfa
       return;
    }
    pthread_attr_destroy(&attr);
+   log_line("Started thread to set tx power");
 }
 
 
@@ -313,7 +394,8 @@ int _compute_packet_downlink_datarate_radioflags_tx_power(u8* pPacketData, int i
       type_radio_links_parameters* pRP = test_link_get_temp_radio_params();
       uRadioFlags = pRP->link_radio_flags[iVehicleRadioLink];
    }
-   if ( (! bUseLowest) && negociate_radio_link_is_in_progress() && bIsVideoPacket )
+   //if ( (! bUseLowest) && negociate_radio_link_is_in_progress() && bIsVideoPacket )
+   if ( negociate_radio_link_is_in_progress() )
       uRadioFlags = negociate_radio_link_get_radio_flags();
 
    radio_set_frames_flags(uRadioFlags, g_TimeNow);
@@ -343,13 +425,22 @@ int _compute_packet_downlink_datarate_radioflags_tx_power(u8* pPacketData, int i
          iDataRateTx = iRate;
    }
 
+   // Auto datarate for data packets
    if ( 0 == iDataRateTx )
    if ( (!bIsVideoPacket) && (!bIsAudioPacket) )
    {
       iDataRateTx = DEFAULT_RADIO_DATARATE_LOWEST;
       if ( uRadioFlags & RADIO_FLAGS_USE_MCS_DATARATES )
          iDataRateTx = -1;
+
+      // If QAM modulations is used on video, don't go lower than QAM modulations on data
+      if ( s_LastTxDataRatesVideo[iRadioInterfaceIndex] <= -4 )
+         iDataRateTx = -4;
+      if ( s_LastTxDataRatesVideo[iRadioInterfaceIndex] > 18000000 )
+         iDataRateTx = 24000000;
    }
+
+   // Auto datarate for video packets
    if ( 0 == iDataRateTx )
    if ( bIsVideoPacket || bIsAudioPacket )
    {
@@ -401,6 +492,7 @@ int _compute_packet_downlink_datarate_radioflags_tx_power(u8* pPacketData, int i
             iDataRateTx = iDataRateForVideo;
       }
    }
+
    if ( (-100 == iDataRateTx) || bUseLowest )
    {
       if ( g_pCurrentModel->radioLinksParams.link_radio_flags[iVehicleRadioLink] & RADIO_FLAGS_USE_MCS_DATARATES )
@@ -408,7 +500,7 @@ int _compute_packet_downlink_datarate_radioflags_tx_power(u8* pPacketData, int i
       else
          iDataRateTx = DEFAULT_RADIO_DATARATE_LOWEST;
    }
-
+   
    radio_set_out_datarate(iDataRateTx, pPH->packet_type, g_TimeNow);
 
    if ( (pRadioHWInfo->iRadioType == RADIO_TYPE_ATHEROS) ||
@@ -429,21 +521,9 @@ int _compute_packet_downlink_datarate_radioflags_tx_power(u8* pPacketData, int i
    
    // Datarates - end
 
-
-   /*
-   if ( (!bIsVideoPacket) && (!bIsAudioPacket) )
-   {
-   char szBuff[128];
-   char szBuff2[128];
-   str_get_radio_frame_flags_description(uRadioFlags, szBuff);
-   str_getDataRateDescription(iDataRateTx, 0, szBuff2);
-   log_line("DBG out rate: %s, out flags: %s", szBuff2, szBuff);
-   }
-   */
-
    //------------------------------------------
    // Tx power
-   _compute_packet_tx_power_on_ieee(iVehicleRadioLink, iRadioInterfaceIndex, iDataRateTx);
+   _compute_packet_tx_power_on_ieee(iVehicleRadioLink, iRadioInterfaceIndex, s_LastTxDataRatesVideo[iRadioInterfaceIndex]);
 
    return iDataRateTx;
 

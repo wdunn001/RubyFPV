@@ -33,11 +33,14 @@ typedef struct
    int iMSPRawCommandFilledBytes;
    int iMSPState;
    int iMSPDirection;
-   u8  uMSPCommandData[256]; // Max size is one byte long
-   int iMSPCommandDataSize;
-   int iMSPParsedCommandDataSize;
+   u8  uMSPCommandPayload[256]; // Max size is one byte long
+   int iMSPCommandPayloadSize;
+   int iMSPParsedCommandPayloadBytes;
    u8  uMSPChecksum;
    u8  uMSPCommand;
+   u8  uMSPPreviousCommand;
+   u8  uMSPDisplayPortCommand;
+   u8  uMSPDisplayPortPreviousCommand;
    u32 uLastMSPCommandReceivedTime;
 
    u16 uScreenChars[MAX_MSP_CHARS_BUFFER]; // Max 64x24

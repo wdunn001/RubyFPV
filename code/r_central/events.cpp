@@ -994,6 +994,9 @@ bool onEventReceivedModelSettings(u32 uVehicleId, u8* pBuffer, int length, bool 
    
    log_current_runtime_vehicles_info();
 
+   log_line("[Events] Current vehicle radio links configuration:");
+   g_pCurrentModel->logVehicleRadioInfo();
+
    Model* pCurrentlyStoredModel = NULL;
    bool bFoundInList = false;
    int iRuntimeIndex = -1;
@@ -1030,6 +1033,9 @@ bool onEventReceivedModelSettings(u32 uVehicleId, u8* pBuffer, int length, bool 
       log_line("[Events] Found model in storage (0x%X) is the same as current model (g_pCurrentModel = 0x%X).", pCurrentlyStoredModel, g_pCurrentModel);
    else
       log_line("[Events] Found model in storage is not the same as current model (current model VID: %u)", (NULL != g_pCurrentModel)?(g_pCurrentModel->uVehicleId): 0);
+
+   log_line("[Events] Stored model (VID %u) radio links configuration:", pCurrentlyStoredModel->uVehicleId);
+   pCurrentlyStoredModel->logVehicleRadioInfo();
 
    char szFile[MAX_FILE_PATH_SIZE];
    sprintf(szFile, "%s/last_recv_model.mdl", FOLDER_RUBY_TEMP);
@@ -1082,6 +1088,9 @@ bool onEventReceivedModelSettings(u32 uVehicleId, u8* pBuffer, int length, bool 
       return false;
    }
 
+   log_line("[Events] Received model (VID %u) radio links configuration:", s_pEventsLastRecvModelSettings->uVehicleId);
+   s_pEventsLastRecvModelSettings->logVehicleRadioInfo();
+
    // Remove relay flags from radio links flags for vehicles version 7.6 or older (build 79)
 
    bool bRemoveRelayFlags = false;
@@ -1112,6 +1121,7 @@ bool onEventReceivedModelSettings(u32 uVehicleId, u8* pBuffer, int length, bool 
    log_line("Currently received temp model developer flags: [%s]", str_get_developer_flags(s_pEventsLastRecvModelSettings->uDeveloperFlags));
    log_line("Currently received temp model has %d radio links.", s_pEventsLastRecvModelSettings->radioLinksParams.links_count );
    log_line("Currently received temp model has Ruby base version: %d.%d", (s_pEventsLastRecvModelSettings->hwCapabilities.uRubyBaseVersion >> 8) & 0xFF, s_pEventsLastRecvModelSettings->hwCapabilities.uRubyBaseVersion & 0xFF);
+   log_line("Currently received temp model has %d cameras", s_pEventsLastRecvModelSettings->iCameraCount);
    
    for( int i=0; i<s_pEventsLastRecvModelSettings->radioLinksParams.links_count; i++ )
    {
@@ -1176,7 +1186,7 @@ bool onEventReceivedModelSettings(u32 uVehicleId, u8* pBuffer, int length, bool 
    g_pCurrentModel = getCurrentModel();
 
    log_line("[Events] Updated current local vehicle with received vehicle settings.");
-   log_line("Currently stored model now (VID %u) has negociated radio? %s", g_pCurrentModel->uVehicleId, (g_pCurrentModel->radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS)?"yes":"no");
+   log_line("Currently stored model now (VID %u) radio links configuration:", g_pCurrentModel->uVehicleId);
 
    pCurrentlyStoredModel->logVehicleRadioInfo();
 

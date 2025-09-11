@@ -601,6 +601,7 @@ void menu_loop()
 void menu_loop_parse_input_events()
 {
    if ( keyboard_get_triggered_input_events() & INPUT_EVENT_PRESS_MENU )
+   if ( ! keyboard_has_long_press_flag() )
    {
       log_line("[Menu] (loop %d) Pressed [Menu] Key", menu_get_loop_counter()%1000);
       if ( osd_is_stats_flight_end_on() )

@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
 
    hardware_detectBoardAndSystemType();
 
-   //hw_launch_process("./ruby_central");
+   //hw_execute_process("./ruby_central");
    hw_execute_ruby_process(NULL, "ruby_central", NULL, NULL);
    
    log_line("Executed central process.");
@@ -193,7 +193,8 @@ int main(int argc, char *argv[])
             hardware_sleep_ms(200);
          }
          hardware_sleep_ms(200);
-         hw_launch_process("./ruby_central");
+         //hw_execute_process("./ruby_central");
+         hw_execute_ruby_process(NULL, "ruby_central", NULL, NULL);
          log_line_watchdog("Restarting ruby_central process done.");
       } 
    }

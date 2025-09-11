@@ -124,7 +124,7 @@ int _process_received_video_data_packet(int iInterfaceIndex, u8* pPacket, int iP
    }
    return nRet;
    */
-     return 0;
+   return 0;
 }
 
 // Returns 1 if end of a video block was reached

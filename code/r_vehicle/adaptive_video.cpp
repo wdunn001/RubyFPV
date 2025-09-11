@@ -47,12 +47,18 @@
 #include "packets_utils.h"
 #include "negociate_radio.h"
 
+u32 s_uAdaptiveVideoLastRequestIdReceived = MAX_U32;
+u32 s_uAdaptiveVideoLastRequestIdReceivedTime = 0;
+
 u8  s_uAdaptiveVideoLastFlagsReceived = 0;
 int s_iAdaptiveVideoLastSetKeyframeMS = 0;
 u32 s_uAdaptiveVideoLastSetVideoBitrateBPS = 0;
 u16 s_uAdaptiveVideoLastSetECScheme = 0;
 u8  s_uAdaptiveVideoLastSetDRBoost = 0xFF; // 0xFF none set, use video profile DR boost
 u32 s_uLastTimeAdaptiveDebugInfo = 0;
+
+bool s_bAdaptiveVideoIsFocusModeBWActive = false;
+u32 s_uAdaptiveVideoTimeTurnFocusModeBWOff = 0;
 
 void adaptive_video_init()
 {
@@ -78,8 +84,26 @@ void adaptive_video_reset_to_defaults()
    s_iAdaptiveVideoLastSetKeyframeMS = 0;
    s_uAdaptiveVideoLastSetVideoBitrateBPS = 0;
    s_uAdaptiveVideoLastSetDRBoost = 0xFF;
+   s_bAdaptiveVideoIsFocusModeBWActive = false;
+   s_uAdaptiveVideoTimeTurnFocusModeBWOff = 0;
+   video_sources_set_temporary_image_saturation_off(false);
    //if ( NULL != g_pCurrentModel )
    //   s_iAdaptiveVideoLastSetKeyframeMS = g_pCurrentModel->getInitialKeyframeIntervalMs(g_pCurrentModel->video_params.iCurrentVideoProfile);
+}
+
+void _adaptive_video_turn_focusmode_bw_on()
+{
+   if ( negociate_radio_link_is_in_progress() )
+      return;
+   s_bAdaptiveVideoIsFocusModeBWActive = true;
+   s_uAdaptiveVideoTimeTurnFocusModeBWOff = 0;
+   video_sources_set_temporary_image_saturation_off(true);
+}
+
+void _adaptive_video_turn_focusmode_bw_off_after(u32 uTimeout)
+{
+   if ( s_bAdaptiveVideoIsFocusModeBWActive )
+      s_uAdaptiveVideoTimeTurnFocusModeBWOff = g_TimeNow + uTimeout;
 }
 
 void adaptive_video_reset_requested_keyframe()
@@ -191,13 +215,32 @@ void adaptive_video_periodic_loop()
       log_line("[AdaptiveVideo] Last settings requested from controller: bitrate: %.2f Mbps, keyframe: %d ms", (float)s_uAdaptiveVideoLastSetVideoBitrateBPS/1000.0/1000.0, s_iAdaptiveVideoLastSetKeyframeMS);
       log_line("[AdaptiveVideo] Last settings requested from controller: DR boost: %d, EC: %d/%d", s_uAdaptiveVideoLastSetDRBoost, s_uAdaptiveVideoLastSetECScheme >> 8, s_uAdaptiveVideoLastSetECScheme & 0xFF);
    }
+
+   if ( (0 != s_uAdaptiveVideoTimeTurnFocusModeBWOff) && (g_TimeNow >= s_uAdaptiveVideoTimeTurnFocusModeBWOff) )
+   {
+      s_uAdaptiveVideoTimeTurnFocusModeBWOff = 0;
+      s_bAdaptiveVideoIsFocusModeBWActive = false;
+      video_sources_set_temporary_image_saturation_off(false);
+   }
 }
 
 void adaptive_video_on_message_from_controller(u32 uRequestId, u8 uFlags, u32 uVideoBitrate, u16 uECScheme, u8 uStreamIndex, int iRadioDatarate, int iKeyframeMs, u8 uDRBoost)
 {
+   if ( (uRequestId == s_uAdaptiveVideoLastRequestIdReceived) && (uFlags == s_uAdaptiveVideoLastFlagsReceived) )
+   {
+      log_line("[AdaptiveVideo] Received duplicate req id %u from CID %u, flags: %s. Ignore it.", uRequestId, g_uControllerId, str_format_adaptive_video_flags(uFlags));
+      return;
+   }
    log_line("[AdaptiveVideo] Received req id %u from CID %u, flags: %s", uRequestId, g_uControllerId, str_format_adaptive_video_flags(uFlags));
+   log_line("[AdaptiveVideo] Previous received req id was: %u, %u ms ago, previous flags: %s",
+      s_uAdaptiveVideoLastRequestIdReceived, g_TimeNow - s_uAdaptiveVideoLastRequestIdReceivedTime,
+      str_format_adaptive_video_flags(s_uAdaptiveVideoLastFlagsReceived));
    log_line("[AdaptiveVideo] Request params: stream id: %d, video bitrate: %.2f Mbps, datarate: %d, keyframe %d ms, EC: %d/%d, DR boost: %d",
       uStreamIndex, (float)uVideoBitrate/1000.0/1000.0, iRadioDatarate, iKeyframeMs, (uECScheme>>8), (uECScheme & 0xFF), uDRBoost);
+
+   s_uAdaptiveVideoLastRequestIdReceived = uRequestId;
+   s_uAdaptiveVideoLastRequestIdReceivedTime = g_TimeNow;
+   s_uAdaptiveVideoLastFlagsReceived = uFlags;
 
    u32 uCurrentVideoBitrate = video_sources_get_last_set_video_bitrate();
    if ( 0 == uCurrentVideoBitrate )
@@ -208,7 +251,6 @@ void adaptive_video_on_message_from_controller(u32 uRequestId, u8 uFlags, u32 uV
       s_uAdaptiveVideoLastSetDRBoost, (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileFlags & VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK) >> VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT,
        s_uAdaptiveVideoLastSetECScheme >> 8, s_uAdaptiveVideoLastSetECScheme & 0xFF);
 
-   s_uAdaptiveVideoLastFlagsReceived = uFlags;
    if ( uFlags & FLAG_ADAPTIVE_VIDEO_KEYFRAME )
    {
       s_iAdaptiveVideoLastSetKeyframeMS = iKeyframeMs;
@@ -237,6 +279,22 @@ void adaptive_video_on_message_from_controller(u32 uRequestId, u8 uFlags, u32 uV
             (float)video_sources_get_last_set_video_bitrate()/1000.0/1000.0,
             str_format_datarate_inline(g_pCurrentModel->getRadioDataRateForVideoBitrate(video_sources_get_last_set_video_bitrate(), 0)));
       }
+
+      if ( g_pCurrentModel->video_params.uVideoExtraFlags & VIDEO_FLAG_ENABLE_FOCUS_MODE_BW )
+      {
+         int iCurrentVideoProfile = g_pCurrentModel->video_params.iCurrentVideoProfile;
+         bool bOnlyMediumAdaptive = false;
+         if ( (g_pCurrentModel->video_link_profiles[iCurrentVideoProfile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO )
+            bOnlyMediumAdaptive = true;
+
+         int iDataRateForCurrentVideoBitrate = g_pCurrentModel->getRadioDataRateForVideoBitrate(s_uAdaptiveVideoLastSetVideoBitrateBPS, 0);
+         if ( (-1 == iDataRateForCurrentVideoBitrate) || (getDataRatesBPS()[0] == iDataRateForCurrentVideoBitrate) )
+            _adaptive_video_turn_focusmode_bw_on();
+         else if ( bOnlyMediumAdaptive && ((-2 == iDataRateForCurrentVideoBitrate) || (getDataRatesBPS()[1] == iDataRateForCurrentVideoBitrate)) )
+            _adaptive_video_turn_focusmode_bw_on();
+         else
+            _adaptive_video_turn_focusmode_bw_off_after(1000);
+      }
    }
 
    if ( uFlags & FLAG_ADAPTIVE_VIDEO_EC )
@@ -260,5 +318,7 @@ void adaptive_video_on_message_from_controller(u32 uRequestId, u8 uFlags, u32 uV
    {
       s_uAdaptiveVideoLastSetDRBoost = uDRBoost;
       log_line("[AdaptiveVideo] Set DR boost to %d (of %d)", s_uAdaptiveVideoLastSetDRBoost, (g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileFlags & VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK) >> VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT);
+      if ( 0 != s_uAdaptiveVideoLastSetDRBoost )
+         _adaptive_video_turn_focusmode_bw_off_after(500);
    }
 }

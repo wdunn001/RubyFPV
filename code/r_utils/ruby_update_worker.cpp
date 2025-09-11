@@ -282,26 +282,36 @@ int _replace_runtime_binary_files()
    strcat(szFile, "ruby_start");
    if ( access(szFile, R_OK) == -1 )
    {
-      char szOutput[4096];
-      szOutput[0] = 0;
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "ls %s", g_szUpdateUnpackFolder);
-      hw_execute_bash_command(szComm, szOutput);
-      log_line("Content of tmp update folder:");
-      log_line("[%s]", szOutput);
-      log_line("Found zip archive with no valid ruby_start file in binaries folder. Ignoring it.");
-      _write_return_code(-10, "Invalid update archive");
-      return -1;
+      strcpy(szFile, szSrcBinariesFolder);
+      strcat(szFile, "onyxfpv_start");
+      if ( access(szFile, R_OK) == -1 )
+      {
+         char szOutput[4096];
+         szOutput[0] = 0;
+         snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "ls %s", g_szUpdateUnpackFolder);
+         hw_execute_bash_command(szComm, szOutput);
+         log_line("Content of tmp update folder:");
+         log_line("[%s]", szOutput);
+         log_line("Found zip archive with no valid ruby_start file in binaries folder. Ignoring it.");
+         _write_return_code(-10, "Invalid update archive");
+         return -1;
+      }
    }
 
    log_line("Copying binary files from unzipped folder [%s] ...", szSrcBinariesFolder);
 
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %sruby_* %s", szSrcBinariesFolder, FOLDER_BINARIES);
    hw_execute_bash_command(szComm, NULL);
+   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %sonyx_* %s", szSrcBinariesFolder, FOLDER_BINARIES);
+   hw_execute_bash_command(szComm, NULL);
+   snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %sonyxfpv_* %s", szSrcBinariesFolder, FOLDER_BINARIES);
+   hw_execute_bash_command(szComm, NULL);
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %sstop* %s 2>/dev/null", szSrcBinariesFolder, FOLDER_BINARIES);
    hw_execute_bash_command(szComm, NULL);
    hardware_sleep_ms(50);
 
    hw_execute_bash_command("chmod 777 ruby*", NULL);
+   hw_execute_bash_command("chmod 777 onyx*", NULL);
 
    #ifdef HW_PLATFORM_RASPBERRY
    snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %sraspi* %s", szSrcBinariesFolder, FOLDER_BINARIES);
@@ -312,6 +322,12 @@ int _replace_runtime_binary_files()
       hw_execute_bash_command("cp -rf ruby_capture_veye /usr/local/bin/veye_raspivid", NULL);
    if ( access( "ruby_capture_veye307", R_OK ) != -1 )
       hw_execute_bash_command("cp -rf ruby_capture_veye307 /usr/local/bin/307/veye_raspivid", NULL);
+   if ( access( "onyxfpv_capture_raspi", R_OK ) != -1 )
+      hw_execute_bash_command("cp -rf onyxfpv_capture_raspi /opt/vc/bin/raspivid", NULL);
+   if ( access( "onyxfpv_capture_veye", R_OK ) != -1 )
+      hw_execute_bash_command("cp -rf onyxfpv_capture_veye /usr/local/bin/veye_raspivid", NULL);
+   if ( access( "onyxfpv_capture_veye307", R_OK ) != -1 )
+      hw_execute_bash_command("cp -rf onyxfpv_capture_veye307 /usr/local/bin/307/veye_raspivid", NULL);
    #endif
 
    return 0;
@@ -449,6 +465,28 @@ int _copy_config_files()
       hw_execute_bash_command(szComm, NULL);
       hw_execute_bash_command("chmod 777 /boot/config.txt", NULL);
    }
+
+   snprintf(szSourceFile, sizeof(szSourceFile)/sizeof(szSourceFile[0]), "%s%sonyxfpv_profile", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
+
+   if ( access( szSourceFile, R_OK ) != -1 )
+   {
+      char szComm[MAX_FILE_PATH_SIZE];
+      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %s /root/.profile 2>/dev/null", szSourceFile);
+      hw_execute_bash_command(szComm, NULL);
+      hw_execute_bash_command("chmod 777 /root/.profile", NULL);
+   }
+
+   snprintf(szSourceFile, sizeof(szSourceFile)/sizeof(szSourceFile[0]), "%s%sonyxfpv_config.txt", g_szUpdateUnpackFolder, SUBFOLDER_UPDATES_PI);
+
+   if ( access( szSourceFile, R_OK ) != -1 )
+   {
+      hardware_mount_boot();
+      hardware_sleep_ms(200);
+      char szComm[MAX_FILE_PATH_SIZE];
+      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "cp -rf %s /boot/config.txt 2>/dev/null", szSourceFile);
+      hw_execute_bash_command(szComm, NULL);
+      hw_execute_bash_command("chmod 777 /boot/config.txt", NULL);
+   }
    #endif
    return 0;
 }
@@ -538,13 +576,24 @@ bool _find_update_zip_file()
          sprintf(szComm, "find %sruby_update*.upd 2>/dev/null", FOLDER_USB_MOUNT);
       else
          sprintf(szComm, "find ruby_update*.upd 2>/dev/null");
-
+      szOutput[0] = 0;
       hw_execute_bash_command(szComm, szOutput);
       if ( (0 == strlen(szOutput)) || (NULL == strstr(szOutput, "ruby_update")) )
       {
-         return false;
+
+         if ( g_bIsController )
+            sprintf(szComm, "find %sonyxfpv_update*.zip 2>/dev/null", FOLDER_USB_MOUNT);
+         else
+            sprintf(szComm, "find onyxfpv_update*.zip 2>/dev/null");
+         szOutput[0] = 0;
+         hw_execute_bash_command(szComm, szOutput);
+         if ( (0 == strlen(szOutput)) || (NULL == strstr(szOutput, "ruby_update")) )
+         {
+            return false;
+         }
       }
    }
+
    int iLen = strlen(szOutput);
    for( int i=0; i<iLen; i++ )
    {
@@ -555,7 +604,10 @@ bool _find_update_zip_file()
       }
    }
    strncpy(g_szUpdateZipFileFullPath, szOutput, MAX_FILE_PATH_SIZE-1);
-   strncpy(g_szUpdateZipFileName, strstr(szOutput, "ruby_update"), MAX_FILE_PATH_SIZE-1);
+   if ( NULL != strstr(szOutput, "ruby_update") )
+      strncpy(g_szUpdateZipFileName, strstr(szOutput, "ruby_update"), MAX_FILE_PATH_SIZE-1);
+   else if ( NULL != strstr(szOutput, "onyxfpv_update") )
+      strncpy(g_szUpdateZipFileName, strstr(szOutput, "onyxfpv_update"), MAX_FILE_PATH_SIZE-1);
 
    log_line("Found zip archive full path: [%s]", g_szUpdateZipFileFullPath);
    log_line("Found zip archive filename: [%s]", g_szUpdateZipFileName);
@@ -619,15 +671,19 @@ bool _find_update_info_file()
    snprintf(szFile, sizeof(szFile)/sizeof(szFile[0]), "%s%s", g_szUpdateUnpackFolder, FILE_INFO_SHORT_LAST_UPDATE);
    if( access( szFile, R_OK ) == -1 )
    {
-      char szOutput[4096];
-      szOutput[0] = 0;
-      snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "ls %s", g_szUpdateUnpackFolder);
-      hw_execute_bash_command(szComm, szOutput);
-      log_line("Content of tmp update folder:");
-      log_line("[%s]", szOutput);
-      log_line("Found zip archive with no valid update info file (missing update file: [%s]). Ignoring it.", szFile);
-      _write_return_code(-10, "Missing update info from the update archive");
-      return false;
+      snprintf(szFile, sizeof(szFile)/sizeof(szFile[0]), "%s%s", g_szUpdateUnpackFolder, "onyxfpv_update.log");
+      if( access( szFile, R_OK ) == -1 )
+      {
+         char szOutput[4096];
+         szOutput[0] = 0;
+         snprintf(szComm, sizeof(szComm)/sizeof(szComm[0]), "ls %s", g_szUpdateUnpackFolder);
+         hw_execute_bash_command(szComm, szOutput);
+         log_line("Content of tmp update folder:");
+         log_line("[%s]", szOutput);
+         log_line("Found zip archive with no valid update info file (missing update file: [%s]). Ignoring it.", szFile);
+         _write_return_code(-10, "Missing update info from the update archive");
+         return false;
+      }
    }
    log_line("Found update info file in zip update (%s)", g_szUpdateZipFileName);
    return true;

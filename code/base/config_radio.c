@@ -281,7 +281,7 @@ int getLowerLevelDataRate(int iDatarateBSP)
    {
       for( int i=0; i<getDataRatesCount(); i++ )
       {
-         if ( iDatarateBSP >= getDataRatesBPS()[i] )
+         if ( getDataRatesBPS()[i] >= iDatarateBSP )
          if ( i > 0 )
             return getDataRatesBPS()[i-1];
       }

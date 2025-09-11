@@ -380,15 +380,20 @@ void _render_video_background()
    {
       bVehicleHasCamera = true;
       t_structure_vehicle_info* pRuntimeInfo = get_vehicle_runtime_info_for_vehicle_id(uVehicleIdFullVideo);
-      if ( NULL != pRuntimeInfo )
-      if ( pRuntimeInfo->bGotRubyTelemetryInfo )
+      Model* pModel = findModelWithId(uVehicleIdFullVideo, 60);
+
+      if ( pModel->is_spectator )      
+      if ( (NULL != pRuntimeInfo) && pRuntimeInfo->bGotRubyTelemetryInfo )
+      if ( pRuntimeInfo->headerRubyTelemetryExtended.uRubyFlags & FLAG_RUBY_TELEMETRY_VEHICLE_HAS_CAMERA )
+         pModel->iCameraCount = 1;
+
+      if ( (NULL != pRuntimeInfo) && pRuntimeInfo->bGotRubyTelemetryInfo )
       if ( ! (pRuntimeInfo->headerRubyTelemetryExtended.uRubyFlags & FLAG_RUBY_TELEMETRY_VEHICLE_HAS_CAMERA) )
          bVehicleHasCamera = false;
 
-      Model* pModel = findModelWithId(uVehicleIdFullVideo, 60);
-      if ( NULL != pModel )
-      if ( pModel->iCameraCount <= 0 )
+      if ( (NULL != pModel) && (pModel->iCameraCount <= 0) )
          bVehicleHasCamera = false;
+
       if ( pModel->b_mustSyncFromVehicle )
          bVehicleHasCamera = true;
       if ( bVehicleHasCamera && link_has_received_videostream(uVehicleIdFullVideo) )

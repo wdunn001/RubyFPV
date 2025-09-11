@@ -17,13 +17,17 @@ class MenuControllerRadio: public Menu
    private:
       void addItems();
       void addItemsFixedPower();
+      void addItemsPrefferedTx();
       void addItemsVehiclePower();
-      MenuItemSelect* m_pItemsSelect[15];
+      void onSelectedPreferredTxCard(int iVehicleRadioLink);
+      MenuItemSelect* m_pItemsSelect[20];
       MenuItemSlider* m_pItemsSlider[10];
 
       int m_IndexTxPowerMode;
       int m_IndexTxPowerSingle;
       int m_IndexTxPowerRadioLinks[MAX_RADIO_INTERFACES];
+      int m_IndexRadioLinksAutoTxCard[MAX_RADIO_INTERFACES];
+      int m_iRadioLinksTxCardSelectedIndex[MAX_RADIO_INTERFACES];
       int m_IndexRadioConfig;
       
 };

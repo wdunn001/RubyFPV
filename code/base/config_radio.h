@@ -12,6 +12,7 @@
 #define MAX_TX_POWER 71
 #define MAX_MCS_INDEX 9
 
+#define DEFAULT_TX_POWER_MW_NEGOCIATE_RADIO 5
 #define DEFAULT_TX_TIME_OVERLOAD 500 // milisec
 
 // Frequencies are in kHz

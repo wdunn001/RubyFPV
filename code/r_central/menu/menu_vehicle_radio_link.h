@@ -33,7 +33,8 @@ class MenuVehicleRadioLink: public Menu
       void sendRadioLinkConfigParams(type_radio_links_parameters* pRadioLinkParams, bool bCheckVideo);
       void sendNewRadioLinkFrequency(int iVehicleLinkIndex, u32 uNewFreqKhz);
 
-      int m_iRadioLink;
+      int m_iVehicleRadioLink;
+      int m_iVehicleRadioInterface;
 
       MenuItemSlider* m_pItemsSlider[20];
       MenuItemSelect* m_pItemsSelect[20];

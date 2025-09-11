@@ -65,6 +65,8 @@ static int s_iHwRadiosCount = 0;
 static int s_iHwRadiosSupportedCount = 0;
 static int s_HardwareRadiosEnumeratedOnce = 0;
 
+static int s_iHardwareHasBonnetUSBHub = 0;
+
 void reset_runtime_radio_rx_info(type_runtime_radio_rx_info* pRuntimeRadioRxInfo)
 {
    if ( NULL == pRuntimeRadioRxInfo )
@@ -310,10 +312,35 @@ int hardware_load_radio_info_into_buffers(int* piOutputTotalCount, int* piOutput
    return 0;
 }
 
+void _hardware_find_bonnet()
+{
+   s_iHardwareHasBonnetUSBHub = 0;
+   char szOutput[4096];
+   szOutput[0] = 0;
+   hw_execute_bash_command("lsusb | grep 1a86:8094", szOutput);
+   if ( 0 != strstr(szOutput, "1a86:8094") )
+   if ( 0 != strstr(szOutput, "QinHeng") )
+      s_iHardwareHasBonnetUSBHub = 1;
+}
+
 int _hardware_detect_card_model(const char* szProductId)
 {
    if ( (NULL == szProductId) || (0 == szProductId[0]) )
       return 0;
+
+   // Handle first cards with same ID (multiple variants)
+   if ( NULL != strstr( szProductId, "bda:8812" ) )
+   {
+      if ( s_iHardwareHasBonnetUSBHub )
+      {
+         return CARD_MODEL_BONNET_LOW_POWER;
+      }
+      #if defined HW_PLATFORM_OPENIPC_CAMERA
+      return CARD_MODEL_RTL8812AU_OIPC_USIGHT;
+      #else
+      return CARD_MODEL_ALFA_AWUS036ACH;
+      #endif
+   }     
 
    if ( NULL != strstr( szProductId, "cf3:9271" ) )
       return CARD_MODEL_TPLINK722N;
@@ -332,14 +359,6 @@ int _hardware_detect_card_model(const char* szProductId)
    if ( NULL != strstr( szProductId, "bda:881a" ) )
       return CARD_MODEL_RTL8812AU_DUAL_ANTENNA;
 
-   #if defined HW_PLATFORM_OPENIPC_CAMERA
-   if ( NULL != strstr( szProductId, "bda:8812" ) )
-      return CARD_MODEL_RTL8812AU_OIPC_USIGHT;
-   #else
-   if ( NULL != strstr( szProductId, "bda:8812" ) )
-      return CARD_MODEL_ALFA_AWUS036ACH;
-   #endif
-     
    if ( NULL != strstr( szProductId, "bda:8811" ) )
       return CARD_MODEL_ALFA_AWUS036ACS;
    if ( NULL != strstr( szProductId, "bda:0811" ) )
@@ -394,6 +413,8 @@ void _hardware_assign_usb_from_physical_ports()
       return;
 
    log_line("[HardwareRadio] Finding USB ports for %d radio interfaces...", s_iHwRadiosCount);
+
+   _hardware_find_bonnet();
 
    // Set some default values first
    for( int i=0; i<s_iHwRadiosCount; i++ )
@@ -577,7 +598,9 @@ void _hardware_assign_usb_from_physical_ports()
             continue;
 
          log_line("[HardwareRadio] Found USB port part2 for radio interface %d: [%s]", i+1, &(szPort[iPosMinus]));
-
+         sRadioInfo[i].iUSBHubPort = atoi(&(szPort[strlen(szPort)-1]));
+         log_line("[HardwareRadio] USB Hub port number for this radio interface %d (%s): %d", i+1, sRadioInfo[i].szName, sRadioInfo[i].iUSBHubPort);
+         
          if ( (szPort[iPosMinus] < '0') || (szPort[iPosMinus] > '9') )
          {
             log_line("[HardwareRadio] Invalid port string [%s]. Skipping.", &(szPort[iPosMinus]));
@@ -598,7 +621,7 @@ void _hardware_assign_usb_from_physical_ports()
          if ( iPosMinus < iPosEnd )
             strncpy(&(sRadioInfo[i].szUSBPort[1]), &(szPort[iPosMinus]), MAX_RADIO_PORT_NAME_LENGTH-1);
          sRadioInfo[i].szUSBPort[MAX_RADIO_PORT_NAME_LENGTH-1] = 0;
-         log_line("[HardwareRadio] Assigned USB port to radio interface %d: [%s]", i+1, sRadioInfo[i].szUSBPort);
+         log_line("[HardwareRadio] Assigned USB port to radio interface %d (%s): [%s]", i+1, sRadioInfo[i].szName, sRadioInfo[i].szUSBPort);
       }
    }
    closedir(d);
@@ -645,15 +668,6 @@ int hardware_radio_get_driver_id_card_model(int iCardModel)
    return 0;
 }
 
-int hardware_radio_get_driver_id_for_product_id(const char* szProdId)
-{
-   if ( (NULL == szProdId) || (0 == szProdId[0]) )
-      return 0;
-
-   int iCardModel = _hardware_detect_card_model(szProdId);
-   return hardware_radio_get_driver_id_card_model(iCardModel);
-}
-
 int _hardware_find_usb_radio_interfaces_info()
 {
    s_iEnumeratedUSBRadioInterfaces = 1;
@@ -664,6 +678,8 @@ int _hardware_find_usb_radio_interfaces_info()
    #else
    log_line("[HardwareRadio] Finding USB radio interfaces and devices for linux/raspberry platform...");
    #endif
+
+   _hardware_find_bonnet();
 
    char szBuff[4096];
    szBuff[0] = 0;
@@ -840,6 +856,7 @@ int _hardware_enumerate_wifi_radios()
       sRadioInfo[s_iHwRadiosCount].szMAC[0] = 0;
       sRadioInfo[s_iHwRadiosCount].szUSBPort[0] = 'X';
       sRadioInfo[s_iHwRadiosCount].szUSBPort[1] = '0';
+      sRadioInfo[s_iHwRadiosCount].iUSBHubPort = 0;
       sRadioInfo[s_iHwRadiosCount].iRadioType = RADIO_TYPE_OTHER;
       sRadioInfo[s_iHwRadiosCount].iRadioDriver = 0;
       memset(&(sRadioInfo[s_iHwRadiosCount].uHardwareParamsList[0]), 0, sizeof(u32)*MAX_RADIO_HW_PARAMS);
@@ -1094,6 +1111,31 @@ int _hardware_enumerate_wifi_radios()
    }
 
    _hardware_assign_usb_from_physical_ports();
+
+   if ( s_iHardwareHasBonnetUSBHub )
+   {
+      log_line("[HardwareRadio] Has Bonnet radios.");
+      for( int i=0; i<s_iHwRadiosCount; i++ )
+      {
+         if ( (sRadioInfo[i].iCardModel != CARD_MODEL_BONNET_LOW_POWER) && (sRadioInfo[i].iCardModel != CARD_MODEL_BONNET_HIGH_POWER) )
+            continue;
+         /*
+         char szOutput[256];
+         sprintf(szComm, "iw dev %s info | grep addr", sRadioInfo[i].szName);
+         szOutput[0] = 0;
+         hw_execute_bash_command(szComm, szOutput);
+         if ( NULL != strstr(szOutput, "addr 00:22") )
+            sRadioInfo[i].iCardModel = CARD_MODEL_BONNET_HIGH_POWER;
+         else
+            sRadioInfo[i].iCardModel = CARD_MODEL_BONNET_LOW_POWER;
+         */
+         if ( sRadioInfo[i].iUSBHubPort == 3 )
+            sRadioInfo[i].iCardModel = CARD_MODEL_BONNET_HIGH_POWER;
+         else
+            sRadioInfo[i].iCardModel = CARD_MODEL_BONNET_LOW_POWER;
+         log_line("[HardwareRadio] Radio interface %d (%s) was set as %s", i+1, sRadioInfo[i].szName, str_get_radio_card_model_string(sRadioInfo[i].iCardModel));
+      }
+   }
    return 1;
 }
 
