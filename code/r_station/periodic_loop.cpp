@@ -513,20 +513,24 @@ void _check_retransmissions_state()
       return;
 
    bool bHasAnyVideoPackets = false;
+   ProcessorRxVideo* pProcessorRxVideo = NULL;
    for( int i=0; i<MAX_VIDEO_PROCESSORS; i++ )
    {
       if ( NULL != g_pVideoProcessorRxList[i] )
       if ( g_pVideoProcessorRxList[i]->m_uVehicleId == g_pCurrentModel->uVehicleId )
-      if ( 0 != g_pVideoProcessorRxList[i]->getLastestVideoPacketReceiveTime() )
       {
-         if ( g_TimeNow < g_pVideoProcessorRxList[i]->getLastTempRetrPauseResume() + SYSTEM_RT_INFO_INTERVALS * g_SMControllerRTInfo.uUpdateIntervalMs )
-            return;
-         bHasAnyVideoPackets = true;
-         break;
+         pProcessorRxVideo = g_pVideoProcessorRxList[i];
+         if ( 0 != g_pVideoProcessorRxList[i]->getLastestVideoPacketReceiveTime() )
+         {
+            if ( g_TimeNow < g_pVideoProcessorRxList[i]->getLastTempRetrPauseResume() + SYSTEM_RT_INFO_INTERVALS * g_SMControllerRTInfo.uUpdateIntervalMs )
+               return;
+            bHasAnyVideoPackets = true;
+            break;
+         }
       }
    }
 
-   if ( ! bHasAnyVideoPackets )
+   if ( (! bHasAnyVideoPackets) || (NULL == pProcessorRxVideo) )
       return;
 
    // Check only the older part of the buffer for skipped blocks. Newer skipped blocks might not have yet been re-requested
@@ -535,10 +539,10 @@ void _check_retransmissions_state()
    u32 uLastRetransmissionTime = 0;
    u32 uLastRetransmissionAckTime = 0;
 
-   int iDeltaSlicesFromNow = SYSTEM_RT_INFO_INTERVALS/4;
-   int iRTStartIndex = g_SMControllerRTInfo.iCurrentIndex - SYSTEM_RT_INFO_INTERVALS/4;
+   int iDeltaSlicesFromNow = 1;
+   int iRTStartIndex = g_SMControllerRTInfo.iCurrentIndex - iDeltaSlicesFromNow;
    if ( iRTStartIndex < 0 )
-      iRTStartIndex += SYSTEM_RT_INFO_INTERVALS-1;
+      iRTStartIndex += SYSTEM_RT_INFO_INTERVALS;
    
    int iRTIndex = iRTStartIndex;
    for( int i=0; i<SYSTEM_RT_INFO_INTERVALS/2; i++ )
@@ -570,6 +574,7 @@ void _check_retransmissions_state()
       {
          iHasRequestedRetransmissionsCount += pRTInfoVehicle->uCountReqRetransmissions[iRTIndex];
          uLastRetransmissionTime = g_TimeNow - iDeltaSlicesFromNow * g_SMControllerRTInfo.uUpdateIntervalMs;
+         break;
       }
    }
 
@@ -587,16 +592,21 @@ void _check_retransmissions_state()
       {
          iHasAckRetransmissionsCount += pRTInfoVehicle->uCountAckRetransmissions[iRTIndex];
          uLastRetransmissionAckTime = g_TimeNow - iDeltaSlicesFromNow * g_SMControllerRTInfo.uUpdateIntervalMs;
+         break;
       }
    }
 
    static u32 s_uTimeLastSentDevAlarmRetransmissionsToCentral = 0;
-   if ( (0 == iHasRequestedRetransmissionsCount) || (0 == iHasAckRetransmissionsCount) )
+   if ( (0 == iHasRequestedRetransmissionsCount) && (0 == iHasAckRetransmissionsCount) )
    {
-      log_line("Video has skipped blocks (%u ms ago) but no requested (%u ms ago) or acknowledged (%u ms ago) retransmissions and retransmissions are enabled.",
+      if ( 0 == uLastRetransmissionTime )
+         uLastRetransmissionTime = pProcessorRxVideo->getLastTimeRequestedRetransmission();
+      if ( 0 == uLastRetransmissionAckTime )
+         uLastRetransmissionAckTime = pProcessorRxVideo->getLastTimeReceivedRetransmission();
+      log_line("Video has skipped blocks (%u ms ago) but checks failed: %d requested retransmissions (last retr id: %u), last was %u ms ago; %d acknowledged retransmissions, last was %u ms ago; and retransmissions are enabled.",
          g_TimeNow - uLastSkipBlockTime,
-         g_TimeNow - uLastRetransmissionTime,
-         g_TimeNow - uLastRetransmissionAckTime);
+         iHasRequestedRetransmissionsCount, pProcessorRxVideo->getLastRetransmissionId(), g_TimeNow - uLastRetransmissionTime,
+         iHasAckRetransmissionsCount, g_TimeNow - uLastRetransmissionAckTime);
       if ( g_TimeNow > s_uTimeLastSentDevAlarmRetransmissionsToCentral + 10000 )
       {
          s_uTimeLastSentDevAlarmRetransmissionsToCentral = g_TimeNow;

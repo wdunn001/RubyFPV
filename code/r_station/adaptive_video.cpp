@@ -451,9 +451,9 @@ void _adaptive_video_send_adaptive_message_to_vehicle(u32 uVehicleId)
    if ( 0 != uVideoBitrate )
    {
       int iDRToFitVideo = pModel->getRadioDataRateForVideoBitrate(uVideoBitrate, 0);
-      log_line("[AdaptiveVideo] Sent adaptive video message to vehicle %u (req id: %u),%s flags: %s, Video bitrate: %.2f Mbps (of %.2f Mbps) (fits in datarate %s, max video bitrate for this radio rate is: %.2f Mbps, max radio data for this rate: %.2f Mbps), EC: %d/%d, Current DR for links: %s, DR boost: %d",
+      log_line("[AdaptiveVideo] Sent adaptive video message to vehicle %u (req id: %u), %s: %s, Video bitrate: %.2f Mbps (of %.2f Mbps) (fits in datarate %s, max video bitrate for this radio rate is: %.2f Mbps, max radio data for this rate: %.2f Mbps), EC: %d/%d, Current DR for links: %s, DR boost: %d",
          uVehicleId, pRuntimeInfo->uAdaptiveVideoRequestId,
-         pRuntimeInfo->bDidFirstTimeAdaptiveHandshake?" ":" (first time handshake)",
+         pRuntimeInfo->bDidFirstTimeAdaptiveHandshake?"flags":" (first time handshake) flags",
          str_format_adaptive_video_flags(uFlags),
          (float)uVideoBitrate/1000.0/1000.0, (float)pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps/1000.0/1000.0,
          str_format_datarate_inline(iDRToFitVideo),
@@ -1211,6 +1211,7 @@ void _adaptive_keyframe_check_vehicle(Model* pModel, type_global_state_vehicle_r
    if ( (NULL == pRuntimeInfo) || (NULL == pSMVideoStreamInfo) || (NULL == pModel) )
       return;
 
+   /*
    static u32 s_uAdaptiveVideoLastTimeSetKeyframe = 0;
    if ( g_TimeNow > s_uAdaptiveVideoLastTimeSetKeyframe + 10000 )
    {
@@ -1219,16 +1220,17 @@ void _adaptive_keyframe_check_vehicle(Model* pModel, type_global_state_vehicle_r
       if ( pRuntimeInfo->iPendingKeyFrameMsToSet == 0 )
          pRuntimeInfo->iPendingKeyFrameMsToSet = pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget;
    }
+   */
 
    if ( pRuntimeInfo->iPendingKeyFrameMsToSet == 0 )
-   if ( g_TimeNow > s_uAdaptiveVideoLastTimeSetKeyframe + 500 )
    if ( pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget != 0 )
+   if ( g_TimeNow > pRuntimeInfo->uLastTimeSentAdaptiveVideoRequest + 1000 )
    if ( pSMVideoStreamInfo->PHVS.uCurrentVideoKeyframeIntervalMs != pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget )
    {
       log_line("[AdaptiveVideo] Video stream received keyframe interval (%u ms) it's the same as target one (%d ms). Set pending one (0 ms) to current target one.",
          pSMVideoStreamInfo->PHVS.uCurrentVideoKeyframeIntervalMs, pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget);
       pRuntimeInfo->iPendingKeyFrameMsToSet = 0;
-      s_uAdaptiveVideoLastTimeSetKeyframe = g_TimeNow;
+      //s_uAdaptiveVideoLastTimeSetKeyframe = g_TimeNow;
    }
 }
 

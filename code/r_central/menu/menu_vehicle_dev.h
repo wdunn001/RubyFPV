@@ -24,6 +24,7 @@ class MenuVehicleDev: public Menu
       int m_IndexClockSyncType;
       int m_IndexRadioSilence;
       int m_IndexRxLoopTimeout;
+      int m_IndexRetransmissionWindow;
       int m_IndexInjectMinorVideoFaults;
       int m_IndexInjectVideoFaults;
       int m_IndexTestAdaptive;

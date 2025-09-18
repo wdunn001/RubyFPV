@@ -698,15 +698,13 @@ int VideoRxPacketsBuffer::discardOldBlocks(u32 uCutOffTime)
            (m_VideoBlocks[m_iBottomBufferIndex].uReceivedTime == 0) )
          break;
       
-      /*
       if ( iCountDiscarded < 3 )
-         log_line("DBG discard bottom index: %d, block %u (recv time: %u ms ago, recv packets data,ec: %d,%d, scheme: %d/%d), top index: %d, block %u, max recv pckt index: %d",
+         log_line("[VideoRXBuffer] Discard bottom index: %d, block %u (recv time: %u ms ago, recv packets data,ec: %d,%d, scheme: %d/%d), top index: %d, block %u, max recv pckt index: %d",
             m_iBottomBufferIndex, m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex,
             g_TimeNow - m_VideoBlocks[m_iBottomBufferIndex].uReceivedTime,
             m_VideoBlocks[m_iBottomBufferIndex].iRecvDataPackets, m_VideoBlocks[m_iBottomBufferIndex].iRecvECPackets,
             m_VideoBlocks[m_iBottomBufferIndex].iBlockDataPackets, m_VideoBlocks[m_iBottomBufferIndex].iBlockECPackets,
             m_iTopBufferIndex, m_VideoBlocks[m_iTopBufferIndex].uVideoBlockIndex, m_VideoBlocks[m_iTopBufferIndex].iMaxReceivedDataOrECPacketIndex);
-      */
       iCountDiscarded++;
       u32 uVideoBlockIndex = m_VideoBlocks[m_iBottomBufferIndex].uVideoBlockIndex;
       _empty_block_buffer_index(m_iBottomBufferIndex);

@@ -715,24 +715,24 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
             #if defined(HW_PLATFORM_RASPBERRY)
             if ( pRadioInfo->iRadioType == RADIO_TYPE_ATHEROS )
             {
-               sprintf(cmd, "iw dev %s set freq %u HT40+ 2>&1", pRadioInfo->szName, uFreqWifi);
+               sprintf(cmd, "iw dev %s set freq %u HT40+", pRadioInfo->szName, uFreqWifi);
                bUsedHT40 = true;
             }
             else
             {
-               sprintf(cmd, "iw dev %s set freq %u HT40+ 2>&1", pRadioInfo->szName, uFreqWifi);
+               sprintf(cmd, "iw dev %s set freq %u HT40+", pRadioInfo->szName, uFreqWifi);
                bUsedHT40 = true;
             }
             #else
-               sprintf(cmd, "iwconfig %s freq %u000 2>&1", pRadioInfo->szName, uFrequencyKhz);            
+               sprintf(cmd, "iwconfig %s freq %u000", pRadioInfo->szName, uFrequencyKhz);            
             #endif
          }
          else if ( pRadioInfo->isHighCapacityInterface )
          {
             #if defined(HW_PLATFORM_RASPBERRY)
-            sprintf(cmd, "iw dev %s set freq %u 2>&1", pRadioInfo->szName, uFreqWifi);
+            sprintf(cmd, "iw dev %s set freq %u", pRadioInfo->szName, uFreqWifi);
             #else
-            sprintf(cmd, "iwconfig %s freq %u000 2>&1", pRadioInfo->szName, uFrequencyKhz);            
+            sprintf(cmd, "iwconfig %s freq %u000", pRadioInfo->szName, uFrequencyKhz);            
             #endif
          }
          //hw_execute_bash_command_raw(cmd, szOutput);
@@ -755,9 +755,9 @@ bool radio_utils_set_interface_frequency(Model* pModel, int iRadioIndex, int iAs
             hardware_sleep_ms(delayMs);
             szOutput[0] = 0;
             #if defined(HW_PLATFORM_RASPBERRY)
-            sprintf(cmd, "iw dev %s set freq %u 2>&1", pRadioInfo->szName, uFreqWifi);
+            sprintf(cmd, "iw dev %s set freq %u", pRadioInfo->szName, uFreqWifi);
             #else
-            sprintf(cmd, "iwconfig %s freq %u000 2>&1", pRadioInfo->szName, uFrequencyKhz);
+            sprintf(cmd, "iwconfig %s freq %u000", pRadioInfo->szName, uFrequencyKhz);
             #endif
             hw_execute_bash_command_raw(cmd, szOutput);
          }

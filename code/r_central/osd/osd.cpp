@@ -1109,7 +1109,7 @@ float osd_show_total_distance(float xPos, float yPos, float fScale)
    if ( pP->iUnits == prefUnitsImperial || pP->iUnits == prefUnitsFeets )
    {
       if ( _osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0) > 1.0 )
-         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %1.f mi", szPrefix, (int)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
+         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %.1f mi", szPrefix, (int)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
       else
          snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d ft", szPrefix, (int)_osd_convertMeters(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100));
    }
