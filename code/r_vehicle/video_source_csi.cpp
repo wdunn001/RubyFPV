@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/shared_mem.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/camera_utils.h"
 #include "../base/utils.h"
@@ -548,7 +548,7 @@ u32 video_source_csi_start_program(u32 uOverwriteInitialBitrate, int iOverwriteI
    s_bHasThreadWatchDogVideoCapture = false;
 
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "video capture csi watchdog");
    
    if ( 0 != pthread_create(&s_pThreadWatchDogVideoCapture, &attr, &_thread_watchdog_video_capture, NULL) )
       log_softerror_and_alarm("[VideoSourceCSI] Failed to create thread for watchdog.");

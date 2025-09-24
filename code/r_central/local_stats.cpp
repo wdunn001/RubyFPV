@@ -33,7 +33,7 @@
 #include "local_stats.h"
 #include "../base/base.h"
 #include "../base/models.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "shared_vars.h"
 #include "pairing.h"
 #include "timers.h"

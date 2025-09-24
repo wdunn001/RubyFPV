@@ -32,7 +32,6 @@
 
 #include "osd_common.h"
 #include "../../base/base.h"
-#include "../../base/hw_procs.h"
 #include "../../base/config.h"
 #include "../../../mavlink/common/mavlink.h"
 #include "../../base/ctrl_interfaces.h"

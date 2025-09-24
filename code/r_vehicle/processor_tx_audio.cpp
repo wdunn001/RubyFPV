@@ -32,7 +32,7 @@
 
 #include "../base/base.h"
 #include "../base/config.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "processor_tx_audio.h"
 
 #include "../radio/radiopackets2.h"

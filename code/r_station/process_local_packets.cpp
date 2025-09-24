@@ -42,7 +42,7 @@
 #include "../base/radio_utils.h"
 #include "../base/hardware.h"
 #include "../base/hardware_audio.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../common/string_utils.h"
 #include "../common/radio_stats.h"

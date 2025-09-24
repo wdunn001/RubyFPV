@@ -498,7 +498,7 @@ void MenuControllerVideo::onSelectItem()
       send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_PAUSE_RESUME_AUDIO, 1);
       s_bStopAudioTest = false;
       pthread_attr_t attr;
-      hw_init_worker_thread_attrs(&attr);
+      hw_init_worker_thread_attrs(&attr, "test audio async from central");
       if ( 0 != pthread_create(&s_pThreadAudioTest, &attr, &_thread_audio_test_async, NULL) )
       {
          pthread_attr_destroy(&attr);

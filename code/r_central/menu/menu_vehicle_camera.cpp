@@ -1166,9 +1166,6 @@ void MenuVehicleCamera::importCalibrationFiles()
    }
    ruby_pause_watchdog("import calibration files from USB stick");
 
-   //sprintf(szComm, "find %s/gs.key 2>/dev/null", FOLDER_USB_MOUNT);
-   //hw_execute_bash_command(szComm, szOutput);
-
    DIR *d;
    struct dirent *dir;
    char szFile[MAX_FILE_PATH_SIZE];

@@ -55,7 +55,7 @@
 #include "../base/models_list.h"
 #include "../base/radio_utils.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../common/string_utils.h"
 #include "../common/relay_utils.h"
 #include "../common/radio_stats.h"
@@ -511,7 +511,6 @@ void ProcessorRxVideo::handleReceivedVideoPacket(int interfaceNb, u8* pBuffer, i
 
       bool bDiscard = false;
       bool bBeforeResChange = false;
-      bool bTooOld = false;
       if ( (m_pVideoRxBuffer->getBufferBottomIndex() != -1) && (m_pVideoRxBuffer->getBufferBottomVideoBlockIndex() != 0) && (pPHVS->uCurrentBlockIndex < m_pVideoRxBuffer->getBufferBottomVideoBlockIndex()) )
       {
          g_SMControllerRTInfo.uOutputedVideoPacketsRetransmittedDiscarded[g_SMControllerRTInfo.iCurrentIndex]++;
@@ -521,7 +520,6 @@ void ProcessorRxVideo::handleReceivedVideoPacket(int interfaceNb, u8* pBuffer, i
                (pPH->packet_flags_extended & PACKET_FLAGS_EXTENDED_BIT_EOTF_MASK): -1,
                pPHVS->uStreamInfo, m_pVideoRxBuffer->getBufferBottomVideoBlockIndex());
          bDiscard = true;
-         bTooOld = true;
       }
       if ( m_pVideoRxBuffer->hasVideoPacket(pPHVS->uCurrentBlockIndex, pPHVS->uCurrentBlockPacketIndex) ||
            (pPHVS->uCurrentBlockIndex < m_pVideoRxBuffer->getBufferBottomVideoBlockIndex()) )

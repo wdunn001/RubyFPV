@@ -53,7 +53,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/shared_mem.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/hardware.h"
 #include "../base/hardware_camera.h"
 #include "../base/models.h"

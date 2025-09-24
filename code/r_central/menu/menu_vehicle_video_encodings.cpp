@@ -114,7 +114,7 @@ void MenuVehicleVideoEncodings::addItems()
    if ( g_pCurrentModel->isRunningOnOpenIPCHardware() )
    {
       m_pItemsSelect[20] = new MenuItemSelect(L("Noise Level Reduction"), L("Sets the video noise level reduction strength. Lower values means better performance but more noise in the live video (less reduction of noise)."));  
-      m_pItemsSelect[20]->addSelection(L("None"));
+      m_pItemsSelect[20]->addSelection(L("Disabled"));
       m_pItemsSelect[20]->addSelection(L("0"));
       m_pItemsSelect[20]->addSelection(L("1"));
       m_pItemsSelect[20]->addSelection(L("2"));

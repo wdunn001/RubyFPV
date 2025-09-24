@@ -14,7 +14,9 @@ char* str_format_binary_number(u32 uNumber);
 
 void str_getDataRateDescription(int dataRateBPS, int iHT40, char* szOutput);
 void str_getDataRateDescriptionNoSufix(int dataRateBPS, char* szOutput);
+char* str_getDataRateDescriptionAlternative(int dataRateBPS);
 char* str_format_datarate_inline(int dataRateBPS);
+
 char* str_format_bitrate_inline(int iBitrateBPS);
 void str_format_bitrate(int bitrate_bps, char* szBuffer);
 void str_format_bitrate_no_sufix(int bitrate_bps, char* szBuffer);

@@ -34,7 +34,7 @@
 #include "processor_rx_audio.h"
 #include "processor_rx_video.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_settings.h"

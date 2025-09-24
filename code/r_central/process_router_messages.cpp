@@ -32,7 +32,7 @@
 
 #include "../base/alarms.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_preferences.h"

@@ -35,7 +35,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_i2c.h"
 #include "../base/hardware_cam_maj.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #include <math.h>
 #include <semaphore.h>
@@ -406,7 +406,7 @@ void vehicle_check_update_processes_affinities(bool bUseThread, bool bVeYe)
    s_bThreadBgAffinitiesStarted = true;
    pthread_t pThreadBgAffinities;
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "set vehicle procs affinities");
 
    if ( 0 != pthread_create(&pThreadBgAffinities, &attr, &_thread_adjust_affinities_vehicle, &s_bAdjustAffinitiesIsVeyeCamera) )
    {

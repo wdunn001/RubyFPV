@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/shared_mem.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/hardware_camera.h"
 #include "../base/hardware_cam_maj.h"
 #include "../base/ruby_ipc.h"

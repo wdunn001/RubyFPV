@@ -35,7 +35,7 @@
 #include "../base/shared_mem.h"
 #include "../base/hardware_camera.h"
 #include "../base/hardware_cam_maj.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/parser_h264.h"
 #include "../base/utils.h"

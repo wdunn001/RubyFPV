@@ -50,7 +50,7 @@
 #include "hardware_radio.h"
 #include "hardware_serial.h"
 #include "hardware_radio_sik.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "../common/string_utils.h"
 
 #define MAX_USB_DEVICES_INFO 24
@@ -1982,8 +1982,9 @@ int hardware_initialize_radio_interface(int iInterfaceIndex, u32 uDelayMS)
    pRadioHWInfo->lastFrequencySetFailed = 1;
    pRadioHWInfo->uFailedFrequencyKhz = DEFAULT_FREQUENCY;
 
-   sprintf(szComm, "iwconfig %s rts off 2>&1", pRadioHWInfo->szName);
-   hw_execute_bash_command(szComm, szOutput);
+   sprintf(szComm, "iwconfig %s rts off", pRadioHWInfo->szName);
+   //hw_execute_process_wait(szComm);
+   hw_execute_bash_command(szComm, NULL);
    log_line("[HardwareRadio] Initialized radio interface %d: %s", iInterfaceIndex+1, pRadioHWInfo->szName);
    return 1;
 }
@@ -2016,7 +2017,7 @@ int hardware_get_radio_index_by_name(const char* szName)
 {
    if ( ! s_HardwareRadiosEnumeratedOnce )
       hardware_enumerate_radio_interfaces();
-   if ( NULL == szName || 0 == szName[0] )
+   if ( (NULL == szName) || (0 == szName[0]) )
       return -1;
    for( int i=0; i<s_iHwRadiosCount; i++ )
       if ( 0 == strcmp(szName, sRadioInfo[i].szName ) )
@@ -2041,7 +2042,7 @@ radio_hw_info_t* hardware_get_radio_info(int iRadioIndex)
 {
    if ( ! s_HardwareRadiosEnumeratedOnce )
       hardware_enumerate_radio_interfaces();
-   if ( iRadioIndex < 0 || iRadioIndex >= s_iHwRadiosCount )
+   if ( (iRadioIndex < 0) || (iRadioIndex >= s_iHwRadiosCount) )
       return NULL;
    return &(sRadioInfo[iRadioIndex]);
 }
@@ -2050,7 +2051,7 @@ const char* hardware_get_radio_name(int iRadioIndex)
 {
    if ( ! s_HardwareRadiosEnumeratedOnce )
       hardware_enumerate_radio_interfaces();
-   if ( iRadioIndex < 0 || iRadioIndex >= s_iHwRadiosCount )
+   if ( (iRadioIndex < 0) || (iRadioIndex >= s_iHwRadiosCount) )
       return NULL;
    return sRadioInfo[iRadioIndex].szName;
 }
@@ -2059,7 +2060,7 @@ const char* hardware_get_radio_description(int iRadioIndex)
 {
    if ( ! s_HardwareRadiosEnumeratedOnce )
       hardware_enumerate_radio_interfaces();
-   if ( iRadioIndex < 0 || iRadioIndex >= s_iHwRadiosCount )
+   if ( (iRadioIndex < 0) || (iRadioIndex >= s_iHwRadiosCount) )
       return NULL;
    return sRadioInfo[iRadioIndex].szDescription;
 }
@@ -2069,8 +2070,10 @@ int hardware_radio_has_low_capacity_links()
    if ( ! s_HardwareRadiosEnumeratedOnce )
       hardware_enumerate_radio_interfaces();
    for( int i=0; i<s_iHwRadiosCount; i++ )
+   {
       if ( ! sRadioInfo[i].isHighCapacityInterface )
          return 1;
+   }
    return 0;
 }
 

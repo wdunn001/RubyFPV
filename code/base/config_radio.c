@@ -34,7 +34,7 @@
 #include "base.h"
 #include "config.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "../radio/radioflags.h"
 #include "../radio/radiopackets2.h"
 #include <ctype.h>

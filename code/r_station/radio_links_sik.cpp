@@ -37,7 +37,7 @@
 #include "../base/models.h"
 #include "../base/hardware_radio.h"
 #include "../base/hardware_radio_sik.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../common/radio_stats.h"
 #include "../radio/radio_rx.h"
 #include "../radio/radio_tx.h"

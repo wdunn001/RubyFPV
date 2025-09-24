@@ -41,7 +41,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_camera.h"
 #include "../base/models_list.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #include "../base/config.h"
 #include "../base/vehicle_settings.h"
@@ -95,6 +95,25 @@ void update_openipc_cpu(Model* pModel)
    hardware_set_default_sigmastar_cpu_freq();
    if ( NULL != pModel )
       pModel->processesPriorities.iFreqARM = DEFAULT_FREQ_OPENIPC_SIGMASTAR;
+}
+
+void do_update_to_114()
+{
+   log_line("Doing update to 11.4");
+ 
+   if ( ! s_isVehicle )
+   {
+      load_Preferences();
+      Preferences* pP = get_Preferences();
+      pP->nLogLevel = 0;  
+      save_Preferences();
+   }
+
+   Model* pModel = getCurrentModel();
+   if ( NULL == pModel )
+      return;
+
+   log_line("Updated model VID %u (%s) to v11.3", pModel->uVehicleId, pModel->getLongName());
 }
 
 void do_update_to_113()
@@ -1464,6 +1483,8 @@ int main(int argc, char *argv[])
       do_update_to_112();
    if ( (iMajor < 11) || (iMajor == 11 && iMinor <= 3) )
       do_update_to_113();
+   if ( (iMajor < 11) || (iMajor == 11 && iMinor <= 4) )
+      do_update_to_114();
 
 
    saveCurrentModel();

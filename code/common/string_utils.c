@@ -551,47 +551,69 @@ void str_getDataRateDescriptionNoSufix(int dataRateBPS, char* szOutput)
    }
 }
 
+char* str_getDataRateDescriptionAlternative(int dataRateBPS)
+{
+   static char s_szFormatDatarateAlternate[64];
+   s_szFormatDatarateAlternate[0] = 0;
+   if ( (dataRateBPS >= 0) || (dataRateBPS <= -100) )
+      sprintf(s_szFormatDatarateAlternate, ".n-%s", str_format_datarate_inline(dataRateBPS));
+   else
+   {
+      if ( dataRateBPS == -1 )
+         strcpy(s_szFormatDatarateAlternate, "BPSK");
+      else if ( (dataRateBPS == -2) || (dataRateBPS == -3) )
+         strcpy(s_szFormatDatarateAlternate, "QPSK");
+      else if ( (dataRateBPS == -4) || (dataRateBPS == -5) )
+         strcpy(s_szFormatDatarateAlternate, "16-QAM");
+      else if ( (dataRateBPS == -6) || (dataRateBPS == -7) || (dataRateBPS == -8) )
+         strcpy(s_szFormatDatarateAlternate, "64-QAM");
+      else
+         strcpy(s_szFormatDatarateAlternate, "256-QAM");
+   }
+   return s_szFormatDatarateAlternate;
+}
+
 char* str_format_datarate_inline(int dataRateBPS)
 {
-   static char s_szFormatDatarate[64];
-   s_szFormatDatarate[0] = 0;
+   static char s_szFormatDatarateInline[64];
+   s_szFormatDatarateInline[0] = 0;
 
    if ( dataRateBPS <= -100 )
    {
-      strcpy(s_szFormatDatarate, "Lowest");
+      strcpy(s_szFormatDatarateInline, "Lowest");
    }
    else if ( dataRateBPS < 0 )
    {
       int mcsIndex = -dataRateBPS-1;
       if ( mcsIndex <= MAX_MCS_INDEX )
-         sprintf(s_szFormatDatarate, "MCS-%d", mcsIndex );
+         sprintf(s_szFormatDatarateInline, "MCS-%d", mcsIndex );
       else
-         sprintf(s_szFormatDatarate, "MCS-?");
+         sprintf(s_szFormatDatarateInline, "MCS-?");
    }
    else if ( 0 == dataRateBPS )
    {
-      strcpy(s_szFormatDatarate, "Auto");
+      strcpy(s_szFormatDatarateInline, "Auto");
    }
    else if ( dataRateBPS <= 56 )
    {
-       sprintf(s_szFormatDatarate, "*%d Mbps", dataRateBPS);
+       sprintf(s_szFormatDatarateInline, "*%d Mbps", dataRateBPS);
    }
    else
    {
       if ( dataRateBPS >= 1000000 )
       {
          if ( ((dataRateBPS /1000) % 1000) != 0 )
-            sprintf(s_szFormatDatarate, "%1.f Mbps", (float)dataRateBPS/1000.0/1000.0);
+            sprintf(s_szFormatDatarateInline, "%1.f Mbps", (float)dataRateBPS/1000.0/1000.0);
          else
-            sprintf(s_szFormatDatarate, "%d Mbps", dataRateBPS/1000/1000);
+            sprintf(s_szFormatDatarateInline, "%d Mbps", dataRateBPS/1000/1000);
       }
       else if ( dataRateBPS >= 10000 )
-         sprintf(s_szFormatDatarate, "%d kbps", dataRateBPS/1000);
+         sprintf(s_szFormatDatarateInline, "%d kbps", dataRateBPS/1000);
       else
-         sprintf(s_szFormatDatarate, "%d bps", dataRateBPS);
+         sprintf(s_szFormatDatarateInline, "%d bps", dataRateBPS);
    }
 
-   return s_szFormatDatarate;   
+   return s_szFormatDatarateInline;   
 }
 
 char* str_format_bitrate_inline(int iBitrateBPS)

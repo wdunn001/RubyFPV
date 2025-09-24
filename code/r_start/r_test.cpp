@@ -32,7 +32,7 @@
 
 #include "../base/config.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "r_test.h"
 #include <pthread.h>
 

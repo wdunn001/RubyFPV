@@ -56,7 +56,7 @@
 #include "../base/shared_mem.h"
 #include "../base/config.h"
 #include "../base/commands.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/models.h"
 #include "../base/models_list.h"
 #include "../base/radio_utils.h"
@@ -1078,15 +1078,15 @@ void _main_loop();
 
 int main(int argc, char *argv[])
 {
-   signal(SIGINT, handle_sigint);
-   signal(SIGTERM, handle_sigint);
-   signal(SIGQUIT, handle_sigint);
-
    if ( strcmp(argv[argc-1], "-ver") == 0 )
    {
       printf("%d.%d (b%d)", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR/10, SYSTEM_SW_BUILD_NUMBER);
       return 0;
    }
+
+   signal(SIGINT, handle_sigint);
+   signal(SIGTERM, handle_sigint);
+   signal(SIGQUIT, handle_sigint);
 
    log_init("Router");
    log_arguments(argc, argv);

@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/ctrl_settings.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 
 #include "forward_watch.h"
 #include "shared_vars.h"

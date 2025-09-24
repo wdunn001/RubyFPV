@@ -1,6 +1,6 @@
 #include "../base/shared_mem.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/utils.h"
 #include "../radio/radiolink.h"
 #include "../radio/radiopackets2.h"

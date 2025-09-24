@@ -54,6 +54,7 @@ class MenuNegociateRadio: public Menu
 
    private:
       void _reset_tests_and_state();
+      void _mark_test_as_skipped(int iTestIndex);
       void _getTestType(int iTestIndex, char* szType);
       char* _getTestType(int iTestIndex);
       void _storeCurrentTestDataFromRadioStats();
@@ -84,6 +85,7 @@ class MenuNegociateRadio: public Menu
       int m_MenuIndexCancel;
       char m_szStatusMessage[256];
       char m_szStatusMessage2[256];
+      char m_szStatusMessage3[256];
       int m_iLoopCounter;
       u32 m_uShowTime;
       bool m_bSkipRateTests;

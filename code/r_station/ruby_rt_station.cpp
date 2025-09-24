@@ -45,7 +45,7 @@
 #include "../base/radio_utils.h"
 #include "../base/hardware.h"
 #include "../base/hardware_files.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/parse_fc_telemetry.h"
 #include "../common/string_utils.h"
@@ -1567,17 +1567,17 @@ void handle_sigint(int sig)
   
 int main(int argc, char *argv[])
 {
-   signal(SIGPIPE, SIG_IGN);
-   signal(SIGINT, handle_sigint);
-   signal(SIGTERM, handle_sigint);
-   signal(SIGQUIT, handle_sigint);
-   
    if ( strcmp(argv[argc-1], "-ver") == 0 )
    {
       printf("%d.%d (b%d)", SYSTEM_SW_VERSION_MAJOR, SYSTEM_SW_VERSION_MINOR/10, SYSTEM_SW_BUILD_NUMBER);
       return 0;
    }
-      
+
+   signal(SIGPIPE, SIG_IGN);
+   signal(SIGINT, handle_sigint);
+   signal(SIGTERM, handle_sigint);
+   signal(SIGQUIT, handle_sigint);
+         
    log_init("Router");
    
    hardware_detectBoardAndSystemType();

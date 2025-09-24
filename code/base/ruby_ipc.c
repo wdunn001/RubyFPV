@@ -33,7 +33,7 @@
 #include "config.h"
 #include "ruby_ipc.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "../common/string_utils.h"
 #include "../radio/radiopackets2.h"
 

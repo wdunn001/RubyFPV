@@ -43,7 +43,7 @@
 #include "hardware_radio_sik.h"
 #include "hardware_serial.h"
 #include "config.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "../common/string_utils.h"
 
 int s_OptionsSerialBaudRatesC[] = { 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200 };

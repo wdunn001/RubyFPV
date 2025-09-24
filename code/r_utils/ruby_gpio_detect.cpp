@@ -34,7 +34,7 @@
 #include "../base/config.h"
 #include "../base/gpio.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/models.h"
 #include "../common/string_utils.h"
 #include <stdlib.h>

@@ -37,7 +37,7 @@
 #include "../base/flags.h"
 #include "../base/encr.h"
 #include "../base/commands.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/tx_powers.h"
 #include "../base/radio_utils.h"
 #include "../common/radio_stats.h"
@@ -340,7 +340,7 @@ void _compute_packet_tx_power_on_ieee(int iVehicleRadioLinkId, int iRadioInterfa
    s_iThreadSetTxPowerInterfaceIndex = iRadioInterfaceIndex;
    s_iThreadSetTxPowerRawValue = iRadioInterfaceRawTxPowerToUse;
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "set tx power");
    if ( 0 != pthread_create(&s_pThreadSetTxPower, &attr, &_thread_set_tx_power_async, NULL) )
    {
       pthread_attr_destroy(&attr);

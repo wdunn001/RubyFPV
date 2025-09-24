@@ -35,7 +35,7 @@
 #include "../base/config.h"
 #include "../base/models.h"
 #include "../base/utils.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/hardware_cam_maj.h"
 #include "../common/string_utils.h"
 #include "adaptive_video.h"

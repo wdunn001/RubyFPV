@@ -35,7 +35,7 @@
 #include "core_plugins_settings.h"
 #include "../public/ruby_core_plugin.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "flags.h"
 
 #include <dlfcn.h>

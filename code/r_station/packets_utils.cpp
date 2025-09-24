@@ -36,7 +36,7 @@
 #include "../base/encr.h"
 #include "../base/models_list.h"
 #include "../base/hardware_radio.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #include "../base/commands.h"
 #include "../common/radio_stats.h"
@@ -273,7 +273,7 @@ void _computeBestTXCardsForEachLocalRadioLink(int* pIndexCardsForRadioLinks)
 
 
 static pthread_t s_pThreadSetTxPower;
-static bool s_bThreadSetTxPowerRunning = false;
+static volatile bool s_bThreadSetTxPowerRunning = false;
 static int s_iThreadSetTxPowerInterfaceIndex = -1;
 static int s_iThreadSetTxPowerRawValue = 0;
 
@@ -281,7 +281,7 @@ void* _thread_set_tx_power_async(void *argument)
 {
    sched_yield();
    s_bThreadSetTxPowerRunning = true;
-   log_line("[ThreadTxPower] Start: Set radio interface %d raw tx power to %d", s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+   log_line("[ThreadTxPower] Start: Set radio interface %d raw tx power to %d", s_iThreadSetTxPowerInterfaceIndex+1, s_iThreadSetTxPowerRawValue);
    radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(s_iThreadSetTxPowerInterfaceIndex);
    if ( ! pRadioHWInfo->isConfigurable )
       return NULL;
@@ -294,7 +294,7 @@ void* _thread_set_tx_power_async(void *argument)
    if ( hardware_radio_driver_is_atheros_card(pRadioHWInfo->iRadioDriver) )
       hardware_radio_set_txpower_raw_atheros(s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
 
-   log_line("[ThreadTxPower] End: Done setting radio interface %d raw tx power to %d", s_iThreadSetTxPowerInterfaceIndex, s_iThreadSetTxPowerRawValue);
+   log_line("[ThreadTxPower] End: Done setting radio interface %d raw tx power to %d", s_iThreadSetTxPowerInterfaceIndex+1, s_iThreadSetTxPowerRawValue);
    s_bThreadSetTxPowerRunning = false;
    return NULL;
 }
@@ -401,15 +401,13 @@ int _compute_packet_uplink_datarate_radioflags_tx_power(int iVehicleRadioLink, i
    if ( s_bThreadSetTxPowerRunning )
       return iDataRateTx;
 
-   s_iLastRawTxPowerPerRadioInterface[iRadioInterfaceIndex] = iRadioInterfaceRawTxPowerToUse;
-
-
    s_bThreadSetTxPowerRunning = true;
+   s_iLastRawTxPowerPerRadioInterface[iRadioInterfaceIndex] = iRadioInterfaceRawTxPowerToUse;
    s_iThreadSetTxPowerInterfaceIndex = iRadioInterfaceIndex;
    s_iThreadSetTxPowerRawValue = iRadioInterfaceRawTxPowerToUse;
 
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "set tx power");
    if ( 0 != pthread_create(&s_pThreadSetTxPower, &attr, &_thread_set_tx_power_async, NULL) )
    {
       pthread_attr_destroy(&attr);

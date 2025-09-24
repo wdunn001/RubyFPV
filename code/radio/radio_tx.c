@@ -31,7 +31,7 @@
 */
 
 #include "../base/base.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/hardware_radio_sik.h"
 #include <pthread.h>
 #include <sys/types.h>

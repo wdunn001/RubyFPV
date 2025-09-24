@@ -35,7 +35,7 @@
 #include "ctrl_settings.h"
 #include "hardware.h"
 #include "hardware_radio.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "flags.h"
 
 #if defined(HW_PLATFORM_RASPBERRY) || defined(HW_PLATFORM_RADXA)

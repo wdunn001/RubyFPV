@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/encr.h"
 #include "../base/config_hw.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../common/radio_stats.h"
 #include "../common/string_utils.h"
 #include "radio_rx.h"

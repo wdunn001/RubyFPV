@@ -57,7 +57,7 @@
 #include "../base/hardware_audio.h"
 #include "../base/hardware_camera.h"
 #include "../base/hardware_files.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/utils.h"
 #include "../base/ruby_ipc.h"
 #include "../base/tx_powers.h"

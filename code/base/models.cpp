@@ -40,7 +40,7 @@
 #include "hardware.h"
 #include "hardware_audio.h"
 #include "hardware_camera.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "hardware_i2c.h"
 #include "camera_utils.h"
 #include "utils.h"

@@ -51,7 +51,7 @@
 #include "../base/config.h"
 #include "../base/gpio.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/shared_mem.h"
 
 #include "shared_vars.h"
@@ -95,7 +95,6 @@ int main(int argc, char *argv[])
 
    hardware_detectBoardAndSystemType();
 
-   //hw_execute_process("./ruby_central");
    hw_execute_ruby_process(NULL, "ruby_central", NULL, NULL);
    
    log_line("Executed central process.");
@@ -193,7 +192,6 @@ int main(int argc, char *argv[])
             hardware_sleep_ms(200);
          }
          hardware_sleep_ms(200);
-         //hw_execute_process("./ruby_central");
          hw_execute_ruby_process(NULL, "ruby_central", NULL, NULL);
          log_line_watchdog("Restarting ruby_central process done.");
       } 

@@ -444,7 +444,7 @@ void _check_free_storage_space()
    int iMinFreeKb = 100*1000;
 
    if ( ! s_bWaitingForFreeSpaceyAsync )
-   if ( (0 == sl_uCountFreeSpaceChecks && (g_TimeNow > g_TimeStart+6000)) || (g_TimeNow > sl_uTimeLastFreeSpaceCheck + 60000) )
+   if ( (0 == sl_uCountFreeSpaceChecks && (g_TimeNow > g_TimeStart+15000)) || (g_TimeNow > sl_uTimeLastFreeSpaceCheck + 60000) )
    {
       sl_uCountFreeSpaceChecks++;
       sl_uTimeLastFreeSpaceCheck = g_TimeNow;

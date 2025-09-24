@@ -33,7 +33,7 @@
 #include "base.h"
 #include "config.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "ctrl_preferences.h"
 #include <ctype.h>
 
@@ -94,7 +94,7 @@ void reset_Preferences()
    s_Preferences.iDebugRestartOnRadioSilence = 0;
    s_Preferences.iOSDFont = 1;
    s_Preferences.iPersistentMessages = 1;
-   s_Preferences.nLogLevel = 1;
+   s_Preferences.nLogLevel = 0;
    s_Preferences.iDebugShowDevVideoStats = 0;
    s_Preferences.iDebugShowDevRadioStats = 0;
    s_Preferences.iDebugShowFullRXStats = 0;

@@ -42,7 +42,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_radio.h"
 #include "../base/hardware_radio_serial.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../common/string_utils.h"
 #include "radiotap.h"
 #include <time.h>

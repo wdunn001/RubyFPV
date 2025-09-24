@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/hardware_camera.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include <math.h>
 #include "shared_vars.h"
 #include "timers.h"

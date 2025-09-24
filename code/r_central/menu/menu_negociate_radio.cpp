@@ -74,10 +74,13 @@ MenuNegociateRadio::MenuNegociateRadio(void)
    m_Width = 0.72;
    m_xPos = 0.14; m_yPos = 0.26;
    float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
-   addExtraHeightAtEnd(4.5*height_text + height_text * 1.5 * hardware_get_radio_interfaces_count());
+   addExtraHeightAtEnd(7.0*height_text + height_text * 1.5 * hardware_get_radio_interfaces_count());
    m_uShowTime = g_TimeNow;
    m_MenuIndexCancel = -1;
    m_iLoopCounter = 0;
+   m_szStatusMessage[0] = 0;
+   m_szStatusMessage2[0] = 0;
+   m_szStatusMessage3[0] = 0;
    addTopLine(L("Doing the initial radio link parameters adjustment for best performance..."));
    addTopLine(L("(This is done on first installation and on first pairing with a vehicle or when hardware has changed on the vehicle)"));
 
@@ -179,7 +182,10 @@ void MenuNegociateRadio::_reset_tests_and_state()
    // Rates tests
 
    m_iIndexFirstDatarateLegacyTest = m_iTestsCount;
-   for( int i=0; i<getTestDataRatesCountLegacy(); i++ )
+   int iCountTestsLegacy = getTestDataRatesCountLegacy();
+   if ( iCountTestsLegacy > MODEL_MAX_STORED_QUALITIES_VALUES )
+      iCountTestsLegacy = MODEL_MAX_STORED_QUALITIES_VALUES;
+   for( int i=0; i<iCountTestsLegacy; i++ )
    {
       for( int k=0; k<2; k++ )
       {
@@ -194,7 +200,10 @@ void MenuNegociateRadio::_reset_tests_and_state()
    }
    m_iIndexLastDatarateLegacyTest = m_iTestsCount-1;
    m_iIndexFirstDatarateMCSTest = m_iTestsCount;
-   for( int i=0; i<getTestDataRatesCountMCS(); i++ )
+   int iCountTestsMCS = getTestDataRatesCountMCS();
+   if ( iCountTestsMCS > MODEL_MAX_STORED_QUALITIES_VALUES )
+      iCountTestsMCS = MODEL_MAX_STORED_QUALITIES_VALUES;
+   for( int i=0; i<iCountTestsMCS; i++ )
    {
       for( int k=0; k<2; k++ )
       {
@@ -242,7 +251,7 @@ void MenuNegociateRadio::_reset_tests_and_state()
 
    m_iIndexFirstRadioPowersTestMCS = m_iTestsCount;
    
-   for( int i=0; i<6/*getTestDataRatesCountMCS()*/; i++ )
+   for( int i=0; i<iCountTestsMCS; i++ )
    {
       m_TestsInfo[m_iTestsCount].iDataRateToTest = getTestDataRatesMCS()[i];
       m_TestsInfo[m_iTestsCount].uRadioFlagsToTest = RADIO_FLAGS_USE_MCS_DATARATES;
@@ -321,6 +330,20 @@ void MenuNegociateRadio::_reset_tests_and_state()
    g_pCurrentModel->logVehicleRadioInfo();
 }
 
+void MenuNegociateRadio::_mark_test_as_skipped(int iTestIndex)
+{
+   if ( (iTestIndex < 0) || (iTestIndex >= m_iTestsCount) )
+      return;
+
+   m_TestsInfo[iTestIndex].bSkipTest = true;
+   m_TestsInfo[iTestIndex].fComputedQualityMax = -1.0;
+   m_TestsInfo[iTestIndex].fComputedQualityMin = -1.0;
+   for(int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      m_TestsInfo[iTestIndex].iRadioInterfacesRXPackets[i] = 0;
+   }
+}
+
 void MenuNegociateRadio::_getTestType(int iTestIndex, char* szType)
 {
    if ( NULL == szType )
@@ -363,8 +386,13 @@ void MenuNegociateRadio::Render()
    
    float fTextWidth = g_pRenderEngine->textWidth(g_idFontMenuLarge, m_szStatusMessage);
    g_pRenderEngine->drawText(m_RenderXPos+m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenuLarge, m_szStatusMessage);
+   y += height_text*1.4;
 
-   y += height_text*2.0;
+   fTextWidth = g_pRenderEngine->textWidth(g_idFontMenu, L("(Video can flicker during the tests. That is normal.)"));
+   g_pRenderEngine->drawText(m_RenderXPos+m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenu, L("(Video can flicker during the tests. That is normal.)"));
+
+   y += height_text*1.8;
+
    fTextWidth = g_pRenderEngine->textWidth(g_idFontMenuLarge, m_szStatusMessage2);
    g_pRenderEngine->drawText(m_RenderXPos+m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenuLarge, m_szStatusMessage2);
    char szBuff[32];
@@ -373,7 +401,14 @@ void MenuNegociateRadio::Render()
       strcat(szBuff, ".");
    g_pRenderEngine->drawText(m_RenderXPos + fTextWidth + m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenuLarge, szBuff);
 
-   y += height_text*2.0;
+   y += height_text*1.4;
+
+   if ( 0 != m_szStatusMessage3[0] )
+   {
+      fTextWidth = g_pRenderEngine->textWidth(g_idFontMenu, L(m_szStatusMessage3));
+      g_pRenderEngine->drawText(m_RenderXPos+m_sfMenuPaddingX + 0.5 * (m_RenderWidth-2.0*m_sfMenuPaddingX - fTextWidth), y, g_idFontMenu, L(m_szStatusMessage3));
+   }
+   y += height_text*1.8;
 
    float hBar = height_text*1.5;
    float wBar = (m_RenderWidth - m_sfMenuPaddingX*2.0)/(float)m_iTestsCount;
@@ -460,7 +495,7 @@ bool MenuNegociateRadio::periodicLoop()
    {
       m_MenuIndexCancel = addMenuItem(new MenuItem(L("Cancel"), L("Aborts the autoadjustment procedure without making any changes.")));
       float height_text = g_pRenderEngine->textHeight(g_idFontMenu);
-      addExtraHeightAtEnd(4.5*height_text + height_text * 1.5 * hardware_get_radio_interfaces_count() - m_pMenuItems[m_MenuIndexCancel]->getItemHeight(1.0));
+      addExtraHeightAtEnd(7.0*height_text + height_text * 1.5 * hardware_get_radio_interfaces_count() - m_pMenuItems[m_MenuIndexCancel]->getItemHeight(1.0));
       invalidate();
    }
 
@@ -904,6 +939,21 @@ void MenuNegociateRadio::_startTest(int iTestIndex)
    char szTestType[64];
    _getTestType(m_iCurrentTestIndex, szTestType);
 
+   if ( (iTestIndex >= m_iIndexFirstRadioFlagsTest) && (iTestIndex <= m_iIndexLastRadioFlagsTest) )
+      sprintf(m_szStatusMessage3, "(Testing radio flags)");
+   else if ( (iTestIndex >= m_iIndexFirstDatarateLegacyTest) && (iTestIndex <= m_iIndexLastDatarateLegacyTest) )
+      sprintf(m_szStatusMessage3, "(Testing quality of %s datarate)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
+   else if ( (iTestIndex >= m_iIndexFirstDatarateMCSTest) && (iTestIndex <= m_iIndexLastDatarateMCSTest) )
+      sprintf(m_szStatusMessage3, "(Testing quality of %s datarate)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
+   else if ( (iTestIndex >= m_iIndexFirstRadioPowersTest) && (iTestIndex < m_iIndexFirstRadioPowersTestMCS) )
+      sprintf(m_szStatusMessage3, "(Testing actual usable radio Tx power for %s datarate)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
+   else if ( (iTestIndex >= m_iIndexFirstRadioPowersTestMCS) && (iTestIndex <= m_iIndexLastRadioPowersTestMCS) )
+      sprintf(m_szStatusMessage3, "(Testing actual usable radio Tx power for %s datarate)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
+   else
+      strcpy(m_szStatusMessage3, "");
+
+   log_line("[NegociateRadioLink] Set status 3 message to: [%s]", m_szStatusMessage3);
+
    if ( m_TestsInfo[iTestIndex].bHasSubTests )
       log_line("[NegociateRadioLink] Starting test %d, substep %d (type: %s) (current test is %d), for radio link %d, tx power: %d, datarate: %s, radio flags: %s",
           iTestIndex, m_TestsInfo[iTestIndex].iCurrentSubTest, szTestType, m_iCurrentTestIndex,
@@ -1009,12 +1059,12 @@ void MenuNegociateRadio::_endCurrentTest(bool bUpdateTestState)
       if ( m_iCurrentTestIndex <= m_iIndexLastDatarateLegacyTest )
       {
          for( int i=m_iCurrentTestIndex+1; i<=m_iIndexLastDatarateLegacyTest; i++ )
-            m_TestsInfo[i].bSkipTest = true;
+            _mark_test_as_skipped(i);
       }
       else if ( m_iCurrentTestIndex <= m_iIndexLastDatarateMCSTest )
       {
          for( int i=m_iCurrentTestIndex+1; i<=m_iIndexLastDatarateMCSTest; i++ )
-            m_TestsInfo[i].bSkipTest = true;
+            _mark_test_as_skipped(i);
       }
    }
 }
@@ -1204,7 +1254,7 @@ void MenuNegociateRadio::_advance_to_next_test()
          m_iIndexLastRadioPowersTestMCS-m_iIndexFirstRadioPowersTestMCS+1);
       for( int i=0; i<(m_iIndexFirstRadioPowersTestMCS - m_iIndexFirstRadioPowersTest); i++ )
       {
-         if ( m_RadioRuntimeCapabilitiesToApply.fQualitiesLegacy[0][i] < TEST_DATARATE_QUALITY_THRESHOLD )
+         if ( m_TestsInfo[m_iIndexFirstDatarateLegacyTest + i].bSkipTest || (m_RadioRuntimeCapabilitiesToApply.fQualitiesLegacy[0][i] < TEST_DATARATE_QUALITY_THRESHOLD) )
          {
             m_TestsInfo[m_iIndexFirstRadioPowersTest + i].bSkipTest = true;
             log_line("[NegociateRadioLink] Mark power test %d (datarate %s) to be skipped due to low legacy datarate quality.", m_iIndexFirstRadioPowersTest + i, str_format_datarate_inline(m_TestsInfo[m_iIndexFirstRadioPowersTest + i].iDataRateToTest));
@@ -1212,7 +1262,7 @@ void MenuNegociateRadio::_advance_to_next_test()
       }
       for( int i=0; i<=(m_iIndexLastRadioPowersTestMCS-m_iIndexFirstRadioPowersTestMCS); i++ )
       {
-         if ( m_RadioRuntimeCapabilitiesToApply.fQualitiesMCS[0][i] < TEST_DATARATE_QUALITY_THRESHOLD )
+         if ( m_TestsInfo[m_iIndexFirstDatarateMCSTest + i].bSkipTest || (m_RadioRuntimeCapabilitiesToApply.fQualitiesMCS[0][i] < TEST_DATARATE_QUALITY_THRESHOLD) )
          {
             m_TestsInfo[m_iIndexFirstRadioPowersTestMCS + i].bSkipTest = true;
             log_line("[NegociateRadioLink] Mark power test %d (datarate %s) to be skipped due to low MCS datarate quality.", m_iIndexFirstRadioPowersTestMCS + i, str_format_datarate_inline(m_TestsInfo[m_iIndexFirstRadioPowersTestMCS + i].iDataRateToTest));

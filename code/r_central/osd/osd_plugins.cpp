@@ -35,7 +35,7 @@
 #include "../../base/config.h"
 #include "../../base/ctrl_preferences.h"
 #include "../../base/plugins_settings.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../shared_vars.h"
 #include "../timers.h"
 #include "osd_common.h"

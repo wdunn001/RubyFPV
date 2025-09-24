@@ -33,7 +33,7 @@
 #include "base.h"
 #include "config.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "hardware_radio.h"
 #include "ctrl_interfaces.h"
 #include "ctrl_settings.h"

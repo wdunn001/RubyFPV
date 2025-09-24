@@ -33,7 +33,7 @@
 #include "../../base/base.h"
 #include "../../base/config.h"
 #include "../../base/hardware.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../local_stats.h"
 #include "../ruby_central.h"
 
@@ -151,7 +151,7 @@ void MenuConfirmationSDCardUpdate::onSelectItem()
       m_bDoingUpdate = true;
       m_bUpdateFinished = false;
       pthread_attr_t attr;
-      hw_init_worker_thread_attrs(&attr);
+      hw_init_worker_thread_attrs(&attr, "update from sd card");
       if ( 0 != pthread_create(&m_pThreadUpdate, &attr, &_thread_sdcard_update, (void*)&m_bUpdateFinished) )
       {
          log_softerror_and_alarm("MenuSDCardUpdate: Failed to create update thread.");

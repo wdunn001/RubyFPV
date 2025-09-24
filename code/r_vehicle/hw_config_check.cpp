@@ -32,7 +32,7 @@
 
 #include "hw_config_check.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../radio/radiolink.h"
 #include "../common/string_utils.h"
 
