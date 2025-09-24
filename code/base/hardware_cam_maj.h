@@ -6,6 +6,7 @@
 int hardware_camera_maj_validate_config();
 void hardware_camera_maj_add_log(const char* szLog, bool bAsync);
 int hardware_camera_maj_get_current_pid();
+int hardware_camera_maj_get_current_async_threads_count();
 bool hardware_camera_maj_start_capture_program(bool bEnableLog);
 bool hardware_camera_maj_stop_capture_program();
 int  hardware_camera_maj_get_current_nal_size();

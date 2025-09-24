@@ -186,9 +186,9 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
 {
    Popup* p = NULL;
    if ( (NULL == szUpdateFile) || (0 == szUpdateFile[0]) )
-      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 90);
    else
-      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 90);
    popups_add_topmost(p);
 
    ruby_processing_loop(true);
@@ -232,9 +232,9 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
    pairing_stop();
    
    if ( (NULL == szUpdateFile) || (0 == szUpdateFile[0]) )
-      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 90);
    else
-      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 90);
    popups_add_topmost(p);
 
    // Execute ruby_update_worker twice as the ruby_update_worker might have been updated itself too

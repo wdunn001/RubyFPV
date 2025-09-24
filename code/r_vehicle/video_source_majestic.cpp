@@ -124,6 +124,7 @@ void video_source_majestic_stop_program()
       hardware_camera_maj_add_log("Thread: Will stop existing majestic process...", false);
       hardware_camera_maj_stop_capture_program();
    }
+   s_uTimeMajesticStarted = 0;
    log_line("[VideoSourceMaj] Stopped program.");
 }
 
@@ -889,6 +890,7 @@ bool video_source_majestic_periodic_health_checks()
       // To fix log_line("[VideoSourceMaj] Detected video stream fps: %d, slices: %d", (int)s_ParserH264CameraOutput.getDetectedFPS(), s_ParserH264CameraOutput.getDetectedSlices());
       s_uDebugUDPInputBytes = 0;
       s_uDebugUDPInputReads = 0;
+      log_line("[VideoSourceMaj] Current async worker threads: %d", hardware_camera_maj_get_current_async_threads_count());
    }
 
    if ( s_bIsRestartingMajestic )

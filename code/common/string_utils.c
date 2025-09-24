@@ -927,6 +927,7 @@ const char* str_get_hardware_wifi_name(u32 wifi_type)
 const char* str_get_hardware_camera_type_string(u32 uCamType)
 {
    static char s_szStrCameraTypeName[128];
+   s_szStrCameraTypeName[0] = 0;
    str_get_hardware_camera_type_string_to_string(uCamType, s_szStrCameraTypeName);
    return s_szStrCameraTypeName;
 }

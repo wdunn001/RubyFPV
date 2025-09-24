@@ -68,7 +68,7 @@ int s_iLastSetVideoKeyframeMs = 0;
 void video_sources_start_capture()
 {
    log_line("[VideoSources] Start capture begin (initial video bitrate: %.3f Mbps, QPdelta: %d, KF: %d ms)...",
-      (float)s_uLastSetVideoBitrateBPS/1000.0/1000.0, s_iLastSetIPQDelta, s_iLastSetVideoKeyframeMs);
+      (float)s_uLastSetVideoBitrateBPS/1000.0/1000.0, s_iLastSetIPQDelta, s_iLastSetVideoKeyframeMs );
 
    s_uTotalVideoSourceReadBytes = 0;
    if ( ! g_pCurrentModel->hasCamera() )
@@ -77,6 +77,7 @@ void video_sources_start_capture()
       return;
    }
 
+   log_line("[VideoSources] Current camera type: %s", str_get_hardware_camera_type_string(g_pCurrentModel->getActiveCameraType()));
    u32 uInitialVideoBitrate = 0;
    int iInitialKeyframeMs = 0;
    if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
@@ -581,9 +582,7 @@ void video_sources_set_keyframe(int iKeyframeMs)
       video_source_csi_send_control_message(RASPIVID_COMMAND_ID_KEYFRAME, (u16)iKeyFrame_FrameCountValue, 0);
    }
    if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-   {
       hardware_camera_maj_set_keyframe(s_iLastSetVideoKeyframeMs);                
-   }
 }
 
 int video_sources_get_last_set_keyframe()

@@ -198,6 +198,13 @@ int hw_execute_process(const char *szCommand, int iTimeoutMs, char* szOutput, in
       log_softerror_and_alarm("[HWP-%d] Tried to execute invalid process, no name.", s_iCountExecutions);
       return -1;
    }
+
+   if ( NULL != strstr(szCommand, "*") )
+   {
+       log_softerror_and_alarm("[HWP-%d] Tried to execute command with wildcards: [%s].", s_iCountExecutions, szCommand);
+       return -1;
+   }
+
    if ( iTimeoutMs < 0 )
       log_line("[HWP-%d] Executing process (without waiting for it): [%s]...", s_iCountExecutions, szCommand);
    else if ( 0 == iTimeoutMs )
