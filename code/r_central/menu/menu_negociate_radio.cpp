@@ -942,13 +942,13 @@ void MenuNegociateRadio::_startTest(int iTestIndex)
    if ( (iTestIndex >= m_iIndexFirstRadioFlagsTest) && (iTestIndex <= m_iIndexLastRadioFlagsTest) )
       sprintf(m_szStatusMessage3, "(Testing radio flags)");
    else if ( (iTestIndex >= m_iIndexFirstDatarateLegacyTest) && (iTestIndex <= m_iIndexLastDatarateLegacyTest) )
-      sprintf(m_szStatusMessage3, "(Testing quality of %s datarate)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
+      sprintf(m_szStatusMessage3, "(Testing quality of %s modulation)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
    else if ( (iTestIndex >= m_iIndexFirstDatarateMCSTest) && (iTestIndex <= m_iIndexLastDatarateMCSTest) )
       sprintf(m_szStatusMessage3, "(Testing quality of %s datarate)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
    else if ( (iTestIndex >= m_iIndexFirstRadioPowersTest) && (iTestIndex < m_iIndexFirstRadioPowersTestMCS) )
       sprintf(m_szStatusMessage3, "(Testing actual usable radio Tx power for %s datarate)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
    else if ( (iTestIndex >= m_iIndexFirstRadioPowersTestMCS) && (iTestIndex <= m_iIndexLastRadioPowersTestMCS) )
-      sprintf(m_szStatusMessage3, "(Testing actual usable radio Tx power for %s datarate)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
+      sprintf(m_szStatusMessage3, "(Testing actual usable radio Tx power for %s modulation)", str_getDataRateDescriptionAlternative(m_TestsInfo[iTestIndex].iDataRateToTest));
    else
       strcpy(m_szStatusMessage3, "");
 

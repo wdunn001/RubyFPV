@@ -242,9 +242,10 @@ void _compute_packet_tx_power_on_ieee(int iVehicleRadioLinkId, int iRadioInterfa
    int iRadioInterfaceRawTxPowerToUse = g_pCurrentModel->radioInterfacesParams.interface_raw_power[iRadioInterfaceIndex];
    if ( bIsInTxPITMode )
       iRadioInterfaceRawTxPowerToUse = tx_powers_convert_mw_to_raw(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel, 5);
-   else if ( negociate_radio_link_is_in_progress() && (negociate_radio_link_get_txpower_mw() > 0) )
+   
+   if ( negociate_radio_link_is_in_progress() && (negociate_radio_link_get_txpower_mw() > 0) )
       iRadioInterfaceRawTxPowerToUse = -tx_powers_convert_mw_to_raw(g_pCurrentModel->hwCapabilities.uBoardType, iRadioInterfacelModel, negociate_radio_link_get_txpower_mw());
-   else
+   else if ( ! bIsInTxPITMode )
    {
       int iMaxUsablePowerMw = 0;
       if ( g_pCurrentModel->radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED )
