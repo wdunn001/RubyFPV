@@ -3,10 +3,15 @@
 #include <sys/resource.h>
 #include <ctype.h>
 #include <pthread.h>
+#include <errno.h>
+#include <sys/uio.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <poll.h>
 
 #include "base.h"
 #include "config.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "hardware.h"
 
 int hw_process_exists(const char* szProcName)
@@ -51,6 +56,7 @@ char* hw_process_get_pids_inline(const char* szProcName)
    hw_process_get_pids(szProcName, s_szHWProcessPIDs);
    return s_szHWProcessPIDs;
 }
+
 void hw_process_get_pids(const char* szProcName, char* szOutput)
 {
    if ( NULL == szOutput )
@@ -176,28 +182,396 @@ int hw_kill_process(const char* szProcName, int iSignal)
    return 0;
 }
 
-
-int hw_launch_process(const char *szFile)
+// timeout: positive -> max ms to wait; 0 -> wait until process finishes; negative -> do not wait for the process
+int hw_execute_process(const char *szCommand, int iTimeoutMs, char* szOutput, int iMaxOutputLength)
 {
-   return hw_launch_process4(szFile, NULL, NULL, NULL, NULL);
+   static int s_iCountExecutions = 0;
+   s_iCountExecutions++;
+
+   if ( NULL != szOutput )
+       *szOutput = 0;
+   if ( (NULL != szOutput) && (iMaxOutputLength > 0) )
+       memset(szOutput, 0, iMaxOutputLength);
+
+   if ( NULL == szCommand || (0 == szCommand[0]) )
+   {
+      log_softerror_and_alarm("[HWP-%d] Tried to execute invalid process, no name.", s_iCountExecutions);
+      return -1;
+   }
+
+   if ( NULL != strstr(szCommand, "*") )
+   {
+       log_softerror_and_alarm("[HWP-%d] Tried to execute command with wildcards: [%s].", s_iCountExecutions, szCommand);
+       return -1;
+   }
+
+   if ( iTimeoutMs < 0 )
+      log_line("[HWP-%d] Executing process (without waiting for it): [%s]...", s_iCountExecutions, szCommand);
+   else if ( 0 == iTimeoutMs )
+      log_line("[HWP-%d] Executing process (wait infinite): [%s]...", s_iCountExecutions, szCommand);
+   else
+      log_line("[HWP-%d] Executing process (max wait %d ms): [%s]...", s_iCountExecutions, iTimeoutMs, szCommand);
+
+   pid_t pid = getpid();
+   pid_t ppid = getppid();
+   log_line("[HWP-%d] Current PID: %d, parent PID: %d", s_iCountExecutions, (int)pid, (int)ppid);
+
+   char* pTmp = strstr(szCommand, "2>");
+   if ( NULL != pTmp )
+      *pTmp = 0;
+   pTmp = strstr(szCommand, "1>");
+   if ( NULL != pTmp )
+      *pTmp = 0;
+
+   char* argv[32];
+   memset(argv, 0, sizeof(argv));
+
+   char szTmpBuff[4096];
+   char szErrorBuffer[4096];
+   int iCountReadError = 0;
+
+   int iCountArg = 0;
+   char szArgs[1024];
+   strncpy(szArgs, szCommand, 1023);
+   szArgs[1023] = 0;
+   pTmp = szArgs;
+   char* pToken = pTmp;
+   while ( 1 )
+   {
+      if ( (*pTmp != ' ') && (*pTmp != 0) )
+      {
+         pTmp++;
+         continue;
+      }
+      if ( ((pToken[0] == '1') || (pToken[0] == '2')) && (pToken[1] == '>') )
+      {
+         argv[iCountArg] = NULL;
+         break;
+      }
+
+      argv[iCountArg] = pToken;
+      iCountArg++;
+
+      if ( (*pTmp == 0) || (iCountArg > 30) )
+         break;
+      *pTmp = 0;
+      pTmp++;
+      while ( *pTmp == ' ' )
+          pTmp++;
+      pToken = pTmp;
+   }
+
+   if ( (iCountArg < 1) || (strlen(argv[0]) < 2) )
+   {
+      log_softerror_and_alarm("[HWP-%d] Tried to execute invalid process, invalid name.", s_iCountExecutions);
+      return -1;
+   }
+
+   u32 uTimeStart = get_current_timestamp_ms();
+
+   int stdout_fds[2];
+   int stderr_fds[2];
+   pipe(stdout_fds);
+   pipe(stderr_fds);
+ 
+   const pid_t pidChild = fork();
+   if (0 == pidChild)
+   {
+      close(stdout_fds[0]);
+      close(stderr_fds[0]);
+
+      char szParams[256];
+      szParams[0] = 0;
+      int iCountParams = 0;
+      for( int i=1; i<32; i++ )
+      {
+         if ( argv[i] == NULL )
+             break;
+         if ( 0 != szParams[0] )
+             strcat(szParams, ", ");
+         strcat(szParams, "[");
+         strcat(szParams, argv[i]);
+         strcat(szParams, "]");
+         iCountParams++;
+      }
+      log_line("[HWPC-%d] Executing in child process: [%s], %d params: %s", s_iCountExecutions, argv[0], iCountParams, szParams);
+      pid_t pid = getpid();
+      pid_t ppid = getppid();
+      log_line("[HWPC-%d] Forked child current PID: %d, parent PID: %d", s_iCountExecutions, (int)pid, (int)ppid);
+
+      dup2(stdout_fds[1], 1);
+      dup2(stderr_fds[1], 2);
+      execvp(argv[0], argv);
+      // This will never be called.
+      log_line("[HWPC-%d] Done executing in child process.", s_iCountExecutions);
+      exit(0);
+   }
+
+   if ( iTimeoutMs < 0 )
+   {
+      u32 uTime = get_current_timestamp_ms() - uTimeStart;
+      log_line("[HWP-%d] Finished launching child pid %d, with no wait, in %u ms", s_iCountExecutions, pidChild, uTime);
+      return 0;
+   }
+
+   log_line("[HWP-%d] Waiting for child process (PID: %d)...", s_iCountExecutions, pidChild);
+   if ( 0 == iTimeoutMs )
+       iTimeoutMs = 10000000;
+
+   int status = 0;
+   int iResWait = 0;
+
+   int iCountRead = 0;
+   int iPartialTotalRead = 0;
+   fd_set readSet;
+   fd_set exceSet;
+   struct timeval timeRead;
+
+   while ( 0 == iResWait )
+   {
+      status = 0;
+      iResWait = waitpid(pidChild , &status , WNOHANG);
+      if ( iResWait < 0 )
+         log_line("[HWP-%d] Failed to wait on child process. Errno: %d, error: %s", s_iCountExecutions, errno, strerror(errno));
+
+      if ( (iResWait > 0) || (WIFSIGNALED(status)) || (WCOREDUMP(status)) )
+      {
+         if ( WIFSIGNALED(status) )
+            log_line("[HWP-%d] Child process terminated by signal.", s_iCountExecutions);
+         if ( WCOREDUMP(status) )
+            log_line("[HWP-%d] Child process terminated with a core dump.", s_iCountExecutions);
+         if ( WIFSTOPPED(status) )
+            log_line("[HWP-%d] Child process was stopped by signal.", s_iCountExecutions);
+         break;
+      }
+      hardware_sleep_ms(1);
+      iTimeoutMs--;
+      if ( 0 == (iTimeoutMs % 1000) )
+          log_line("[HWP-%d] Still waiting for child process...", s_iCountExecutions);
+      if ( iTimeoutMs == 0 )
+      {
+         log_line("[HWP-%d] Timed out waiting for child process.", s_iCountExecutions);
+         break;
+      }
+      // Try to read stdoutput and stderror
+
+      FD_ZERO(&readSet);
+      FD_SET(stdout_fds[0], &readSet);
+      FD_ZERO(&exceSet);
+      FD_SET(stdout_fds[0], &exceSet);
+      timeRead.tv_sec = 0;
+      timeRead.tv_usec = 100; // .1 milisec timeout
+
+      int iSelResult = select(stdout_fds[0]+1, &readSet, NULL, &exceSet, &timeRead);
+      if ( iSelResult > 0 )
+      {
+         if ( FD_ISSET(stdout_fds[0], &readSet) )
+         {
+            int iRead = read(stdout_fds[0], szTmpBuff, 4096);
+            if ( iRead > 0 )
+               iPartialTotalRead += iRead;
+            log_line("[HWP-%d] Read partial stdout from child process, %d bytes (total %d bytes)", s_iCountExecutions, iRead, iPartialTotalRead);
+            if ( (iRead > 0) && (NULL != szOutput) && (iMaxOutputLength > 0) && (iCountRead + iRead < iMaxOutputLength) )
+            {
+                memcpy(&szOutput[iCountRead], szTmpBuff, iRead);
+                iCountRead += iRead;
+                szOutput[iCountRead] = 0;
+            }
+         }
+         if ( FD_ISSET(stdout_fds[0], &exceSet) )
+         {
+            log_line("[HWP-%d] Reading child process stdout (PID: %d) returned exception.", s_iCountExecutions, pidChild);
+         }
+      }
+
+      FD_ZERO(&readSet);
+      FD_SET(stderr_fds[0], &readSet);
+      FD_ZERO(&exceSet);
+      FD_SET(stderr_fds[0], &exceSet);
+      timeRead.tv_sec = 0;
+      timeRead.tv_usec = 100; // .1 milisec timeout
+
+      iSelResult = select(stderr_fds[0]+1, &readSet, NULL, &exceSet, &timeRead);
+      if ( iSelResult > 0 )
+      {
+         if ( FD_ISSET(stderr_fds[0], &readSet) )
+         {
+            int iRead = read(stderr_fds[0], szTmpBuff, 4096);
+            if ( iRead > 0 )
+               iPartialTotalRead += iRead;
+            log_line("[HWP-%d] Read partial stderr from child process, %d bytes (total %d bytes)", s_iCountExecutions, iRead, iPartialTotalRead);
+            if ( (iRead > 0) && (NULL != szOutput) && (iMaxOutputLength > 0) && (iCountRead + iRead < iMaxOutputLength) )
+            {
+                memcpy(&szOutput[iCountRead], szTmpBuff, iRead);
+                iCountRead += iRead;
+                szOutput[iCountRead] = 0;
+            }
+
+            if ( iRead > 0 )
+            {
+                int iMaxRead = iRead;
+                if ( iMaxRead + iCountReadError >= 4095 )
+                    iMaxRead = 4095 - iCountReadError;
+                if ( iMaxRead > 0 )
+                {
+                   memcpy(&szErrorBuffer[iCountReadError], szTmpBuff, iMaxRead);
+                   iCountReadError += iMaxRead;
+                   szErrorBuffer[iCountReadError] = 0;
+                }
+            }
+         }
+         if ( FD_ISSET(stderr_fds[0], &exceSet) )
+         {
+            log_line("[HWP-%d] Reading child process stderr (PID: %d) returned exception.", s_iCountExecutions, pidChild);
+         }
+      }
+   }
+
+   if ( (NULL == szOutput) || (iMaxOutputLength <= 0) )
+   {
+      close(stdout_fds[0]);
+      close(stdout_fds[1]);
+      close(stderr_fds[0]);
+      close(stderr_fds[1]);
+
+      u32 uTime = get_current_timestamp_ms() - uTimeStart;
+      if ( 0 == iTimeoutMs )
+         log_line("[HWP-%d] Timed out waiting for child pid %d, res wait: %d, in %u ms, no output needed.", s_iCountExecutions, pidChild, iResWait, uTime);
+      else
+         log_line("[HWP-%d] Finished executing and waiting for child pid %d, res wait: %d, in %u ms, no output needed.", s_iCountExecutions, pidChild, iResWait, uTime);
+
+      if ( iCountReadError > 0 )
+         log_line("[HWP-%d] Error output from child process: [%s]", s_iCountExecutions, szErrorBuffer);
+      return 0;
+   }
+
+   u32 uTime = get_current_timestamp_ms() - uTimeStart;
+   if ( 0 == iTimeoutMs )
+      log_line("[HWP-%d] Timedout waiting for child pid %d, res wait: %d, in %u ms", s_iCountExecutions, pidChild, iResWait, uTime);
+   else
+      log_line("[HWP-%d] Finished waiting for child pid %d, res wait: %d, in %u ms", s_iCountExecutions, pidChild, iResWait, uTime);
+   log_line("[HWP-%d] Reading child process stdout (PID: %d, read so far: %d bytes), will read max %d bytes...", s_iCountExecutions, pidChild, iCountRead, iMaxOutputLength);
+   do
+   {
+      FD_ZERO(&readSet);
+      FD_SET(stdout_fds[0], &readSet);
+      FD_ZERO(&exceSet);
+      FD_SET(stdout_fds[0], &exceSet);
+      timeRead.tv_sec = 0;
+      timeRead.tv_usec = 100; // .1 milisec timeout
+
+      int iSelResult = select(stdout_fds[0]+1, &readSet, NULL, &exceSet, &timeRead);
+      if ( iSelResult <= 0 )
+      {
+         log_line("[HWP-%d] Reading child process stdout (PID: %d) has no more data (res: %d, %d bytes now).", s_iCountExecutions, pidChild, iSelResult, iCountRead);
+         break;
+      }
+      if ( FD_ISSET(stdout_fds[0], &readSet) )
+      {
+         int iRead = read(stdout_fds[0], &(szOutput[iCountRead]), iMaxOutputLength-iCountRead-1);
+         if ( iRead == 0 )
+         {
+            log_line("[HWP-%d] Reading child process stdout (PID: %d) reached EOF.", s_iCountExecutions, pidChild);
+            break;
+         }
+         if ( iRead > 0 )
+            iCountRead += iRead;
+         if ( iCountRead >= iMaxOutputLength-1 )
+         {
+            iCountRead = iMaxOutputLength-1;
+            break;
+         }
+      }
+      if ( FD_ISSET(stdout_fds[0], &exceSet) )
+      {
+         log_line("[HWP-%d] Reading child process stdout (PID: %d) returned exception.", s_iCountExecutions, pidChild);
+         break;
+      }
+   } while ( 1 );
+   szOutput[iCountRead] = 0;
+
+   log_line("[HWP-%d] Finished reading child process stdout. %d bytes", s_iCountExecutions, iCountRead);
+
+   do
+   {
+      if ( iCountRead >= iMaxOutputLength-1 )
+      {
+         iCountRead = iMaxOutputLength-1;
+         break;
+      }
+
+      FD_ZERO(&readSet);
+      FD_SET(stderr_fds[0], &readSet);
+      FD_ZERO(&exceSet);
+      FD_SET(stderr_fds[0], &exceSet);
+      timeRead.tv_sec = 0;
+      timeRead.tv_usec = 100; // .1 milisec timeout
+
+      int iSelResult = select(stderr_fds[0]+1, &readSet, NULL, &exceSet, &timeRead);
+      if ( iSelResult <= 0 )
+      {
+         log_line("[HWP-%d] Reading child process stderr (PID: %d) has no more data (res: %d, %d bytes now).", s_iCountExecutions, pidChild, iSelResult, iCountRead);
+         break;
+      }
+      
+      if ( FD_ISSET(stderr_fds[0], &readSet) )
+      {
+         int iRead = read(stderr_fds[0], &(szOutput[iCountRead]), iMaxOutputLength-iCountRead-1);
+         if ( iRead == 0 )
+         {
+            log_line("[HWP-%d] Reading child process stderror (PID: %d) reached EOF.", s_iCountExecutions, pidChild);
+            break;
+         }
+         if ( iRead > 0 )
+            iCountRead += iRead;
+
+         if ( iRead > 0 )
+         {
+             int iMaxRead = iRead;
+             if ( iMaxRead + iCountReadError >= 4095 )
+                 iMaxRead = 4095 - iCountReadError;
+             if ( iMaxRead > 0 )
+             {
+                memcpy(&szErrorBuffer[iCountReadError], szTmpBuff, iMaxRead);
+                iCountReadError += iMaxRead;
+                szErrorBuffer[iCountReadError] = 0;
+             }
+         }
+
+         if ( iCountRead >= iMaxOutputLength-1 )
+         {
+            iCountRead = iMaxOutputLength-1;
+            break;
+         }
+      }
+      if ( FD_ISSET(stderr_fds[0], &exceSet) )
+      {
+         log_line("[HWP-%d] Reading child process stderror (PID: %d) returned exception.", s_iCountExecutions, pidChild);
+         break;
+      }
+   } while ( 1 );
+   szOutput[iCountRead] = 0;
+
+   log_line("[HWP-%d] Finished reading child process stderror. %d bytes", s_iCountExecutions, iCountRead);
+   if ( iCountReadError > 0 )
+      log_line("[HWP-%d] Error output from child process: [%s]", s_iCountExecutions, szErrorBuffer);
+
+   close(stdout_fds[0]);
+   close(stdout_fds[1]);
+   close(stderr_fds[0]);
+   close(stderr_fds[1]);
+
+   uTime = get_current_timestamp_ms() - uTimeStart;
+   log_line("[HWP-%d] Finished executing and waiting for child pid %d, res wait: %d, read %d bytes in %u ms", s_iCountExecutions, pidChild, iResWait, iCountRead, uTime);
+   return 0;
 }
 
-int hw_launch_process1(const char *szFile, const char* szParam1)
+int hw_execute_process_wait(const char *szCommand)
 {
-   return hw_launch_process4(szFile, szParam1, NULL, NULL, NULL);
+    return hw_execute_process(szCommand, 0, NULL, 0);
 }
 
-int hw_launch_process2(const char *szFile, const char* szParam1, const char* szParam2)
-{
-   return hw_launch_process4(szFile, szParam1, szParam2, NULL, NULL);
-}
-
-int hw_launch_process3(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3)
-{
-   return hw_launch_process4(szFile, szParam1, szParam2, szParam3, NULL);
-}
-
-int hw_launch_process4(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3, const char* szParam4)
+int hw_launch_process_exec(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3, const char* szParam4)
 {
    // execv messes up the timer
 
@@ -759,9 +1133,9 @@ void hw_execute_ruby_process_wait(const char* szPrefixes, const char* szProcess,
       log_line("Launched Ruby process: [%s]", szCommand);
 }
 
-void hw_init_worker_thread_attrs(pthread_attr_t* pAttr)
+void hw_init_worker_thread_attrs(pthread_attr_t* pAttr, const char* szSource)
 {
-   if ( NULL == pAttr )
+   if ( (NULL == pAttr) || (NULL == szSource) )
       return;
 
    struct sched_param params;
@@ -769,9 +1143,9 @@ void hw_init_worker_thread_attrs(pthread_attr_t* pAttr)
 
    pthread_attr_init(pAttr);
    if ( 0 == pthread_attr_getstacksize(pAttr, &iStackSize) )
-      log_line("[HwProcs] Thread default stack size: %d bytes", iStackSize);
+      log_line("[HwProcs] (Src: %s) Thread default stack size: %d bytes", szSource, iStackSize);
    else
-      log_softerror_and_alarm("[HwProcs] Failed to get thread default stack size. Error: %d (%s)", errno, strerror(errno));
+      log_softerror_and_alarm("[HwProcs] (Src %s) Failed to get thread default stack size. Error: %d (%s)", szSource, errno, strerror(errno));
 
    if ( 0 != pthread_attr_setstacksize(pAttr, 1024*16) )
    {
@@ -784,9 +1158,9 @@ void hw_init_worker_thread_attrs(pthread_attr_t* pAttr)
 
    iStackSize = 0;
    if ( 0 == pthread_attr_getstacksize(pAttr, &iStackSize) )
-      log_line("[HwProcs] Thread new stack size: %d bytes", iStackSize);
+      log_line("[HwProcs] (Src: %s) Thread new stack size: %d bytes", szSource, iStackSize);
    else
-      log_softerror_and_alarm("[HwProcs] Failed to get thread new stack size. Error: %d (%s)", errno, strerror(errno));
+      log_softerror_and_alarm("[HwProcs] (Src: %s) Failed to get thread new stack size. Error: %d (%s)", szSource, errno, strerror(errno));
 
    pthread_attr_setdetachstate(pAttr, PTHREAD_CREATE_DETACHED);
    pthread_attr_setinheritsched(pAttr, PTHREAD_EXPLICIT_SCHED);

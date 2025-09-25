@@ -33,7 +33,7 @@
 #include "base.h"
 #include "config.h"
 #include "hardware_files.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include <pthread.h>
 #include <ctype.h>
 
@@ -156,7 +156,7 @@ int hardware_get_free_space_kb_async()
 {
    s_iGetFreeSpaceAsyncResultValueKb = -1;
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "get free space async");
    if ( 0 != pthread_create(&s_pThreadGetFreeSpaceAsync, &attr, &_thread_get_free_space_async, NULL) )
    {
       pthread_attr_destroy(&attr);

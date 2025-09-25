@@ -34,7 +34,7 @@
 #include "processor_rx_audio.h"
 #include "processor_rx_video.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_settings.h"
@@ -328,16 +328,15 @@ int _process_received_ruby_message(int iRuntimeIndex, int iInterfaceIndex, u8* p
       memcpy(&uOriginalLocalRadioLinkId, pPacketBuffer + sizeof(t_packet_header)+sizeof(u8)+sizeof(u32), sizeof(u8));
       if ( pPH->total_length > sizeof(t_packet_header) + 2*sizeof(u8) + sizeof(u32) )
          memcpy(&uReplyVehicleLocalRadioLinkId, pPacketBuffer + sizeof(t_packet_header)+2*sizeof(u8) + sizeof(u32), sizeof(u8));
-      
-      log_line("Recv Ping reply id %d for vehicle link %d", uPingId, uOriginalLocalRadioLinkId+1);
 
       int iIndex = getVehicleRuntimeIndex(pPH->vehicle_id_src);
       if ( iIndex >= 0 )
       {
+         g_TimeNow = get_current_timestamp_ms();
+         u32 uRoundtripMilis = g_TimeNow - g_State.vehiclesRuntimeInfo[iIndex].uTimeLastPingSentToVehicleOnLocalRadioLinks[uOriginalLocalRadioLinkId];
          if ( uPingId == g_State.vehiclesRuntimeInfo[iIndex].uLastPingIdSentToVehicleOnLocalRadioLinks[uOriginalLocalRadioLinkId] )
          {
-            g_TimeNow = get_current_timestamp_ms();
-            u32 uRoundtripMilis = g_TimeNow - g_State.vehiclesRuntimeInfo[iIndex].uTimeLastPingSentToVehicleOnLocalRadioLinks[uOriginalLocalRadioLinkId];
+            log_line("Recv ping reply id %d for vehicle link %d, in %u ms RT", uPingId, uOriginalLocalRadioLinkId+1, uRoundtripMilis);
             controller_rt_info_update_ack_rt_time(&g_SMControllerRTInfo, pPH->vehicle_id_src, g_SM_RadioStats.radio_interfaces[iInterfaceIndex].assignedLocalRadioLinkId, uRoundtripMilis);
             if ( uPingId != g_State.vehiclesRuntimeInfo[iIndex].uLastPingIdReceivedFromVehicleOnLocalRadioLinks[uOriginalLocalRadioLinkId] )
             {
@@ -351,6 +350,8 @@ int _process_received_ruby_message(int iRuntimeIndex, int iInterfaceIndex, u8* p
                }
             }
          }
+         else
+            log_line("Recv old ping reply id %d (last sent was %d) for vehicle link %d, in %u ms RT", uPingId, g_State.vehiclesRuntimeInfo[iIndex].uLastPingIdSentToVehicleOnLocalRadioLinks[uOriginalLocalRadioLinkId], uOriginalLocalRadioLinkId+1, uRoundtripMilis);
       }
       else
          log_softerror_and_alarm("Received ping reply from unknown VID: %u", pPH->vehicle_id_src);

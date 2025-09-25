@@ -32,7 +32,7 @@
 
 #include "../base/base.h"
 #include "../base/config.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/hardware_audio.h"
 #include "processor_rx_audio.h"
 #include <pthread.h>
@@ -460,7 +460,7 @@ void start_audio_player_and_pipe()
    _open_audio_pipes();
 
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "audio queue playback");
    s_bThreadAudioQueueingStarted = true;
    s_bStopThreadAudioQueueing = false;
    if ( 0 != pthread_create(&s_ThreadAudioQueueing, &attr, &_thread_audio_queueing_playback, NULL) )
@@ -470,7 +470,7 @@ void start_audio_player_and_pipe()
    }
    pthread_attr_destroy(&attr);
 
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "audio buffering playback");
    s_bThreadAudioBufferingStarted = true;
    s_bStopThreadAudioBuffering = false;
    if ( 0 != pthread_create(&s_ThreadAudioBuffering, &attr, &_thread_audio_buffering_playback, NULL) )
@@ -613,7 +613,7 @@ void init_audio_rx_state()
    {
       log_line("[AudioRx] Init Rx state: restarting buffering thread...");
       pthread_attr_t attr;
-      hw_init_worker_thread_attrs(&attr);
+      hw_init_worker_thread_attrs(&attr, "audio buffering playback restart");
       s_bThreadAudioBufferingStarted = true;
       s_bStopThreadAudioBuffering = false;
       if ( 0 != pthread_create(&s_ThreadAudioBuffering, &attr, &_thread_audio_buffering_playback, NULL) )

@@ -63,6 +63,7 @@ class VideoRxPacketsBuffer
       bool uninit();
       void emptyBuffers(const char* szReason);
       
+      bool hasVideoPacket(u32 uVideoBlockIndex, u32 uVideoBlockPacketIndex);
       // Returns true if the packet has the highest video block/packet index received (in order)
       bool checkAddVideoPacket(u8* pPacket, int iPacketLength);
 

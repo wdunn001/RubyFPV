@@ -34,7 +34,7 @@
 #include "config.h"
 #include "vehicle_settings.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "flags.h"
 
 VehicleSettings s_VehicleSettings;

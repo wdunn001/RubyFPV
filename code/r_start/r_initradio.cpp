@@ -35,7 +35,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_radio.h"
 #include "../base/hardware_radio_txpower.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #if defined (HW_PLATFORM_RASPBERRY) || defined (HW_PLATFORM_RADXA)
 #include "../base/ctrl_interfaces.h"

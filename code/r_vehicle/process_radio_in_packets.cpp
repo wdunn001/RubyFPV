@@ -35,7 +35,7 @@
 #include "../base/models_list.h"
 #include "../base/commands.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #include "../base/ruby_ipc.h"
 #include "../common/radio_stats.h"

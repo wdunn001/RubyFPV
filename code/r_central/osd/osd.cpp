@@ -55,7 +55,7 @@
 #include "../../base/ctrl_interfaces.h"
 #include "../../base/ctrl_settings.h"
 #include "../../base/hardware.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../../base/utils.h"
 #include "../../base/tx_powers.h"
 
@@ -664,7 +664,7 @@ float osd_show_txpowers(float xPos)
       strcpy(szTxPower, "0 mW");
       if ( g_pCurrentModel->radioLinksParams.link_capabilities_flags[iVehicleRadioLink] & RADIO_HW_CAPABILITY_FLAG_DISABLED )
          strcpy(szTxPower, "- mW");
-      else if ( pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink] <= 0 )
+      else if ( pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink] == 0 )
       {
          strcpy(szTxPower, "N/A mW");
          bYellow = true;
@@ -685,11 +685,18 @@ float osd_show_txpowers(float xPos)
             break;
          }
          */
+         char szPowerPref[16];
+         szPowerPref[0] = 0;
          int iPowerMw = pVRTInfo->headerRubyTelemetryExtended.iTxPowers[iVehicleRadioLink];
+         if ( iPowerMw < 0 )
+         {
+            iPowerMw = -iPowerMw;
+            strcpy(szPowerPref, "*");
+         }
          if ( iPowerMw < 1000 )
-            sprintf(szTxPower, "%d mW", iPowerMw);
+            sprintf(szTxPower, "%s%d mW", szPowerPref, iPowerMw);
          else
-            sprintf(szTxPower, "%.1f W", ((float)iPowerMw)/1000.0);
+            sprintf(szTxPower, "%s%.1f W", szPowerPref, ((float)iPowerMw)/1000.0);
 
          if ( iPowerMw >= 0 )
             bRed = false;
@@ -1102,14 +1109,14 @@ float osd_show_total_distance(float xPos, float yPos, float fScale)
    if ( pP->iUnits == prefUnitsImperial || pP->iUnits == prefUnitsFeets )
    {
       if ( _osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0) > 1.0 )
-         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d mi", szPrefix, (int)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
+         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %.1f mi", szPrefix, (float)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
       else
          snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d ft", szPrefix, (int)_osd_convertMeters(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100));
    }
    else
    {
       if ( _osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0) > 1.0 )
-         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d km", szPrefix, (int)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
+         snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %.1f km", szPrefix, (float)_osd_convertKm(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100.0/1000.0));
       else
          snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), "%s %d m", szPrefix, (int)_osd_convertMeters(g_VehiclesRuntimeInfo[osd_get_current_data_source_vehicle_index()].headerFCTelemetry.total_distance/100));
    }

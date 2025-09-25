@@ -35,9 +35,6 @@
 #include <sys/file.h>
 #include <time.h>
 #include "base.h"
-//#include "hardware.h"
-//#include "hw_procs.h"
-//#include "config.h"
 #include "config_file_names.h"
 
 #include <sys/types.h>
@@ -406,7 +403,9 @@ int _log_check_for_service_log_access()
 
    if ( 0 == s_logServiceKey )
    {
-      log_line_forced_to_file("Generate a new key for accessing logger message queue...");
+      pid_t pid = getpid();
+      pid_t ppid = getppid();
+      log_line_forced_to_file("Generate a new key for accessing logger message queue, for PID: %d, parent PID: %d...", (int)pid, (int)ppid);
       s_logServiceKey = generate_msgqueue_key(LOGGER_MESSAGE_QUEUE_ID);
    }
    if ( 0 == s_logServiceKey )
@@ -422,9 +421,11 @@ int _log_check_for_service_log_access()
    {
       if ( get_current_timestamp_ms() > s_uTimeStartLogForCurrentProcess + 5000 )
       {
+         pid_t pid = getpid();
+         pid_t ppid = getppid();
          s_logServiceAccessErrorCount++;
          if ( s_logServiceAccessErrorCount < 10 )
-            log_softerror_and_alarm("Failed to access the logger service message queue.");
+            log_softerror_and_alarm("Failed to access the logger service message queue (PID: %d, parent PID: %d)", (int)pid, (int)ppid);
          else if ( s_logServiceAccessErrorCount == 10 )
          {
             log_softerror_and_alarm("Failed to access the logger service message queue. Using regular log instead.");
@@ -520,7 +521,11 @@ void log_init_local_only(const char* component_name)
    _init_timestamp_for_process();
    s_uTimeStartLogForCurrentProcess = get_current_timestamp_ms();
 
-   log_line("Starting...");
+   char szLogLine[256];
+   pid_t pid = getpid();
+   pid_t ppid = getppid();
+   sprintf(szLogLine, "Starting (PID: %d, parent PID: %d)...", (int)pid, (int)ppid);
+   log_line(szLogLine);
 }
 
 void log_init(const char* component_name)
@@ -541,8 +546,12 @@ void log_init(const char* component_name)
    s_uTimeStartLogForCurrentProcess = get_current_timestamp_ms();
    
    _log_check_for_service_log_access();
-    
-   log_line_forced_to_file("Starting...");
+   
+   char szLogLine[256];
+   pid_t pid = getpid();
+   pid_t ppid = getppid();
+   sprintf(szLogLine, "Starting (PID: %d, parent PID: %d)...", (int)pid, (int)ppid);
+   log_line_forced_to_file(szLogLine);
    struct timespec ts;
    clock_getres(RUBY_HW_CLOCK_ID, &ts);
    log_line_forced_to_file("Current clock (id %d) resolution: %d sec, %d nanosec", RUBY_HW_CLOCK_ID, ts.tv_sec, ts.tv_nsec);

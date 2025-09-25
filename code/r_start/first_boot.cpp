@@ -37,7 +37,7 @@
 #include "../base/hardware_files.h"
 #include "../base/hardware_camera.h"
 #include "../base/hardware_radio.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/vehicle_settings.h"
 #include "../radio/radioflags.h"
 #include "../base/ctrl_settings.h"

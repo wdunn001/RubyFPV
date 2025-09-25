@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/shared_mem.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/camera_utils.h"
 #include "../base/utils.h"
@@ -87,7 +87,7 @@ u32 s_uDebugCSIInputReads = 0;
 u32 s_uDebugCSIVideoBitrate = 0;
 
 
-bool _vehicle_launch_video_capture_csi(Model* pModel)
+bool _vehicle_launch_video_capture_csi(Model* pModel, u32 uOverwriteInitialBitrate, int iOverwriteInitialKFMs)
 {
    if ( NULL == pModel )
    {
@@ -131,6 +131,8 @@ bool _vehicle_launch_video_capture_csi(Model* pModel)
    log_line("[VideoSourceCSI] Computing video capture parameters for active camera, camera type: %s...", str_get_hardware_camera_type_string(pModel->getActiveCameraType()));
    log_line("[VideoSourceCSI] Last dynamic set video bitrate: %.2f Mbps", (float)video_sources_get_last_set_video_bitrate()/1000.0/1000.0);
    log_line("[VideoSourceCSI] Last dynamic set keyframe ms: %d", video_sources_get_last_set_keyframe());
+   log_line("[VideoSourceCSI] Overwrite initial video bitrate: %.2f Mbps", (float)uOverwriteInitialBitrate/1000.0/1000.0);
+   log_line("[VideoSourceCSI] Overwrite initial keyframe: %d ms", iOverwriteInitialKFMs);
 
    char szFile[128];
    char szBuff[1024];
@@ -141,8 +143,8 @@ bool _vehicle_launch_video_capture_csi(Model* pModel)
    szVideoFlags[0] = 0;
    szPriority[0] = 0;
    pModel->getCameraFlags(szCameraFlags);
-   pModel->getVideoFlags(szVideoFlags, pModel->video_params.iCurrentVideoProfile, video_sources_get_last_set_video_bitrate(), video_sources_get_last_set_keyframe());
-
+   pModel->getVideoFlags(szVideoFlags, pModel->video_params.iCurrentVideoProfile, uOverwriteInitialBitrate, iOverwriteInitialKFMs);
+   
    #ifdef HW_CAPABILITY_IONICE
    if ( pModel->processesPriorities.ioNiceVideo > 0 )
    {
@@ -521,7 +523,8 @@ void _video_source_csi_open_commands_msg_queue()
       IPC_CHANNEL_CSI_VIDEO_COMMANDS, s_iMsgQueueCSICommands);
 }
 
-void video_source_csi_start_program()
+// Returns initial set video bitrate
+u32 video_source_csi_start_program(u32 uOverwriteInitialBitrate, int iOverwriteInitialKFMs, int* pInitialKFSet)
 {
    _video_source_csi_open_commands_msg_queue();
 
@@ -530,14 +533,22 @@ void video_source_csi_start_program()
 
    s_bVideoCSICaptureProgramStarted = true;
    s_uLastSetCSIVideoBitrateBPS = 0;
-   _vehicle_launch_video_capture_csi(g_pCurrentModel);
+   _vehicle_launch_video_capture_csi(g_pCurrentModel, uOverwriteInitialBitrate, iOverwriteInitialKFMs);
    vehicle_check_update_processes_affinities(true, g_pCurrentModel->isActiveCameraVeye());
 
+   if ( NULL != pInitialKFSet )
+   {
+      *pInitialKFSet = g_pCurrentModel->getInitialKeyframeIntervalMs(g_pCurrentModel->video_params.iCurrentVideoProfile);
+      if ( video_sources_get_last_set_keyframe() > 0 )
+         *pInitialKFSet = video_sources_get_last_set_keyframe();
+      else if ( video_sources_get_last_set_keyframe() < 0 )
+         *pInitialKFSet = -video_sources_get_last_set_keyframe();
+   }
    s_bStopThreadWatchDogVideoCapture = false;
    s_bHasThreadWatchDogVideoCapture = false;
 
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "video capture csi watchdog");
    
    if ( 0 != pthread_create(&s_pThreadWatchDogVideoCapture, &attr, &_thread_watchdog_video_capture, NULL) )
       log_softerror_and_alarm("[VideoSourceCSI] Failed to create thread for watchdog.");
@@ -549,12 +560,16 @@ void video_source_csi_start_program()
    pthread_attr_destroy(&attr);
    s_uRaspiVidStartTimeMs = g_TimeNow;
 
-   s_uLastSetCSIVideoBitrateBPS = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps;
+   s_uLastSetCSIVideoBitrateBPS = DEFAULT_VIDEO_BITRATE;
    if ( 0 != video_sources_get_last_set_video_bitrate() )
       s_uLastSetCSIVideoBitrateBPS = video_sources_get_last_set_video_bitrate();
+   else if ( g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps > 0 )
+      s_uLastSetCSIVideoBitrateBPS = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps;
+
    u32 uDeltaMs = 500;
    s_uTimeMustSendRaspividBitrateRefreshAt = g_TimeNow + uDeltaMs;
-   log_line("[VideoSourceCSI] Capture program started. Will send a bitrate refresh to it %u ms from now, for video bitrate: %.2f Mbps.", uDeltaMs, (float)s_uLastSetCSIVideoBitrateBPS/1000.0/1000.0);
+   log_line("[VideoSourceCSI] Capture program started. Will send a bitrate refresh to it %u ms from now, for initial video bitrate of: %.3f Mbps.", uDeltaMs, (float)s_uLastSetCSIVideoBitrateBPS/1000.0/1000.0);
+   return s_uLastSetCSIVideoBitrateBPS;
 }
 
 void video_source_csi_stop_program()
@@ -768,7 +783,7 @@ bool video_source_csi_periodic_health_checks()
    if ( g_TimeNow > s_uTimeToRestartVideoCapture )
    {
       log_line("[VideoSourceCSI] It's time to start raspi video capture...");
-      video_source_csi_start_program();
+      video_sources_start_capture();
       s_bRequestedVideoCSICaptureRestart = false;
       s_uTimeToRestartVideoCapture = 0;
       send_alarm_to_controller(ALARM_ID_VEHICLE_VIDEO_CAPTURE_RESTARTED, ALARM_FLAG_VIDEO_CAPTURE_PARAMETERS_UPDATE,0, 5);
@@ -1044,9 +1059,9 @@ u8* video_source_csi_read(int* piReadSize)
       *piReadSize = 0;
    return NULL;
 }
-void video_source_csi_start_program() {}
+u32 video_source_csi_start_program(u32 uOverwriteInitialBitrate, int iOverwriteInitialKFMs, int* pInitialKFSet) { return 0; }
 void video_source_csi_stop_program() {}
-u32 video_source_cs_get_program_start_time() { return 0;}
+u32 video_source_cs_get_program_start_time() { return 0; }
 void video_source_csi_request_restart_program() {}
 void video_source_csi_send_control_message(u8 parameter, u16 value1, u16 value2) {}
 bool video_source_csi_periodic_health_checks() { return false; }

@@ -1,6 +1,6 @@
 #pragma once
 #include "../base/base.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "popup.h"
 
 #define START_SEQ_DELAY 100

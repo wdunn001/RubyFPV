@@ -113,7 +113,7 @@ void radio_populate_ruby_telemetry_v5_from_ruby_telemetry_v3(t_packet_header_rub
    pV5->extraSize = pV3->extraSize;
 
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
-      pV5->iTxPowers[i] = -1;
+      pV5->iTxPowers[i] = 0;
 }
 
 void radio_populate_ruby_telemetry_v5_from_ruby_telemetry_v4(t_packet_header_ruby_telemetry_extended_v5* pV5, t_packet_header_ruby_telemetry_extended_v4* pV4)
@@ -160,6 +160,6 @@ void radio_populate_ruby_telemetry_v5_from_ruby_telemetry_v4(t_packet_header_rub
    pV5->extraSize = pV4->extraSize;
 
    for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
-      pV5->iTxPowers[i] = -1;
+      pV5->iTxPowers[i] = 0;
 }
 

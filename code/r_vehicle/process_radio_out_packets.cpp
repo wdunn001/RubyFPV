@@ -184,7 +184,7 @@ void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength, bool bIsE
                 if ( hardware_radio_index_is_wifi_radio(iInt) )
                 {
                    int iRawTxPower = get_last_tx_power_used_for_radiointerface(iInt);
-                   if ( iRawTxPower > 0 )
+                   if ( iRawTxPower != 0 )
                    {
                       int iRadioInterfacelModel = g_pCurrentModel->radioInterfacesParams.interface_card_model[iInt];
                       if ( iRadioInterfacelModel < 0 )
@@ -195,6 +195,9 @@ void preprocess_radio_out_packet(u8* pPacketBuffer, int iPacketLength, bool bIsE
                          imWPower = tx_powers_get_mw_boosted_value_from_mw(imWPower, true, false);
                       else if ( g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[iInt] & RADIO_HW_CAPABILITY_FLAG_HAS_BOOSTER_4W )
                          imWPower = tx_powers_get_mw_boosted_value_from_mw(imWPower, false, true);
+                      
+                      if ( iRawTxPower < 0 )
+                         imWPower = -imWPower;
                       pPHRTE->iTxPowers[iLink] = imWPower;
                    }
                    break;

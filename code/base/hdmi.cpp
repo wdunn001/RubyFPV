@@ -3,7 +3,7 @@
 #include "config.h"
 #include "hardware.h"
 #include "hardware_files.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include <errno.h>
 #include <unistd.h>
 #if defined(HW_PLATFORM_RADXA)

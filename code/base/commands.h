@@ -11,9 +11,11 @@
 // byte 0: count interfaces
 // N-bytes: power for each card (raw power values)
 
-// deprecated starting in 8.3, using now test link functionality to change frequency for 2.4/5.8ghz. still using this command for 433/868 bands
+// Used only for low rate links, 433-915mhz bands and inactive links.
+// For high capacity active links, use test link functionality to change frequency for 2.4/5.8ghz
 #define COMMAND_ID_SET_RADIO_LINK_FREQUENCY 5
-// lower 3 bytes: frequency (new format, in khz), 4-th byte: link index, most significat bit set to 1 to signal new format for this parameter
+// byte 0..2: frequency, in Khz
+// byte 3: link index
 
 #define COMMAND_ID_SET_RADIO_LINK_CAPABILITIES 6
 // has a u32 param

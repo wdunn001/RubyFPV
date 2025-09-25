@@ -34,6 +34,7 @@
 #include "menu_text.h"
 #include "menu_vehicle_dev.h"
 #include "menu_item_section.h"
+#include "menu_item_text.h"
 #include "menu_confirmation.h"
 #include "menu_system_dev_stats.h"
 #include "../../radio/radiolink.h"
@@ -105,6 +106,17 @@ void MenuVehicleDev::addItems()
    m_pItemsSlider[9] = new MenuItemSlider("Radio Rx Loop Check Max Time (ms)", "The threshold for generating an alarm when radio Rx loop takes too much time (in miliseconds).", 1,1000,10, fSliderWidth);
    m_pItemsSlider[9]->setCurrentValue(pCS->iDevRxLoopTimeout);
    m_IndexRxLoopTimeout = addMenuItem(m_pItemsSlider[9]);
+
+   addMenuItem(new MenuItemSection("Video"));
+
+   m_pItemsSlider[0] = new MenuItemSlider("Max Retransmissions Window (ms)", "Max duration it should try to retransmit video data (in miliseconds).", 5,500,10, fSliderWidth);
+   int iDuration = 5 * ((g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK) >> 8);
+   m_pItemsSlider[0]->setCurrentValue(iDuration);
+   m_IndexRetransmissionWindow = addMenuItem(m_pItemsSlider[0]);
+
+   char szBuff[256];
+   sprintf(szBuff, "Current video profile: %s", str_get_video_profile_name(g_pCurrentModel->video_params.iCurrentVideoProfile));
+   addMenuItem(new MenuItemText(szBuff, true));
 
    addMenuItem(new MenuItemSection("Debugging"));
 
@@ -256,6 +268,52 @@ void MenuVehicleDev::onSelectItem()
       
       if ( ! handle_commands_send_developer_flags(g_pCurrentModel->uDeveloperFlags) )
          valuesToUI(); 
+      return;
+   }
+
+   if ( m_IndexRetransmissionWindow == m_SelectedIndex )
+   {
+      video_parameters_t paramsNew;
+      type_video_link_profile profileNew;
+      memcpy(&paramsNew, &g_pCurrentModel->video_params, sizeof(video_parameters_t));
+      memcpy(&profileNew, &(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile]), sizeof(type_video_link_profile));
+
+      profileNew.uProfileEncodingFlags &= ~VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK;
+      u32 uNewDuration = m_pItemsSlider[0]->getCurrentValue() / 5;
+      if ( uNewDuration == 0 )
+          uNewDuration = 1;
+      profileNew.uProfileEncodingFlags |= ((uNewDuration << 8) & VIDEO_PROFILE_ENCODING_FLAG_MAX_RETRANSMISSION_WINDOW_MASK);
+
+      type_video_link_profile profiles[MAX_VIDEO_LINK_PROFILES];
+      memcpy((u8*)&profiles[0], (u8*)&g_pCurrentModel->video_link_profiles[0], MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile));
+
+      int iMatchProfile = g_pCurrentModel->isVideoSettingsMatchingBuiltinVideoProfile(&paramsNew, &profileNew);
+      if ( (iMatchProfile >= 0) && (iMatchProfile < MAX_VIDEO_LINK_PROFILES) )
+      {
+         log_line("MenuVehicleDev: Matched to video profile %s", str_get_video_profile_name(iMatchProfile));
+         paramsNew.iCurrentVideoProfile = iMatchProfile;
+      }
+      else
+      {
+         log_line("MenuVehicleDev: Switched to user profile");
+         paramsNew.iCurrentVideoProfile = VIDEO_PROFILE_USER;
+      }
+      memcpy((u8*)&profiles[paramsNew.iCurrentVideoProfile ], &profileNew, sizeof(type_video_link_profile));
+      g_pCurrentModel->logVideoSettingsDifferences(&paramsNew, &profileNew);
+
+      if ( 0 == memcmp(&paramsNew, &g_pCurrentModel->video_params, sizeof(video_parameters_t)) )
+      if ( 0 == memcmp(profiles, g_pCurrentModel->video_link_profiles, MAX_VIDEO_LINK_PROFILES*sizeof(type_video_link_profile)) )
+      {
+         log_line("MenuVehicleDev: No change in video parameters.");
+         return;
+      }
+
+      log_line("Sending video encoding flags: %s", str_format_video_encoding_flags(profileNew.uProfileEncodingFlags));
+      send_pause_adaptive_to_router(4000);
+      send_reset_adaptive_state_to_router(g_pCurrentModel->uVehicleId);
+
+      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_VIDEO_PARAMETERS, 0, (u8*)&paramsNew, sizeof(video_parameters_t), (u8*)&profiles[0], MAX_VIDEO_LINK_PROFILES * sizeof(type_video_link_profile)) )
+         valuesToUI();
       return;
    }
 

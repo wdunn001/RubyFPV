@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/encr.h"
 #include "../base/config_hw.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../common/radio_stats.h"
 #include "../common/string_utils.h"
 #include "radio_rx.h"
@@ -658,7 +658,7 @@ int _radio_rx_parse_received_wifi_radio_data(int iInterfaceIndex, int iMaxReads)
       }
 
       _radio_rx_check_add_packet_to_rx_queue(pPacketBuffer, iPacketLength, iInterfaceIndex);
-    
+
       if ( NULL != s_pRxAirGapTracking )
       {
          s_uRadioRxTimeNow = get_current_timestamp_ms();
@@ -807,7 +807,7 @@ void * _thread_radio_rx(void *argument)
    log_line("[RadioRxThread] Initialized State. Waiting for rx messages...");
 
    int* piQuit = (int*) argument;
-   int iPollTimeoutMs = 10;
+   int iPollTimeoutMs = 2;
    int iLoopCounter = 0;
    int iLoopParsedPackets = 0;
    int iLoopErrorsCounter = 0;
@@ -845,6 +845,8 @@ void * _thread_radio_rx(void *argument)
 
       if ( uDeltaTime < 10000 )
       {
+         if ( uDeltaTime > 3 )
+            log_line("DBG rxloop took %u ms", uDeltaTime);
          if ( uDeltaTime < s_uRadioRxLoopTimeMin )
             s_uRadioRxLoopTimeMin = uDeltaTime;
          if ( uDeltaTime > s_uRadioRxLoopTimeMax )
@@ -912,6 +914,7 @@ void * _thread_radio_rx(void *argument)
          if ( s_iRadioRxPausedInterfaces[i] )
             continue;
          fds[s_iRadioRxCountFDs].fd = pRadioHWInfo->runtimeInterfaceInfoRx.selectable_fd;
+         fds[s_iRadioRxCountFDs].revents = 0;
          fds[s_iRadioRxCountFDs].events = POLLIN;
          s_iRadioRxCountFDs++;
       }
@@ -926,7 +929,6 @@ void * _thread_radio_rx(void *argument)
 
       //int nResult = select(s_iRadioRxMaxFD, &s_RadioRxReadSet, NULL, NULL, &s_iRadioRxReadTimeInterval);
       int nResult = poll(fds, s_iRadioRxCountFDs, iPollTimeoutMs);
-
       s_uRadioRxTimeNow = get_current_timestamp_ms();
       uTimeReadSignaled = s_uRadioRxTimeNow;
       s_uRadioRxLastTimeQueue = 0;
@@ -978,9 +980,31 @@ void * _thread_radio_rx(void *argument)
       {
          iMaxRepeatCount--;
          iMaxedInterface = -1;
-         int kIndex = 0;
-         for(int iInterfaceIndex=0; iInterfaceIndex<iInterfacesCount; iInterfaceIndex++)
+         for(int iPollIndex=0; iPollIndex < s_iRadioRxCountFDs; iPollIndex++)
          {
+            if ( 0 == (fds[iPollIndex].revents & POLLIN) )
+               continue;
+
+            int iInterfaceIndex = -1;
+            for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+            {
+               radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+               if ( (NULL == pRadioHWInfo) || (! pRadioHWInfo->openedForRead) )
+                  continue;
+               if ( s_RadioRxState.iRadioInterfacesBroken[i] )
+                  continue;
+               if ( s_iRadioRxPausedInterfaces[i] )
+                  continue;
+               if ( fds[iPollIndex].fd == pRadioHWInfo->runtimeInterfaceInfoRx.selectable_fd )
+               {
+                  iInterfaceIndex = i;
+                  break;
+               }
+            }
+
+            if ( iInterfaceIndex == -1 )
+               continue;
+
             radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(iInterfaceIndex);
             if ( (NULL == pRadioHWInfo) || (! pRadioHWInfo->openedForRead) )
                continue;
@@ -988,12 +1012,8 @@ void * _thread_radio_rx(void *argument)
                continue;
             if ( s_iRadioRxPausedInterfaces[iInterfaceIndex] )
                continue;
-
             //if( 0 == FD_ISSET(pRadioHWInfo->runtimeInterfaceInfoRx.selectable_fd, &s_RadioRxReadSet) )
             //   continue;
-            if ( 0 == (fds[kIndex].revents & POLLIN) )
-               continue;
-            kIndex++;
 
             if ( iParsedPackets[iInterfaceIndex] <= 0 )
                continue;

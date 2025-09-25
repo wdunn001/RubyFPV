@@ -361,7 +361,7 @@ void MenuControllerUpdateNet::onSelectItem()
       m_bNeedsUserConsent = false;
       m_iUserConsentResult = 0;
       pthread_attr_t attr;
-      hw_init_worker_thread_attrs(&attr);
+      hw_init_worker_thread_attrs(&attr, "check update from net");
       if ( 0 != pthread_create(&m_pThreadCheckUpdate, &attr, &_thread_check_update, (void*)this) )
       {
          pthread_attr_destroy(&attr);

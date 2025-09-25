@@ -51,7 +51,7 @@
 #include "../base/shared_mem_i2c.h"
 #include "../base/models.h"
 #include "../base/models_list.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/utils.h"
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_settings.h"

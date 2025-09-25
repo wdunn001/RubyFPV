@@ -3,7 +3,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/shared_mem.h"
 #include "../renderer/drm_core.h"
 #include <ctype.h>

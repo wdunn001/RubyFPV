@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/hardware.h"
 #ifdef HW_PLATFORM_RASPBERRY
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #endif
 #include "../base/shared_mem.h"
 #include "../radio/radiolink.h"

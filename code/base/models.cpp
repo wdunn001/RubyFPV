@@ -40,7 +40,7 @@
 #include "hardware.h"
 #include "hardware_audio.h"
 #include "hardware_camera.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "hardware_i2c.h"
 #include "camera_utils.h"
 #include "utils.h"
@@ -1069,7 +1069,7 @@ bool Model::loadVersion10(FILE* fd)
    if ( bOk )
    {
       tmp1 = 0;
-      if ( 3 != fscanf(fd, "%d %d %d", &tmp1, &radioRuntimeCapabilities.iMaxSupportedMCSDataRate, &radioRuntimeCapabilities.iMaxSupportedLegacyDataRate) )
+      if ( 4 != fscanf(fd, "%d %d %d %u", &tmp1, &radioRuntimeCapabilities.iMaxSupportedMCSDataRate, &radioRuntimeCapabilities.iMaxSupportedLegacyDataRate, &radioRuntimeCapabilities.uSupportedMCSFlags) )
          resetRadioCapabilitiesRuntime(&radioRuntimeCapabilities);
       else
       {
@@ -1080,13 +1080,21 @@ bool Model::loadVersion10(FILE* fd)
             for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
             {
                if ( 1 != fscanf(fd, "%f", &radioRuntimeCapabilities.fQualitiesLegacy[iLink][i]) )
+               {
                   bCapabOk = false;
+                  break;
+               }
             }
             for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
             {
                if ( 1 != fscanf(fd, "%f", &radioRuntimeCapabilities.fQualitiesMCS[iLink][i]) )
+               {
                   bCapabOk = false;
+                  break;
+               }
             }
+            if ( ! bCapabOk )
+               break;
          }
 
          for( int iLink=0; iLink<MODEL_MAX_STORED_QUALITIES_LINKS; iLink++ )
@@ -1094,13 +1102,21 @@ bool Model::loadVersion10(FILE* fd)
             for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
             {
                if ( 1 != fscanf(fd, "%d", &radioRuntimeCapabilities.iMaxTxPowerMwLegacy[iLink][i]) )
+               {
                   bCapabOk = false;
+                  break;
+               }
             }
             for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
             {
                if ( 1 != fscanf(fd, "%d", &radioRuntimeCapabilities.iMaxTxPowerMwMCS[iLink][i]) )
+               {
                   bCapabOk = false;
+                  break;
+               }
             }
+            if ( ! bCapabOk )
+               break;
          }
 
          if ( ! bCapabOk )
@@ -1643,7 +1659,7 @@ bool Model::saveVersion10(FILE* fd, bool isOnController)
 
    // Radio runtime capabilities
 
-   sprintf(szSetting, "%d %d %d\n", radioRuntimeCapabilities.uFlagsRuntimeCapab, radioRuntimeCapabilities.iMaxSupportedMCSDataRate, radioRuntimeCapabilities.iMaxSupportedLegacyDataRate);
+   sprintf(szSetting, "%d %d %d %u\n", (int)radioRuntimeCapabilities.uFlagsRuntimeCapab, radioRuntimeCapabilities.iMaxSupportedMCSDataRate, radioRuntimeCapabilities.iMaxSupportedLegacyDataRate, radioRuntimeCapabilities.uSupportedMCSFlags);
    strcat(szModel, szSetting);
    for( int iLink=0; iLink<MODEL_MAX_STORED_QUALITIES_LINKS; iLink++ )
    {
@@ -1717,8 +1733,22 @@ void Model::resetVideoParamsToDefaults()
    video_params.iInsertSPTVideoFramesTimings = 0;
    video_params.lowestAllowedAdaptiveVideoBitrate = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
    video_params.uMaxAutoKeyframeIntervalMs = DEFAULT_VIDEO_MAX_AUTO_KEYFRAME_INTERVAL;
-   video_params.uVideoExtraFlags = VIDEO_FLAG_RETRANSMISSIONS_FAST;
+   video_params.uVideoExtraFlags = VIDEO_FLAG_RETRANSMISSIONS_FAST | VIDEO_FLAG_ENABLE_FOCUS_MODE_BW;
    resetVideoLinkProfiles();
+}
+
+void Model::resetAdaptiveVideoParams(int iVideoProfile)
+{
+   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+   {
+      if ( (iVideoProfile != -1) && (i != iVideoProfile) )
+         continue;
+     video_link_profiles[i].iAdaptiveAdjustmentStrength = DEFAULT_VIDEO_PARAMS_ADJUSTMENT_STRENGTH;
+     video_link_profiles[i].uAdaptiveWeights = 
+        0x05 | (0x06 << 4) |
+        (0x07 << 8) | (0x05 << 12) |
+        (0x0A << 16) | (0x0A << 20);
+   }
 }
 
 void Model::resetVideoLinkProfiles()
@@ -1736,7 +1766,6 @@ void Model::resetVideoLinkProfile(int iProfile)
    video_link_profiles[iProfile].uProfileFlags = 1; // 3d noise
    //video_link_profiles[iProfile].uProfileFlags = 0; // 3d noise
    video_link_profiles[iProfile].uProfileEncodingFlags = VIDEO_PROFILE_ENCODING_FLAG_ENABLE_RETRANSMISSIONS | VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_LINK | VIDEO_PROFILE_ENCODING_FLAG_RETRANSMISSIONS_DUPLICATION_PERCENT_AUTO;
-   //video_link_profiles[iProfile].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_USE_MEDIUM_ADAPTIVE_VIDEO;
    video_link_profiles[iProfile].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME;
    video_link_profiles[iProfile].uProfileEncodingFlags |= VIDEO_PROFILE_ENCODING_FLAG_EC_SCHEME_SPREAD_FACTOR_HIGHBIT;
    video_link_profiles[iProfile].uProfileEncodingFlags |= (DEFAULT_VIDEO_RETRANS_MS5_HP<<8);
@@ -1754,11 +1783,7 @@ void Model::resetVideoLinkProfile(int iProfile)
 
    video_link_profiles[iProfile].keyframe_ms = DEFAULT_VIDEO_KEYFRAME;
 
-   video_link_profiles[iProfile].iAdaptiveAdjustmentStrength = DEFAULT_VIDEO_PARAMS_ADJUSTMENT_STRENGTH;
-   video_link_profiles[iProfile].uAdaptiveWeights = 
-      0x07 | (0x07 << 4) |
-      (0x07 << 8) | (0x05 << 12) |
-      (0x0A << 16) | (0x0A << 20);
+   resetAdaptiveVideoParams(iProfile);
 
    video_link_profiles[iProfile].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE;
    if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
@@ -1983,8 +2008,6 @@ void Model::resetRadioLinkDataRatesAndFlags(int iRadioLink)
 
    radioLinksParams.uSerialPacketSize[iRadioLink] = DEFAULT_RADIO_SERIAL_AIR_PACKET_SIZE;
    radioLinksParams.uDummy2[iRadioLink] = 0;
-
-   validateRadioSettings();
 }
 
 
@@ -2464,21 +2487,30 @@ void Model::logVehicleRadioInfo()
                strcat(szCardModel, "user set as: ");
             strcat(szCardModel, str_get_radio_card_model_string(radioInterfacesParams.interface_card_model[i]));
             log_line("* %sRadio Interface %d: %s, %s, %s on port %s, drv: %s, supported bands: %s, current frequency: %s, assigned to radio link %d, current capabilities: %s, current radio flags: %s, raw_tx_power: %d",
-                szPrefix, i+1, pRadioInfo->szName, radioInterfacesParams.interface_szMAC[i], szCardModel, radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description(radioInterfacesParams.interface_radiotype_and_driver[i]), szBands, str_format_frequency(pRadioInfo->uCurrentFrequencyKhz), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
+                szPrefix, i+1, pRadioInfo->szName, radioInterfacesParams.interface_szMAC[i], szCardModel, radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description((radioInterfacesParams.interface_radiotype_and_driver[i]>>8) & 0xFF), szBands, str_format_frequency(pRadioInfo->uCurrentFrequencyKhz), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
                 radioInterfacesParams.interface_raw_power[i]);
          }
          else
             log_line("* %sRadio Interface %d: (no HW match) %s on port %s, drv: %s, supported bands: %s, current frequency: %s, assigned to radio link %d, current capabilities: %s, current radio flags: %s, raw_tx_power: %d",
-               szPrefix, i+1, str_get_radio_card_model_string(radioInterfacesParams.interface_card_model[i]), radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description(radioInterfacesParams.interface_radiotype_and_driver[i]), szBands, str_format_frequency(radioInterfacesParams.interface_current_frequency_khz[i]), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
+               szPrefix, i+1, str_get_radio_card_model_string(radioInterfacesParams.interface_card_model[i]), radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description((radioInterfacesParams.interface_radiotype_and_driver[i]>>8) & 0xFF), szBands, str_format_frequency(radioInterfacesParams.interface_current_frequency_khz[i]), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
                radioInterfacesParams.interface_raw_power[i]);
       }
       else
           log_line("* Radio Interface %d: %s, %s on port %s, %s, supported bands: %s, current frequency: %s, assigned to radio link %d, current capabilities: %s, current radio flags: %s, raw_tx_power: %d",
-               i+1, radioInterfacesParams.interface_szMAC[i], str_get_radio_card_model_string(radioInterfacesParams.interface_card_model[i]), radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description(radioInterfacesParams.interface_radiotype_and_driver[i]), szBands, str_format_frequency(radioInterfacesParams.interface_current_frequency_khz[i]), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
+               i+1, radioInterfacesParams.interface_szMAC[i], str_get_radio_card_model_string(radioInterfacesParams.interface_card_model[i]), radioInterfacesParams.interface_szPort[i], str_get_radio_driver_description((radioInterfacesParams.interface_radiotype_and_driver[i]>>8) & 0xFF), szBands, str_format_frequency(radioInterfacesParams.interface_current_frequency_khz[i]), radioInterfacesParams.interface_link_id[i]+1, szBuff, szBuff2,
                radioInterfacesParams.interface_raw_power[i]);
    }
 
    log_line("------------------------------------------------------");
+   log_line("Vehicle's global radio flags & info:");
+
+   log_line(" * Runtime capabilities: Computed? %s", (radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_COMPUTED)?"yes":"no");
+   log_line(" * Runtime capabilities: Dirty? %s", (radioRuntimeCapabilities.uFlagsRuntimeCapab & MODEL_RUNTIME_RADIO_CAPAB_FLAG_DIRTY)?"yes":"no");
+   log_line(" * Radio links global flags: Has negociated links? %s", (radioLinksParams.uGlobalRadioLinksFlags & MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS)?"yes":"no");
+   log_line(" * Max supported legacy/MCS rates: %d/%s", radioRuntimeCapabilities.iMaxSupportedLegacyDataRate, str_format_datarate_inline(radioRuntimeCapabilities.iMaxSupportedMCSDataRate));
+   log_line(" * Supported MCS flags: %s", str_get_radio_frame_flags_description2(radioRuntimeCapabilities.uSupportedMCSFlags));
+   log_line("------------------------------------------------------");
+
 }
 
 // Returns the number of differences
@@ -3386,6 +3418,7 @@ void Model::resetRadioCapabilitiesRuntime(type_radio_runtime_capabilities_parame
    pRTInfo->uFlagsRuntimeCapab = 0;
    pRTInfo->iMaxSupportedMCSDataRate = 0;
    pRTInfo->iMaxSupportedLegacyDataRate = 0;
+   pRTInfo->uSupportedMCSFlags = RADIO_FLAGS_FRAME_TYPE_DATA;
    for( int iLink=0; iLink<MODEL_MAX_STORED_QUALITIES_LINKS; iLink++ )
    for( int i=0; i<MODEL_MAX_STORED_QUALITIES_VALUES; i++ )
    {

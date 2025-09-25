@@ -33,7 +33,7 @@
 #include "../base/base.h"
 #include "../base/config.h"
 #include "../base/shared_mem.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/hardware_camera.h"
 #include "../base/hardware_cam_maj.h"
 #include "../base/ruby_ipc.h"
@@ -67,7 +67,9 @@ int s_iLastSetVideoKeyframeMs = 0;
 
 void video_sources_start_capture()
 {
-   log_line("[VideoSources] Start capture begin...");
+   log_line("[VideoSources] Start capture begin (initial video bitrate: %.3f Mbps, QPdelta: %d, KF: %d ms)...",
+      (float)s_uLastSetVideoBitrateBPS/1000.0/1000.0, s_iLastSetIPQDelta, s_iLastSetVideoKeyframeMs );
+
    s_uTotalVideoSourceReadBytes = 0;
    if ( ! g_pCurrentModel->hasCamera() )
    {
@@ -75,27 +77,16 @@ void video_sources_start_capture()
       return;
    }
 
+   log_line("[VideoSources] Current camera type: %s", str_get_hardware_camera_type_string(g_pCurrentModel->getActiveCameraType()));
+   u32 uInitialVideoBitrate = 0;
+   int iInitialKeyframeMs = 0;
    if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      video_source_csi_start_program();
+      uInitialVideoBitrate = video_source_csi_start_program(s_uLastSetVideoBitrateBPS, s_iLastSetVideoKeyframeMs, &iInitialKeyframeMs);
    if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-      video_source_majestic_start_program();
+      uInitialVideoBitrate = video_source_majestic_start_program(s_uLastSetVideoBitrateBPS, s_iLastSetVideoKeyframeMs, s_iLastSetIPQDelta, &iInitialKeyframeMs);
 
-   if ( 0 != s_iLastSetVideoKeyframeMs )
-   {
-      int kf = s_iLastSetVideoKeyframeMs;
-      s_iLastSetVideoKeyframeMs = 0;
-      video_sources_set_keyframe(kf);
-   }
-
-   if ( 0 != s_uLastSetVideoBitrateBPS )
-   {
-      int ipq = s_iLastSetIPQDelta;
-      u32 ubitrate = s_uLastSetVideoBitrateBPS;
-
-      s_iLastSetIPQDelta = -1000;
-      s_uLastSetVideoBitrateBPS = 0;
-      video_sources_set_video_bitrate(ubitrate, ipq, "Start capture");
-   }
+   s_uLastSetVideoBitrateBPS = uInitialVideoBitrate;
+   s_iLastSetVideoKeyframeMs = iInitialKeyframeMs;
 
    log_line("[VideoSources] Start capture completed.");
 }
@@ -104,13 +95,13 @@ void video_sources_stop_capture()
 {
    log_line("[VideoSources] Stop capture begin...");
 
-   if ( ! g_pCurrentModel->hasCamera() )
+   if ( (NULL == g_pCurrentModel) || (! g_pCurrentModel->hasCamera()) )
    {
       log_line("[VideoSources] Vehicle has no camera. Uninit done. Video capture not stopped.");
       return;
    }
 
-   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+   if ( (NULL != g_pCurrentModel) && g_pCurrentModel->isActiveCameraOpenIPC() )
       video_source_majestic_stop_program();
    else
       video_source_csi_stop_program();
@@ -137,7 +128,7 @@ void video_sources_flush_all_pending_data()
 }
 
 
-// Returns true if and video data was read and processed
+// Returns true if any video data was read and processed
 bool video_sources_read_process_stream(bool* pbEndOfFrameDetected, int iHasPendingDataPacketsToSend)
 {
    if ( NULL != pbEndOfFrameDetected )
@@ -171,6 +162,9 @@ bool video_sources_read_process_stream(bool* pbEndOfFrameDetected, int iHasPendi
    
    if ( g_pCurrentModel->isActiveCameraOpenIPC() )
    {
+      return video_source_majestic_read_process_stream(pbEndOfFrameDetected, iHasPendingDataPacketsToSend);
+
+      /*
       bool bDidReadVideoData = false;
       bool bIsEndOfFrame = false;
 
@@ -186,6 +180,7 @@ bool video_sources_read_process_stream(bool* pbEndOfFrameDetected, int iHasPendi
             bool bSingle = video_source_majestic_last_read_is_single_nal();
             bool bEnd = video_source_majestic_last_read_is_end_nal();
             u32 uNALType = video_source_majestic_get_last_nal_type();
+
             bIsEndOfFrame |= g_pVideoTxBuffers->fillVideoPacketsFromRTSPPacket(pVideoData, iReadSize, bSingle, bEnd, uNALType, iHasPendingDataPacketsToSend);
          }
          if ( (iReadSize <= 0) || bIsEndOfFrame )
@@ -193,7 +188,8 @@ bool video_sources_read_process_stream(bool* pbEndOfFrameDetected, int iHasPendi
       }
       if ( NULL != pbEndOfFrameDetected )
          *pbEndOfFrameDetected = bIsEndOfFrame;
-      return bDidReadVideoData;      
+      return bDidReadVideoData;
+      */
    }
    return false;
 }
@@ -578,24 +574,42 @@ void video_sources_set_keyframe(int iKeyframeMs)
    log_line("[VideoSources] Set KF to: %d ms", s_iLastSetVideoKeyframeMs);
 
    // Send the actual keyframe change to video source/capture
-   int iCurrentFPS = g_pCurrentModel->video_params.iVideoFPS;
-
-   int iKeyFrame_FrameCountValue = (iCurrentFPS * s_iLastSetVideoKeyframeMs) / 1000; 
 
    if ( g_pCurrentModel->isActiveCameraCSICompatible() || g_pCurrentModel->isActiveCameraVeye() )
-      video_source_csi_send_control_message(RASPIVID_COMMAND_ID_KEYFRAME, (u16)iKeyFrame_FrameCountValue, 0);
-
-   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
    {
-      float fGOP = 1.0;
-      fGOP = ((float)s_iLastSetVideoKeyframeMs)/1000.0;
-      hardware_camera_maj_set_keyframe(fGOP);                
+      int iCurrentFPS = g_pCurrentModel->video_params.iVideoFPS;
+      int iKeyFrame_FrameCountValue = (iCurrentFPS * s_iLastSetVideoKeyframeMs) / 1000; 
+      video_source_csi_send_control_message(RASPIVID_COMMAND_ID_KEYFRAME, (u16)iKeyFrame_FrameCountValue, 0);
    }
+   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+      hardware_camera_maj_set_keyframe(s_iLastSetVideoKeyframeMs);                
 }
 
 int video_sources_get_last_set_keyframe()
 {
    return s_iLastSetVideoKeyframeMs;
+}
+
+void video_sources_set_temporary_image_saturation_off(bool bTurnOff)
+{
+   if ( !(g_pCurrentModel->video_params.uVideoExtraFlags & VIDEO_FLAG_ENABLE_FOCUS_MODE_BW) )
+      return;
+   if ( bTurnOff )
+      log_line("[VideoSources] Set temporary image saturation to off");
+   else
+      log_line("[VideoSources] Removed temporary image saturation off");
+
+   int iCurrentCamera = g_pCurrentModel->iCurrentCamera;
+   int iCurrentCamProfile = g_pCurrentModel->camera_params[iCurrentCamera].iCurrentProfile;
+
+   int iSaturation = g_pCurrentModel->camera_params[iCurrentCamera].profiles[iCurrentCamProfile].saturation;
+   if ( bTurnOff )
+      iSaturation = 0;
+   log_line("[VideoSources] Set temporary image saturation to %d", iSaturation);
+   if ( g_pCurrentModel->isRunningOnOpenIPCHardware() && (! hardware_board_is_goke(g_pCurrentModel->hwCapabilities.uBoardType)) )
+      hardware_camera_maj_set_saturation(iSaturation);
+   else if ( g_pCurrentModel->isActiveCameraCSICompatible() )
+      video_source_csi_send_control_message( RASPIVID_COMMAND_ID_SATURATION, iSaturation, 0 );
 }
 
 bool video_sources_periodic_health_checks()

@@ -34,7 +34,7 @@
 #include "config.h"
 #include "plugins_settings.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 
 PluginsSettings s_PluginsSettings;
 int s_PluginsSettingsLoaded = 0;

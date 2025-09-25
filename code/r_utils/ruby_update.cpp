@@ -41,7 +41,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_camera.h"
 #include "../base/models_list.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/radio_utils.h"
 #include "../base/config.h"
 #include "../base/vehicle_settings.h"
@@ -95,6 +95,82 @@ void update_openipc_cpu(Model* pModel)
    hardware_set_default_sigmastar_cpu_freq();
    if ( NULL != pModel )
       pModel->processesPriorities.iFreqARM = DEFAULT_FREQ_OPENIPC_SIGMASTAR;
+}
+
+void do_update_to_114()
+{
+   log_line("Doing update to 11.4");
+ 
+   if ( ! s_isVehicle )
+   {
+      load_Preferences();
+      Preferences* pP = get_Preferences();
+      pP->nLogLevel = 0;  
+      save_Preferences();
+   }
+
+   Model* pModel = getCurrentModel();
+   if ( NULL == pModel )
+      return;
+
+   log_line("Updated model VID %u (%s) to v11.3", pModel->uVehicleId, pModel->getLongName());
+}
+
+void do_update_to_113()
+{
+   log_line("Doing update to 11.3");
+ 
+   if ( ! s_isVehicle )
+   {
+     
+   }
+
+   Model* pModel = getCurrentModel();
+   if ( NULL == pModel )
+      return;
+
+   pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
+   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
+   pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
+   #endif
+
+   pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS;
+   #if defined (HW_PLATFORM_OPENIPC_CAMERA)
+   pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC;
+   if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
+      pModel->video_params.iVideoFPS = DEFAULT_VIDEO_FPS_OIPC_SIGMASTAR;
+   #endif
+
+   pModel->video_params.uVideoExtraFlags |= VIDEO_FLAG_ENABLE_FOCUS_MODE_BW;
+   pModel->resetAdaptiveVideoParams(-1);
+
+   if ( hardware_board_is_openipc(hardware_getBoardType()) )
+   {
+      for( int k=0; k<MODEL_MAX_CAMERAS; k++ )
+      for( int i=0; i<MODEL_CAMERA_PROFILES; i++ )
+         pModel->camera_params[k].profiles[i].shutterspeed = DEFAULT_OIPC_SHUTTERSPEED; //milisec
+   }
+
+   for( int i=0; i<MAX_VIDEO_LINK_PROFILES; i++ )
+   {
+      pModel->video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE;
+      if ( ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZERO) ||
+           ((hardware_getBoardType() & BOARD_TYPE_MASK) == BOARD_TYPE_PIZEROW) ||
+           hardware_board_is_goke(hardware_getBoardType()) )
+         pModel->video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_PI_ZERO;
+      if ( hardware_board_is_sigmastar(hardware_getBoardType()) )
+         pModel->video_link_profiles[i].bitrate_fixed_bps = DEFAULT_VIDEO_BITRATE_OPIC_SIGMASTAR;
+   }
+
+
+   pModel->radioRuntimeCapabilities.uSupportedMCSFlags = RADIO_FLAGS_FRAME_TYPE_DATA;
+
+   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+   {
+      pModel->radioLinksParams.uMaxLinkLoadPercent[i] = DEFAULT_RADIO_LINK_LOAD_PERCENT;
+   }
+
+   log_line("Updated model VID %u (%s) to v11.3", pModel->uVehicleId, pModel->getLongName());
 }
 
 
@@ -606,8 +682,9 @@ void do_update_to_103()
    pModel->rxtx_sync_type = RXTX_SYNC_TYPE_BASIC;
   
    pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES;
-   if ( hardware_board_is_openipc(hardware_getBoardType()) )
-      pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
+   #if defined  (HW_PLATFORM_OPENIPC_CAMERA)
+   pModel->video_params.iH264Slices = DEFAULT_VIDEO_H264_SLICES_OIPC;
+   #endif
 
    pModel->enc_flags = MODEL_ENC_FLAGS_NONE;
    pModel->radioLinksParams.uGlobalRadioLinksFlags &= ~(MODEL_RADIOLINKS_FLAGS_HAS_NEGOCIATED_LINKS);
@@ -1404,6 +1481,10 @@ int main(int argc, char *argv[])
       do_update_to_111();
    if ( (iMajor < 11) || (iMajor == 11 && iMinor <= 2) )
       do_update_to_112();
+   if ( (iMajor < 11) || (iMajor == 11 && iMinor <= 3) )
+      do_update_to_113();
+   if ( (iMajor < 11) || (iMajor == 11 && iMinor <= 4) )
+      do_update_to_114();
 
 
    saveCurrentModel();

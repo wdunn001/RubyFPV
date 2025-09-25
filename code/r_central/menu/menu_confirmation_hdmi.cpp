@@ -33,7 +33,7 @@
 #include "../../base/base.h"
 #include "../../base/config.h"
 #include "../../base/hardware.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../local_stats.h"
 
 #include "menu.h"

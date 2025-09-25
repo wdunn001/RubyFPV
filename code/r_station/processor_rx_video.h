@@ -85,6 +85,9 @@ class ProcessorRxVideo
       void setMustParseStream(bool bParse);
       bool isParsingStream();
 
+      u32 getLastRetransmissionId();
+      u32 getLastTimeRequestedRetransmission();
+      u32 getLastTimeReceivedRetransmission();
       u32 getLastTimeVideoStreamChanged();
       u32 getLastestVideoPacketReceiveTime();
       int getVideoWidth();
@@ -149,8 +152,9 @@ class ProcessorRxVideo
       u8 m_uLastReceivedVideoLinkProfile;
 
       u32 m_uLastTimeCheckedForMissingPackets;
-      u32 m_uLastTimeRequestedRetransmission;
       u32 m_uRequestRetransmissionUniqueId;
+      u32 m_uLastTimeRequestedRetransmission;
+      u32 m_uLastTimeReceivedRetransmission;
 
       u32 m_uLastTopBlockRequested;
       int m_iMaxRecvPacketTopBlockWhenRequested;
@@ -160,11 +164,6 @@ class ProcessorRxVideo
 
       u32 m_TimeLastHistoryStatsUpdate;
       u32 m_TimeLastRetransmissionsStatsUpdate;
-
-      u32 m_uLastBlockReceivedAckKeyframeInterval;
-      u32 m_uLastBlockReceivedAdaptiveVideoInterval;
-      u32 m_uLastBlockReceivedSetVideoBitrate;
-      u32 m_uLastBlockReceivedEncodingExtraFlags2;
 
       u32 m_uLastVideoBlockIndexResolutionChange;
       u32 m_uLastVideoBlockPacketIndexResolutionChange;

@@ -44,8 +44,11 @@ void parse_msp_reset_state(type_msp_parse_state* pMSPState)
 
    memset( &(pMSPState->headerTelemetryMSP), 0, sizeof(t_packet_header_telemetry_msp));
 
-   pMSPState->iMSPState = MSP_STATE_NONE;
+   pMSPState->iMSPState = MSP_STATE_WAIT_HEADER1;
    pMSPState->bEmptyBuffer = true;
+   pMSPState->uMSPPreviousCommand = 0xFF;
+   pMSPState->uMSPDisplayPortCommand = 0xFF;
+   pMSPState->uMSPDisplayPortPreviousCommand = 0xFF;
 }
 
 void _parse_msp_osd_add_string(t_structure_vehicle_info* pRuntimeInfo, u8* pData, int iDataLength)
@@ -60,19 +63,22 @@ void _parse_msp_osd_add_string(t_structure_vehicle_info* pRuntimeInfo, u8* pData
 
    pRuntimeInfo->mspState.bEmptyBuffer = false;
 
-   int x = pData[1];
    int y = pData[0];
+   int x = pData[1];
    u8 uAttr = pData[2];
+   if ( (x<0) || (x >= 64) || (y<0) || (y>=24) )
+      return;
 
+   char szBuff[255];
+   memset(szBuff, 0, 255);
    for( int i=3; i<iDataLength; i++ )
    {
       if ( pData[i] == 0 )
          break;
-      if ( (x<0) || (x >= 64) || (y<0) || (y>=24) )
-         continue;
       pRuntimeInfo->mspState.uScreenCharsTmp[x + y*pRuntimeInfo->mspState.headerTelemetryMSP.uCols] = pData[i];
       if ( uAttr & 0x03 )
          pRuntimeInfo->mspState.uScreenCharsTmp[x + y*pRuntimeInfo->mspState.headerTelemetryMSP.uCols] |= (((u16)(uAttr & 0x03)) << 8);
+      szBuff[i-3] = pData[i];
       x++;
    }
 }
@@ -81,28 +87,34 @@ void _parse_msp_osd_command(t_structure_vehicle_info* pRuntimeInfo)
 {
    if ( NULL == pRuntimeInfo )
       return;
-   if ( (pRuntimeInfo->mspState.uMSPCommand != MSP_CMD_DISPLAYPORT) || (pRuntimeInfo->mspState.iMSPCommandDataSize < 1) || (pRuntimeInfo->mspState.iMSPDirection != MSP_DIR_FROM_FC) )
+   if ( (pRuntimeInfo->mspState.uMSPCommand != MSP_CMD_DISPLAYPORT) || (pRuntimeInfo->mspState.iMSPCommandPayloadSize < 1) || (pRuntimeInfo->mspState.iMSPDirection != MSP_DIR_FROM_FC) )
       return;
 
-   switch ( pRuntimeInfo->mspState.uMSPCommandData[0] )
+   pRuntimeInfo->mspState.uMSPDisplayPortPreviousCommand = pRuntimeInfo->mspState.uMSPDisplayPortCommand;
+   pRuntimeInfo->mspState.uMSPDisplayPortCommand = pRuntimeInfo->mspState.uMSPCommandPayload[0];
+   switch ( pRuntimeInfo->mspState.uMSPDisplayPortCommand )
    {
-      case MSP_DISPLAYPORT_KEEPALIVE:
-         break;
       case MSP_DISPLAYPORT_CLEAR:
          //memset(&(pRuntimeInfo->mspState.uScreenChars[0]), 0, MAX_MSP_CHARS_BUFFER*sizeof(u16));
          memset(&(pRuntimeInfo->mspState.uScreenCharsTmp[0]), 0, MAX_MSP_CHARS_BUFFER*sizeof(u16));
          pRuntimeInfo->mspState.bEmptyBuffer = true;
          break;
 
+      case MSP_DISPLAYPORT_KEEPALIVE:
+         //if ( ! pRuntimeInfo->mspState.bEmptyBuffer )
+            memcpy(&(pRuntimeInfo->mspState.uScreenChars[0]), &(pRuntimeInfo->mspState.uScreenCharsTmp[0]), MAX_MSP_CHARS_BUFFER*sizeof(u16));
+         pRuntimeInfo->mspState.bEmptyBuffer = true;
+         break;
+
       case MSP_DISPLAYPORT_DRAW_SCREEN:
-         if ( ! pRuntimeInfo->mspState.bEmptyBuffer )
+         //if ( ! pRuntimeInfo->mspState.bEmptyBuffer )
             memcpy(&(pRuntimeInfo->mspState.uScreenChars[0]), &(pRuntimeInfo->mspState.uScreenCharsTmp[0]), MAX_MSP_CHARS_BUFFER*sizeof(u16));
          pRuntimeInfo->mspState.bEmptyBuffer = true;
          //memset(&(pRuntimeInfo->mspState.uScreenCharsTmp[0]), 0, MAX_MSP_CHARS_BUFFER*sizeof(u16));
          break;
 
       case MSP_DISPLAYPORT_DRAW_STRING:
-         _parse_msp_osd_add_string(pRuntimeInfo, &pRuntimeInfo->mspState.uMSPCommandData[1], pRuntimeInfo->mspState.iMSPCommandDataSize-1);
+         _parse_msp_osd_add_string(pRuntimeInfo, &pRuntimeInfo->mspState.uMSPCommandPayload[1], pRuntimeInfo->mspState.iMSPCommandPayloadSize-1);
          break;
 
       default: break;
@@ -123,23 +135,24 @@ void parse_msp_incoming_data(t_structure_vehicle_info* pRuntimeInfo, u8* pData, 
 
       switch(pRuntimeInfo->mspState.iMSPState)
       {
-         case MSP_STATE_NONE:
          case MSP_STATE_ERROR:
+         case MSP_STATE_WAIT_HEADER1:
             pRuntimeInfo->mspState.iMSPRawCommandFilledBytes = 0;
             if ( *pData == '$' )
             {
                pRuntimeInfo->mspState.uMSPRawCommand[0] = *pData;
                pRuntimeInfo->mspState.iMSPRawCommandFilledBytes = 1;
-               pRuntimeInfo->mspState.iMSPState = MSP_STATE_WAIT_HEADER;
+               pRuntimeInfo->mspState.iMSPState = MSP_STATE_WAIT_HEADER2;
             }
             break;
 
-         case MSP_STATE_WAIT_HEADER:
+         case MSP_STATE_WAIT_HEADER2:
             if ( *pData == 'M' )
                pRuntimeInfo->mspState.iMSPState = MSP_STATE_WAIT_DIR;
             else
             {
                pRuntimeInfo->mspState.iMSPState = MSP_STATE_ERROR;
+               pRuntimeInfo->mspState.iMSPRawCommandFilledBytes = 0;
             }
             break;
 
@@ -156,31 +169,33 @@ void parse_msp_incoming_data(t_structure_vehicle_info* pRuntimeInfo, u8* pData, 
             }
             else
             {
-               pRuntimeInfo->mspState.iMSPState = MSP_STATE_NONE;
+               pRuntimeInfo->mspState.iMSPState = MSP_STATE_WAIT_HEADER1;
+               pRuntimeInfo->mspState.iMSPRawCommandFilledBytes = 0;
             }
             break;
 
          case MSP_STATE_WAIT_SIZE:
-            pRuntimeInfo->mspState.iMSPCommandDataSize = (int) *pData;
+            pRuntimeInfo->mspState.iMSPCommandPayloadSize = (int) *pData;
             pRuntimeInfo->mspState.uMSPChecksum = *pData;
             pRuntimeInfo->mspState.iMSPState = MSP_STATE_WAIT_TYPE;
             break;
 
          case MSP_STATE_WAIT_TYPE:
+            pRuntimeInfo->mspState.uMSPPreviousCommand = pRuntimeInfo->mspState.uMSPCommand;
             pRuntimeInfo->mspState.uMSPCommand = *pData;
             pRuntimeInfo->mspState.uMSPChecksum ^= *pData;
-            pRuntimeInfo->mspState.iMSPParsedCommandDataSize = 0;
-            if ( pRuntimeInfo->mspState.iMSPCommandDataSize > 0 )
+            pRuntimeInfo->mspState.iMSPParsedCommandPayloadBytes = 0;
+            if ( pRuntimeInfo->mspState.iMSPCommandPayloadSize > 0 )
                pRuntimeInfo->mspState.iMSPState = MSP_STATE_PARSE_DATA;
             else
                pRuntimeInfo->mspState.iMSPState = MSP_STATE_WAIT_CHECKSUM;
             break;
 
          case MSP_STATE_PARSE_DATA:
-            pRuntimeInfo->mspState.uMSPCommandData[pRuntimeInfo->mspState.iMSPParsedCommandDataSize] = *pData;
-            pRuntimeInfo->mspState.iMSPParsedCommandDataSize++;
+            pRuntimeInfo->mspState.uMSPCommandPayload[pRuntimeInfo->mspState.iMSPParsedCommandPayloadBytes] = *pData;
+            pRuntimeInfo->mspState.iMSPParsedCommandPayloadBytes++;
             pRuntimeInfo->mspState.uMSPChecksum ^= *pData;
-            if ( pRuntimeInfo->mspState.iMSPParsedCommandDataSize >= pRuntimeInfo->mspState.iMSPCommandDataSize )
+            if ( pRuntimeInfo->mspState.iMSPParsedCommandPayloadBytes >= pRuntimeInfo->mspState.iMSPCommandPayloadSize )
                pRuntimeInfo->mspState.iMSPState = MSP_STATE_WAIT_CHECKSUM;
             break;
 
@@ -191,7 +206,8 @@ void parse_msp_incoming_data(t_structure_vehicle_info* pRuntimeInfo, u8* pData, 
                if ( pRuntimeInfo->mspState.uMSPCommand == MSP_CMD_DISPLAYPORT )
                   _parse_msp_osd_command(pRuntimeInfo);
             }
-            pRuntimeInfo->mspState.iMSPState = MSP_STATE_NONE;
+            pRuntimeInfo->mspState.iMSPState = MSP_STATE_WAIT_HEADER1;
+            pRuntimeInfo->mspState.iMSPRawCommandFilledBytes = 0;
             break;
 
          default:

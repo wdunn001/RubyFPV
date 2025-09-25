@@ -34,7 +34,7 @@
 #include "config.h"
 #include "hardware.h"
 #include "hardware_camera.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "hardware_i2c.h"
 #include "../common/string_utils.h"
 

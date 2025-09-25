@@ -40,7 +40,7 @@
 #include "hardware_radio.h"
 #include "hardware_radio_serial.h"
 #include "hardware_serial.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 
 // Returns 1 if a hardware radio info was added for this port, 0 if not
 

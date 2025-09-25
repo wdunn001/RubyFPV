@@ -35,7 +35,7 @@
 #include "../base/models.h"
 #include "../base/radio_utils.h"
 #include "../base/utils.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ctrl_preferences.h"
 #include "../common/string_utils.h"
 #include "../radio/radiopackets2.h"

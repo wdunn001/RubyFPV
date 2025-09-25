@@ -34,7 +34,7 @@
 #include <pthread.h>
 #include "../base/config.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ctrl_interfaces.h"
 #include "../base/ctrl_settings.h"
 //#include "../base/radio_utils.h"
@@ -358,7 +358,7 @@ void controller_check_update_processes_affinities()
 
    pthread_t pThreadBg;
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "update proc affinities");
 
    if ( 0 != pthread_create(&pThreadBg, &attr, &_thread_adjust_affinities, NULL) )
    {

@@ -1,8 +1,8 @@
 #pragma once
 
 
-#define MSP_STATE_NONE 0
-#define MSP_STATE_WAIT_HEADER 1
+#define MSP_STATE_WAIT_HEADER1 0
+#define MSP_STATE_WAIT_HEADER2 1
 #define MSP_STATE_WAIT_DIR 2
 #define MSP_STATE_WAIT_SIZE 3
 #define MSP_STATE_WAIT_TYPE 4

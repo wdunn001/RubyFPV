@@ -34,10 +34,13 @@ class VideoTxPacketsBuffer
       bool uninit();
       void discardBuffer();
       void setCustomECScheme(u16 uECScheme);
+      int  getCurrentTotalBlockPackets();
       void updateVideoHeader(Model* pModel);
       void fillVideoPacketsFromCSI(u8* pVideoData, int iDataSize, bool bEndOfFrame, int iHasPendingDataPacketsToSend);
       bool fillVideoPacketsFromRTSPPacket(u8* pVideoRawData, int iRawDataSize, bool bSingle, bool bEnd, u32 uNALType, int iHasPendingDataPacketsToSend);
+      void fillVideoPacketsFromNALFrames(u8* pVideoData, int iDataSize, u32 uNALPresenceFlags, int iHasPendingDataPacketsToSend);
       int hasPendingPacketsToSend();
+      u32 getFirstPacketToSendVideoBlockIndex();
       int sendAvailablePackets(int iMaxCountToSend);
       void resendVideoPacket(u32 uRetransmissionId, u32 uVideoBlockIndex, u32 uVideoBlockPacketIndex);
 

@@ -319,6 +319,7 @@ int controller_rt_info_check_advance_index(controller_runtime_info* pRTInfo, u32
    }
    pRTInfo->uOutputedVideoPackets[iIndex] = 0;
    pRTInfo->uOutputedVideoPacketsRetransmitted[iIndex] = 0;
+   pRTInfo->uOutputedVideoPacketsRetransmittedDiscarded[iIndex] = 0;
    pRTInfo->uOutputedVideoBlocks[iIndex] = 0;
    pRTInfo->uOutputedVideoBlocksSkippedBlocks[iIndex] = 0;
    pRTInfo->uOutputedVideoBlocksECUsed[iIndex] = 0;

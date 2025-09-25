@@ -46,7 +46,7 @@
 
 #include "base.h"
 #include "hardware_i2c.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "hardware.h"
 
 #define HARDWARE_I2C_FILE_STAMP_ID "V.6.7"

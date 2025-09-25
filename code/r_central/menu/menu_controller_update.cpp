@@ -186,9 +186,9 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
 {
    Popup* p = NULL;
    if ( (NULL == szUpdateFile) || (0 == szUpdateFile[0]) )
-      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 90);
    else
-      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 90);
    popups_add_topmost(p);
 
    ruby_processing_loop(true);
@@ -232,9 +232,9 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
    pairing_stop();
    
    if ( (NULL == szUpdateFile) || (0 == szUpdateFile[0]) )
-      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Updating. Please wait"), 0.36,0.4, 0.5, 90);
    else
-      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 60);
+      p = new Popup(L("Downloading. Please wait"), 0.36,0.4, 0.5, 90);
    popups_add_topmost(p);
 
    // Execute ruby_update_worker twice as the ruby_update_worker might have been updated itself too
@@ -261,6 +261,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
       hw_execute_ruby_process(NULL, "ruby_update_worker", szUpdateFile, NULL);
       ruby_signal_alive();
 
+      int iLastPartialStatus = -1000;
       u32 uTimeWorkerFinished = 0;
 
       log_line("Waiting for update process to start and finish, repeat count: %d ...", iRepeatCount);
@@ -279,6 +280,9 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
             if ( 1 != sscanf(szLine, "%d", &iPartialResult) )
                iPartialResult = -10;
 
+            if ( iPartialResult != iLastPartialStatus )
+               uTimeWorkerFinished = 0;
+            iLastPartialStatus = iPartialResult;
             szLine[0] = 0;
             if ( (NULL == fgets(szLine, 255, fd)) || (strlen(szLine)<5) )
             {
@@ -349,7 +353,7 @@ void MenuControllerUpdate::updateControllerSoftware(const char* szUpdateFile)
                    else
                    {
                       u32 uDeltaStop = g_TimeNow - uTimeWorkerFinished;
-                      if ( uDeltaStop < 3000 )
+                      if ( uDeltaStop < 7000 )
                          log_line("waiting to see if update worker is really finished, waiting since %u ms ago", uDeltaStop);
                       else
                       {

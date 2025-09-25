@@ -5,7 +5,7 @@
 #include "../../base/base.h"
 #include "../../base/config.h"
 #include "../../base/hardware.h"
-#include "../../base/hw_procs.h"
+#include "../../base/hardware_procs.h"
 #include "../menu/menu_storage.h"
 #include "../handle_commands.h"
 #include "../shared_vars.h"
@@ -184,7 +184,7 @@ int oled_render_thread_start()
 
     s_bHasOLEDRenderThread = false;
     pthread_attr_t attr;
-    hw_init_worker_thread_attrs(&attr);
+    hw_init_worker_thread_attrs(&attr, "oled render thread");
     if (0 != pthread_create(&s_pThreadOLEDRenderAsync, &attr, &_thread_oled_render_async, NULL))
     {
         pthread_attr_destroy(&attr);

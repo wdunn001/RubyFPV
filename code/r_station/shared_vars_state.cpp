@@ -104,6 +104,8 @@ void resetVehicleRuntimeInfo(int iIndex)
    g_State.vehiclesRuntimeInfo[iIndex].uCurrentAdaptiveVideoTargetVideoBitrateBPS = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uCurrentAdaptiveVideoECScheme = 0;
    g_State.vehiclesRuntimeInfo[iIndex].iCurrentAdaptiveVideoKeyFrameMsTarget = 0;
+   for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
+      g_State.vehiclesRuntimeInfo[iIndex].iCurrentDataratesForLinks[i] = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uCurrentDRBoost = 0xFF;
    g_State.vehiclesRuntimeInfo[iIndex].uPendingVideoBitrateToSet = 0;
    g_State.vehiclesRuntimeInfo[iIndex].uPendingECSchemeToSet = 0;

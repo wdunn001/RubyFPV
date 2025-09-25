@@ -52,6 +52,8 @@ extern t_packet_queue s_QueueRadioPacketsHighPrio;
 u32 s_uLastTimeAdaptiveVideoWasPaused = 0;
 u32 s_uTimePauseAdaptiveVideoUntil = 0;
 bool s_bAdaptiveIsInTestMode = false;
+bool s_bAdaptiveTestModeDirectionUp = false;
+u32 s_uTimeLastTestModeAdaptiveLevelUpdate = 0;
 u32 s_uTimeLastAdaptiveVideoPeriodicChecks = 0;
 
 static u32 s_uAdaptiveMetric_TimeToLookBackMs = 0;
@@ -76,6 +78,19 @@ static int s_iAdaptiveMetric_TotalBadVideoBlocksIntervals = 0;
 static int s_iAdaptiveMetric_MinimSNRThresh = 1000;
 static int s_iAdaptiveMetric_MinimRSSIThresh = 1000;
 
+void _adaptive_video_log_DRlinks(Model* pModel, type_global_state_vehicle_runtime_info* pRuntimeInfo, char* szOutput)
+{
+   if ( (NULL == pModel) || (NULL == pRuntimeInfo) || (NULL == szOutput) )
+      return;
+   szOutput[0] = 0;
+   for( int i=0; i<pModel->radioLinksParams.links_count; i++ )
+   {
+      if ( 0 != szOutput[0] )
+         strcat(szOutput, ", ");
+      strcat(szOutput, str_format_datarate_inline(pRuntimeInfo->iCurrentDataratesForLinks[i]));
+   }
+}
+
 void _adaptive_video_log_state(Model* pModel, type_global_state_vehicle_runtime_info* pRuntimeInfo, const char* szReason)
 {
    if ( (NULL == pModel) || (NULL == pRuntimeInfo) || (NULL == szReason) )
@@ -86,16 +101,19 @@ void _adaptive_video_log_state(Model* pModel, type_global_state_vehicle_runtime_
 
    u32 uProfileFlags = pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileFlags;
    u32 uMaxDRBoost = (uProfileFlags & VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK) >> VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT;
-   int iDatarate = pModel->getRadioDataRateForVideoBitrate(pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS, 0);
-   log_line("[AdaptiveVideo] State at %s: Active: %s, Level: %d, DR boost: %d/%d, EC Scheme %d/%d: Adaptive video bitrate: %.2f / %.2f Mbps (fits in datarate: %s), Last request id to vehicle: %u, was %u ms ago",
+   int iDataRateForCurrentVideoBitrate = pModel->getRadioDataRateForVideoBitrate(pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS, 0);
+   char szDR[128];
+   _adaptive_video_log_DRlinks(pModel, pRuntimeInfo, szDR);
+
+   log_line("[AdaptiveVideo] State at %s: Active: %s, Level: %d, Current links DR: %s, DR boost: %d/%d, EC Scheme %d/%d: Adaptive video bitrate: %.2f / %.2f Mbps (fits in datarate: %s), Last request id to vehicle: %u, was %u ms ago",
       szReason, pRuntimeInfo->bIsAdaptiveVideoActive?"yes":"no",
-      pRuntimeInfo->iAdaptiveLevelNow, pRuntimeInfo->uCurrentDRBoost, uMaxDRBoost,
+      pRuntimeInfo->iAdaptiveLevelNow, szDR,
+      pRuntimeInfo->uCurrentDRBoost, uMaxDRBoost,
       pRuntimeInfo->uCurrentAdaptiveVideoECScheme >> 8, pRuntimeInfo->uCurrentAdaptiveVideoECScheme & 0xFF,
       (float)pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS/1000.0/1000.0,
       (float)pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps/1000.0/1000.0,
-      str_format_datarate_inline(iDatarate),
+      str_format_datarate_inline(iDataRateForCurrentVideoBitrate),
       pRuntimeInfo->uAdaptiveVideoRequestId, g_TimeNow - pRuntimeInfo->uLastTimeSentAdaptiveVideoRequest);
-
 }
 
 void adaptive_video_pause(u32 uMilisec)
@@ -176,7 +194,8 @@ void _adaptive_video_reset_kf_state(Model* pModel, type_global_state_vehicle_run
    else
       pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget = pModel->getInitialKeyframeIntervalMs(pModel->video_params.iCurrentVideoProfile);
    pRuntimeInfo->iPendingKeyFrameMsToSet = pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget;
-   log_line("[AdaptiveVideo] Did reset adaptive/fixed keyframe state to: to request %u ms keyframe from vehicle", pRuntimeInfo->iPendingKeyFrameMsToSet);
+   log_line("[AdaptiveVideo] Did reset %s keyframe state to: request %u ms keyframe from vehicle", 
+      (pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME)?"adaptive":"fixed", pRuntimeInfo->iPendingKeyFrameMsToSet);
 }
 
 void adaptive_video_reset_state(u32 uVehicleId)
@@ -205,6 +224,15 @@ void adaptive_video_reset_state(u32 uVehicleId)
          if ( NULL != pModel )
          {
             g_State.vehiclesRuntimeInfo[i].uCurrentAdaptiveVideoTargetVideoBitrateBPS = pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps;
+
+            for( int k=0; k<MAX_RADIO_INTERFACES; k++ )
+            {
+               g_State.vehiclesRuntimeInfo[i].iCurrentDataratesForLinks[k] = 0;
+               if ( k < pModel->radioLinksParams.links_count )
+               {
+                  g_State.vehiclesRuntimeInfo[i].iCurrentDataratesForLinks[k] = pModel->getRadioDataRateForVideoBitrate(g_State.vehiclesRuntimeInfo[i].uCurrentAdaptiveVideoTargetVideoBitrateBPS, k);
+               }
+            }
             if ( pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileFlags & VIDEO_PROFILE_FLAG_USE_HIGHER_DATARATE )
                g_State.vehiclesRuntimeInfo[i].uCurrentDRBoost = (pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileFlags & VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK) >> VIDEO_PROFILE_FLAGS_HIGHER_DATARATE_MASK_SHIFT;
 
@@ -216,11 +244,13 @@ void adaptive_video_reset_state(u32 uVehicleId)
          g_State.vehiclesRuntimeInfo[i].uPendingDRBoostToSet = g_State.vehiclesRuntimeInfo[i].uCurrentDRBoost;
          g_State.vehiclesRuntimeInfo[i].iPendingKeyFrameMsToSet = g_State.vehiclesRuntimeInfo[i].iCurrentAdaptiveVideoKeyFrameMsTarget;
          g_State.vehiclesRuntimeInfo[i].iAdaptiveLevelNow = 0;
-         log_line("[AdaptiveVideo] Default reseted state for VID %u: video bitrate: %.2f Mbps, EC scheme: %d/%d, DR boost: %d, pending KF: %d ms",
+         char szDR[128];
+         _adaptive_video_log_DRlinks(pModel, &(g_State.vehiclesRuntimeInfo[i]), szDR);
+         log_line("[AdaptiveVideo] Default reseted state for VID %u: video bitrate: %.2f Mbps, EC scheme: %d/%d, Current DR for links: %s, DR boost: %d, pending KF: %d ms",
             uVehicleId, (float)g_State.vehiclesRuntimeInfo[i].uCurrentAdaptiveVideoTargetVideoBitrateBPS/1000.0/1000.0,
             (g_State.vehiclesRuntimeInfo[i].uCurrentAdaptiveVideoECScheme >> 8) & 0xFF,
             g_State.vehiclesRuntimeInfo[i].uCurrentAdaptiveVideoECScheme & 0xFF,
-            g_State.vehiclesRuntimeInfo[i].uCurrentDRBoost,
+            szDR, g_State.vehiclesRuntimeInfo[i].uCurrentDRBoost,
             g_State.vehiclesRuntimeInfo[i].iPendingKeyFrameMsToSet);
          log_line("[AdaptiveVideo] Did reset state for VID: %u, currently adaptive is active for it? %s, last adaptive request sent to vehicle: %u ms ago", uVehicleId, g_State.vehiclesRuntimeInfo[i].bIsAdaptiveVideoActive?"yes":"no", g_TimeNow - g_State.vehiclesRuntimeInfo[i].uLastTimeSentAdaptiveVideoRequest);
          return;
@@ -313,6 +343,8 @@ void adaptive_video_on_vehicle_video_params_changed(u32 uVehicleId, video_parame
 void adaptive_video_enable_test_mode(bool bEnableTestMode)
 {
    s_bAdaptiveIsInTestMode = bEnableTestMode;
+   s_uTimeLastTestModeAdaptiveLevelUpdate = g_TimeNow;
+   s_bAdaptiveTestModeDirectionUp = false;
    log_line("[AdaptiveVideo] Test mode was set to: %s", s_bAdaptiveIsInTestMode?"On":"Off");
    log_line("[AdaptiveVideo] Is global paused right now? %s", (s_uTimePauseAdaptiveVideoUntil==0)?"No":"Yes");
    
@@ -378,7 +410,8 @@ void _adaptive_video_send_adaptive_message_to_vehicle(u32 uVehicleId)
    if ( 0 != pRuntimeInfo->uPendingECSchemeToSet )
       uFlags |= FLAG_ADAPTIVE_VIDEO_EC;
 
-   uFlags |= FLAG_ADAPTIVE_VIDEO_DR_BOOST;
+   if ( 0xFF != pRuntimeInfo->uPendingDRBoostToSet )
+      uFlags |= FLAG_ADAPTIVE_VIDEO_DR_BOOST;
 
    if ( s_bAdaptiveIsInTestMode )
       uFlags |= FLAG_ADAPTIVE_IN_TEST_MODE;
@@ -412,26 +445,31 @@ void _adaptive_video_send_adaptive_message_to_vehicle(u32 uVehicleId)
    pData += sizeof(u8);
    
    packets_queue_inject_packet_first(&s_QueueRadioPacketsHighPrio, packet);
+
+   char szDR[128];
+   _adaptive_video_log_DRlinks(pModel, pRuntimeInfo, szDR);
    if ( 0 != uVideoBitrate )
    {
       int iDRToFitVideo = pModel->getRadioDataRateForVideoBitrate(uVideoBitrate, 0);
-      log_line("[AdaptiveVideo] Sent adaptive video message to vehicle %u (req id: %u),%s flags: %s, Video bitrate: %.2f Mbps (of %.2f Mbps) (fits in datarate %s, max video bitrate for this radio rate is: %.2f Mbps, max radio data for this rate: %.2f Mbps), EC: %d/%d, DR boost: %d",
+      log_line("[AdaptiveVideo] Sent adaptive video message to vehicle %u (req id: %u), %s: %s, Video bitrate: %.2f Mbps (of %.2f Mbps) (fits in datarate %s, max video bitrate for this radio rate is: %.2f Mbps, max radio data for this rate: %.2f Mbps), EC: %d/%d, Current DR for links: %s, DR boost: %d",
          uVehicleId, pRuntimeInfo->uAdaptiveVideoRequestId,
-         pRuntimeInfo->bDidFirstTimeAdaptiveHandshake?" ":" (first time handshake)",
+         pRuntimeInfo->bDidFirstTimeAdaptiveHandshake?"flags":" (first time handshake) flags",
          str_format_adaptive_video_flags(uFlags),
          (float)uVideoBitrate/1000.0/1000.0, (float)pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps/1000.0/1000.0,
          str_format_datarate_inline(iDRToFitVideo),
          (float)pModel->getMaxVideoBitrateForRadioDatarate(iDRToFitVideo, 0)/1000.0/1000.0,
          (float)getRealDataRateFromRadioDataRate(iDRToFitVideo, pModel->radioLinksParams.link_radio_flags[0], 1)/1000.0/1000.0,
-         (uEC >> 8) & 0xFF, uEC & 0xFF, uDRBoost);
+         (uEC >> 8) & 0xFF, uEC & 0xFF,
+         szDR, uDRBoost);
    }
    else
-      log_line("[AdaptiveVideo] Sent adaptive video message to vehicle %u (req id: %u),%s flags: %s, (curent target video bitrate: %.2f Mbps), EC: %d/%d, DR boost: %d",
+      log_line("[AdaptiveVideo] Sent adaptive video message to vehicle %u (req id: %u),%s flags: %s, (curent target video bitrate: %.2f Mbps), EC: %d/%d, Current DR for links: %s, DR boost: %d",
          uVehicleId, pRuntimeInfo->uAdaptiveVideoRequestId,
          pRuntimeInfo->bDidFirstTimeAdaptiveHandshake?" ":" (first time handshake)",
          str_format_adaptive_video_flags(uFlags),
          (float)pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS/1000.0/1000.0,
-         (uEC >> 8) & 0xFF, uEC & 0xFF, uDRBoost);
+         (uEC >> 8) & 0xFF, uEC & 0xFF,
+         szDR, uDRBoost);
 }
 
 void adaptive_video_received_vehicle_msg_ack(u32 uRequestId, u32 uVehicleId, int iInterfaceIndex)
@@ -462,14 +500,14 @@ void adaptive_video_received_vehicle_msg_ack(u32 uRequestId, u32 uVehicleId, int
       pRuntimeInfo->uLastTimeRecvAdaptiveVideoAck = g_TimeNow;
       pRuntimeInfo->uPendingVideoBitrateToSet = 0;
       pRuntimeInfo->uPendingECSchemeToSet = 0;
-      pRuntimeInfo->uPendingDRBoostToSet = pRuntimeInfo->uCurrentDRBoost;
+      pRuntimeInfo->uPendingDRBoostToSet = 0xFF;
       pRuntimeInfo->iPendingKeyFrameMsToSet = 0;
       u32 uDeltaTime = pRuntimeInfo->uLastTimeRecvAdaptiveVideoAck - pRuntimeInfo->uLastTimeSentAdaptiveVideoRequest;
       controller_rt_info_update_ack_rt_time(&g_SMControllerRTInfo, uVehicleId, g_SM_RadioStats.radio_interfaces[iInterfaceIndex].assignedLocalRadioLinkId, uDeltaTime);
    }
 }
 
-void _adaptive_video_test_mode_update(int iVehicleIndex)
+void _adaptive_video_test_mode_update(type_global_state_vehicle_runtime_info* pRuntimeInfo)
 {
    static u32 s_uTimeLastCheckAdaptiveTestMode = 0;
    static u32 s_uCounterAdaptiveTest = 0;
@@ -480,21 +518,12 @@ void _adaptive_video_test_mode_update(int iVehicleIndex)
    s_uTimeLastCheckAdaptiveTestMode = g_TimeNow;
    s_uCounterAdaptiveTest++;
 
-   type_global_state_vehicle_runtime_info* pRuntimeInfo = &(g_State.vehiclesRuntimeInfo[iVehicleIndex]);
-
    if ( (s_uCounterAdaptiveTest % 10) < 5 )
       pRuntimeInfo->iPendingKeyFrameMsToSet = 500 + (s_uCounterAdaptiveTest % 10)*500;
    else
       pRuntimeInfo->iPendingKeyFrameMsToSet = 500 + (9-(s_uCounterAdaptiveTest % 10))*500;
-
-
-   pRuntimeInfo->uPendingVideoBitrateToSet = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
-   if ( (s_uCounterAdaptiveTest % 20) < 10 )
-      pRuntimeInfo->uPendingVideoBitrateToSet += (s_uCounterAdaptiveTest % 20)*800*1000;
-   else
-      pRuntimeInfo->uPendingVideoBitrateToSet += (19-(s_uCounterAdaptiveTest % 20))*800*1000;
-
    pRuntimeInfo->uAdaptiveVideoRequestId++;
+   log_line("[AdaptiveVideo] Test mode update pending KF to %d ms, adaptive request id is now: %d", pRuntimeInfo->iPendingKeyFrameMsToSet, pRuntimeInfo->uAdaptiveVideoRequestId);
 }
 
 void _adaptive_video_compute_metrics(Model* pModel, type_global_state_vehicle_runtime_info* pRuntimeInfo)
@@ -846,6 +875,9 @@ bool _adaptive_video_switch_lower(Model* pModel, type_global_state_vehicle_runti
 
    _adaptive_video_log_state(pModel, pRuntimeInfo, "Starting switch lower");
 
+   //--------------------------------------------------------
+   // First decrease DR boost if possible
+
    if ( uProfileFlags & VIDEO_PROFILE_FLAG_USE_HIGHER_DATARATE )
    if ( uMaxDRBoost > 0 )
    if ( (pRuntimeInfo->uCurrentDRBoost == 0xFF) || (pRuntimeInfo->uCurrentDRBoost > 0) )
@@ -862,9 +894,12 @@ bool _adaptive_video_switch_lower(Model* pModel, type_global_state_vehicle_runti
       return true;
    }
 
+   //------------------------------------------------------------------
+   // Second decrease bitrate and datarate if possible (if there is room)
 
    u32 uNewLowerVideoBitrate = 0;
-
+   int iNewLowerDR = 0;
+   int iNewLowerLink = -1;
    for( int iLink=0; iLink<pModel->radioLinksParams.links_count; iLink++)
    {
       // Skip disabled, low capacity or fixed datarates links
@@ -872,7 +907,9 @@ bool _adaptive_video_switch_lower(Model* pModel, type_global_state_vehicle_runti
          continue;
 
       int iDataRateForCurrentVideoBitrate = pModel->getRadioDataRateForVideoBitrate(pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS, iLink);
-      log_line("[AdaptiveVideo] Switch lower: Radio link %d required datarate for current video bitrate is: %s", iLink+1, str_format_datarate_inline(iDataRateForCurrentVideoBitrate));
+      char szCurDR[64];
+      strcpy(szCurDR, str_format_datarate_inline(pRuntimeInfo->iCurrentDataratesForLinks[iLink]));
+      log_line("[AdaptiveVideo] Switch lower: Radio link %d required datarate for current video bitrate is: %s; Current DR is: %s", iLink+1, str_format_datarate_inline(iDataRateForCurrentVideoBitrate), szCurDR);
 
       // Can't go lower rate? Skip it
       if ( iDataRateForCurrentVideoBitrate == 0 )
@@ -899,17 +936,22 @@ bool _adaptive_video_switch_lower(Model* pModel, type_global_state_vehicle_runti
       }
 
       u32 uVideoBitrateForLink = pModel->getMaxVideoBitrateForRadioDatarate(iDataRateForCurrentVideoBitrate, iLink);
-      log_line("[AdaptiveVideo] Switch lower: New radio link %d datarate will be: %s, max video bitrate for it is %.2f Mbps", iLink+1, str_format_datarate_inline(iDataRateForCurrentVideoBitrate), (float)uVideoBitrateForLink/1000.0/1000.0);
+      log_line("[AdaptiveVideo] Switch lower: New radio link %d datarate would be: %s, max video bitrate for it is %.2f Mbps", iLink+1, str_format_datarate_inline(iDataRateForCurrentVideoBitrate), (float)uVideoBitrateForLink/1000.0/1000.0);
       uVideoBitrateForLink = uVideoBitrateForLink - uVideoBitrateForLink/20;
 
       if ( uVideoBitrateForLink > uNewLowerVideoBitrate )
+      {
          uNewLowerVideoBitrate = uVideoBitrateForLink;
+         iNewLowerDR = iDataRateForCurrentVideoBitrate;
+         iNewLowerLink = iLink;
+      }
    }
 
-   if ( 0 != uNewLowerVideoBitrate )
+   if ( (0 != uNewLowerVideoBitrate) && (iNewLowerLink >= 0) )
    if ( uNewLowerVideoBitrate != pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS )
    {
-      log_line("[AdaptiveVideo] Switch to lower video bitrate: %.2f Mbps", (float)uNewLowerVideoBitrate/1000.0/1000.0);
+      log_line("[AdaptiveVideo] Switch to lower video bitrate: %.2f Mbps and to lower DR on radio link %d: %s", (float)uNewLowerVideoBitrate/1000.0/1000.0, iNewLowerLink+1, str_format_datarate_inline(iNewLowerDR));
+      pRuntimeInfo->iCurrentDataratesForLinks[iNewLowerLink] = iNewLowerDR;
       pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS = uNewLowerVideoBitrate;
       pRuntimeInfo->uPendingVideoBitrateToSet = pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS;
       pRuntimeInfo->uAdaptiveVideoRequestId++;
@@ -918,6 +960,9 @@ bool _adaptive_video_switch_lower(Model* pModel, type_global_state_vehicle_runti
       _adaptive_video_log_state(pModel, pRuntimeInfo, "After switch lower");
       return true;
    }
+
+   //-----------------------------------------------------------------------
+   // Third, increase EC scheme and lower the bitrate if on lowest datarate already
 
    if ( (pRuntimeInfo->uCurrentAdaptiveVideoECScheme != 0) && (pRuntimeInfo->uCurrentAdaptiveVideoECScheme != 0xFFFF) )
    {
@@ -935,9 +980,13 @@ bool _adaptive_video_switch_lower(Model* pModel, type_global_state_vehicle_runti
    float fLoadIncrease = (float)(iMaxEC - pModel->video_link_profiles[iCurrentVideoProfile].iBlockECs)/(float)(pModel->video_link_profiles[iCurrentVideoProfile].iBlockDataPackets);
    log_line("[AdaptiveVideo] Switch lower: Will switch to EC scheme %d / %d, load increase: %.1f%%", iBlockPackets, iMaxEC, fLoadIncrease*100.0);
 
-   pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS = pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS - pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS * fLoadIncrease;
-   if ( pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS < DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE )
-      pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
+   //pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS = pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS - pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS * fLoadIncrease;
+   //if ( pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS < DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE )
+   //   pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
+   
+   pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS = DEFAULT_LOWEST_ALLOWED_ADAPTIVE_VIDEO_BITRATE;
+   if ( bOnlyMediumAdaptive )
+      pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS *= 2;
 
    log_line("[AdaptiveVideo] Switch lower: Will switch to EC scheme %d / %d, new target video bitrate: %.2f Mbps", iBlockPackets, iMaxEC, (float)pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS/1000.0/1000.0);
 
@@ -960,6 +1009,9 @@ bool _adaptive_video_switch_higher(Model* pModel, type_global_state_vehicle_runt
 
    _adaptive_video_log_state(pModel, pRuntimeInfo, "Starting switch higher");
 
+   //-----------------------------------------------------------------------
+   // First, revert EC scheme and increase the bitrate if on lowest datarate already
+
    if ( (pRuntimeInfo->uCurrentAdaptiveVideoECScheme != 0) && (pRuntimeInfo->uCurrentAdaptiveVideoECScheme != 0xFFFF) )
    {
       log_line("[AdaptiveVideo] Switch higher: Is on lower EC scheme. Switch to default EC scheme.");
@@ -974,7 +1026,8 @@ bool _adaptive_video_switch_higher(Model* pModel, type_global_state_vehicle_runt
          if ( ! pModel->isRadioLinkAdaptiveUsable(iLink) )
             continue;
 
-         int iDataRateForCurrentVideoBitrate = pModel->getRadioDataRateForVideoBitrate(pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS, iLink);
+         //int iDataRateForCurrentVideoBitrate = pModel->getRadioDataRateForVideoBitrate(pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS, iLink);
+         int iDataRateForCurrentVideoBitrate = pRuntimeInfo->iCurrentDataratesForLinks[iLink];
          u32 uVideoBitrateForLink = pModel->getMaxVideoBitrateForRadioDatarate(iDataRateForCurrentVideoBitrate, iLink);
          uVideoBitrateForLink = uVideoBitrateForLink - uVideoBitrateForLink/20;
          if ( 0 == uNewHigherVideoBitrate )
@@ -993,7 +1046,12 @@ bool _adaptive_video_switch_higher(Model* pModel, type_global_state_vehicle_runt
       return true;
    }
 
+   //------------------------------------------------------------------
+   // Second increase the bitrate and datarate if possible (is below target)
+
    u32 uNewHigherVideoBitrate = pModel->video_link_profiles[iCurrentVideoProfile].bitrate_fixed_bps;
+   int iNewHigherDR = 0;
+   int iNewHigherLink = -1;
    int iCurrentDatarates[MAX_RADIO_INTERFACES];
 
    for( int iLink=0; iLink<pModel->radioLinksParams.links_count; iLink++)
@@ -1016,13 +1074,18 @@ bool _adaptive_video_switch_higher(Model* pModel, type_global_state_vehicle_runt
       uMaxVideoBitrateForLinkDatarate = uMaxVideoBitrateForLinkDatarate + uMaxVideoBitrateForLinkDatarate/20;
       if ( uMaxVideoBitrateForLinkDatarate > pModel->video_link_profiles[iCurrentVideoProfile].bitrate_fixed_bps )
          uMaxVideoBitrateForLinkDatarate = pModel->video_link_profiles[iCurrentVideoProfile].bitrate_fixed_bps;
-
-      log_line("[AdaptiveVideo] Switch higher: Radio link %d datarate would be: %s for new video bitrate: %.2f Mbps", iLink+1, str_format_datarate_inline(pModel->getRadioDataRateForVideoBitrate(uMaxVideoBitrateForLinkDatarate, iLink)), (float)uMaxVideoBitrateForLinkDatarate/1000.0/1000.0);
+      int iNewDR = pModel->getRadioDataRateForVideoBitrate(uMaxVideoBitrateForLinkDatarate, iLink);
+      log_line("[AdaptiveVideo] Switch higher: Radio link %d datarate would be: %s for new video bitrate: %.2f Mbps", iLink+1, str_format_datarate_inline(iNewDR), (float)uMaxVideoBitrateForLinkDatarate/1000.0/1000.0);
 
       if ( uMaxVideoBitrateForLinkDatarate < uNewHigherVideoBitrate )
+      {
          uNewHigherVideoBitrate = uMaxVideoBitrateForLinkDatarate;
+         iNewHigherDR = iNewDR;
+         iNewHigherLink = iLink;
+      }
    }
 
+   if ( iNewHigherLink >= 0 )
    if ( uNewHigherVideoBitrate != pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS )
    {
       bool bUpdatedRates = false;
@@ -1037,15 +1100,25 @@ bool _adaptive_video_switch_higher(Model* pModel, type_global_state_vehicle_runt
       }
       log_line("[AdaptiveVideo] Do switch higher: New video bitrate to set: %.2f bps", (float)uNewHigherVideoBitrate/1000.0/1000.0);
       log_line("[AdaptiveVideo] Do switch higher to %.2f Mbps video bitrate", (float)uNewHigherVideoBitrate/1000.0/1000.0);
-      log_line("[AdaptiveVideo] Do switch higher: Radio datarates have been updated? %s", bUpdatedRates?"yes":"no");
+      pRuntimeInfo->iCurrentDataratesForLinks[iNewHigherLink] = iNewHigherDR;
       pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS = uNewHigherVideoBitrate;
       pRuntimeInfo->uPendingVideoBitrateToSet = pRuntimeInfo->uCurrentAdaptiveVideoTargetVideoBitrateBPS;
       pRuntimeInfo->uAdaptiveVideoRequestId++;
       if ( bUpdatedRates )
          pRuntimeInfo->iAdaptiveLevelNow--;
+
+      char szDR[128];
+      _adaptive_video_log_DRlinks(pModel, pRuntimeInfo, szDR);
+
+      log_line("[AdaptiveVideo] Do switch higher: Radio datarates have been updated? %s; New DR for links: %s", bUpdatedRates?"yes":"no", szDR);
+
       _adaptive_video_log_state(pModel, pRuntimeInfo, "After switch higher");
       return true;
    }
+
+
+   //--------------------------------------------------------
+   // Third increase DR boost if possible
 
    if ( uProfileFlags & VIDEO_PROFILE_FLAG_USE_HIGHER_DATARATE )
    if ( uMaxDRBoost > 0 )
@@ -1075,6 +1148,33 @@ bool _adaptive_video_check_vehicle(Model* pModel, type_global_state_vehicle_runt
       return false;
 
    pSMVideoStreamInfo->iAdaptiveVideoLevelNow = pRuntimeInfo->iAdaptiveLevelNow;
+
+   if ( s_bAdaptiveIsInTestMode )
+   {
+      if ( g_TimeNow < s_uTimeLastTestModeAdaptiveLevelUpdate + 3000 )
+         return false;
+      log_line("[AdaptiveVideo] Test mode update");
+      s_uTimeLastTestModeAdaptiveLevelUpdate = g_TimeNow;
+
+      _adaptive_video_test_mode_update(pRuntimeInfo);
+
+      bool bSwitchedLevel = false;
+      if ( !s_bAdaptiveTestModeDirectionUp )
+      {
+         bSwitchedLevel = _adaptive_video_switch_lower(pModel, pRuntimeInfo);
+         log_line("[AdaptiveVideo] Test mode update switched lower? %s", bSwitchedLevel?"yes":"no");
+         if ( ! bSwitchedLevel )
+            s_bAdaptiveTestModeDirectionUp = true;
+      }
+      else
+      {
+         bSwitchedLevel = _adaptive_video_switch_higher(pModel, pRuntimeInfo);
+         log_line("[AdaptiveVideo] Test mode update switched higher? %s", bSwitchedLevel?"yes":"no");
+         if ( ! bSwitchedLevel )
+            s_bAdaptiveTestModeDirectionUp = false;
+      }
+      return bSwitchedLevel;
+   }
 
    // Adaptive adjustment strength is in: pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].iAdaptiveAdjustmentStrength
    // 1: lowest (slower) adjustment strength;
@@ -1111,6 +1211,7 @@ void _adaptive_keyframe_check_vehicle(Model* pModel, type_global_state_vehicle_r
    if ( (NULL == pRuntimeInfo) || (NULL == pSMVideoStreamInfo) || (NULL == pModel) )
       return;
 
+   /*
    static u32 s_uAdaptiveVideoLastTimeSetKeyframe = 0;
    if ( g_TimeNow > s_uAdaptiveVideoLastTimeSetKeyframe + 10000 )
    {
@@ -1119,19 +1220,18 @@ void _adaptive_keyframe_check_vehicle(Model* pModel, type_global_state_vehicle_r
       if ( pRuntimeInfo->iPendingKeyFrameMsToSet == 0 )
          pRuntimeInfo->iPendingKeyFrameMsToSet = pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget;
    }
+   */
 
    if ( pRuntimeInfo->iPendingKeyFrameMsToSet == 0 )
-      return;
-
-   /*
-   if ( pSMVideoStreamInfo->PHVS.uCurrentVideoKeyframeIntervalMs == pRuntimeInfo->iPendingKeyFrameMsToSet )
+   if ( pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget != 0 )
+   if ( g_TimeNow > pRuntimeInfo->uLastTimeSentAdaptiveVideoRequest + 1000 )
+   if ( pSMVideoStreamInfo->PHVS.uCurrentVideoKeyframeIntervalMs != pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget )
    {
-      log_line("[AdaptiveVideo] Video stream received keyframe interval it's the same as pending one (%d ms). Reset pending one.",
-         pRuntimeInfo->iPendingKeyFrameMsToSet);
+      log_line("[AdaptiveVideo] Video stream received keyframe interval (%u ms) it's the same as target one (%d ms). Set pending one (0 ms) to current target one.",
+         pSMVideoStreamInfo->PHVS.uCurrentVideoKeyframeIntervalMs, pRuntimeInfo->iCurrentAdaptiveVideoKeyFrameMsTarget);
       pRuntimeInfo->iPendingKeyFrameMsToSet = 0;
-      return;
+      //s_uAdaptiveVideoLastTimeSetKeyframe = g_TimeNow;
    }
-   */
 }
 
 
@@ -1268,9 +1368,6 @@ void _adaptive_video_periodic_loop_for_vehicle(int iRuntimeIndex, bool bForceSyn
    if ( ((pModel->video_link_profiles[pModel->video_params.iCurrentVideoProfile].uProfileEncodingFlags) & VIDEO_PROFILE_ENCODING_FLAG_ENABLE_ADAPTIVE_VIDEO_KEYFRAME) ||
          (pRuntimeInfo->iPendingKeyFrameMsToSet != 0) )
       _adaptive_keyframe_check_vehicle(pModel, pRuntimeInfo, pSMVideoStreamInfo);
-
-   if ( s_bAdaptiveIsInTestMode )
-      _adaptive_video_test_mode_update(iRuntimeIndex);
 
    // We still have a pending unacknowledged message
    if ( pRuntimeInfo->uAdaptiveVideoRequestId != pRuntimeInfo->uAdaptiveVideoAckId )

@@ -40,7 +40,7 @@
 #include "hardware_radio.h"
 #include "hardware_radio_sik.h"
 #include "hardware_serial.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 
 #define SIK_PARAM_INDEX_LOCAL_SPEED 1
 #define SIK_PARAM_INDEX_NETID 3

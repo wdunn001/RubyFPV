@@ -6,6 +6,7 @@
 int hardware_camera_maj_validate_config();
 void hardware_camera_maj_add_log(const char* szLog, bool bAsync);
 int hardware_camera_maj_get_current_pid();
+int hardware_camera_maj_get_current_async_threads_count();
 bool hardware_camera_maj_start_capture_program(bool bEnableLog);
 bool hardware_camera_maj_stop_capture_program();
 int  hardware_camera_maj_get_current_nal_size();
@@ -23,8 +24,10 @@ void hardware_camera_maj_set_contrast(u32 uValue);
 void hardware_camera_maj_set_hue(u32 uValue);
 void hardware_camera_maj_set_saturation(u32 uValue);
 
+void hardware_camera_maj_set_temp_values(u32 uBitrate, int iKeyframeMs, int iQPDelta);
 void hardware_camera_maj_clear_temp_values();
-void hardware_camera_maj_set_keyframe(float fGOP);
+void hardware_camera_maj_set_keyframe(int iKeyframeMs);
+int  hardware_camera_maj_get_current_keyframe();
 u32  hardware_camera_maj_get_current_bitrate();
 void hardware_camera_maj_set_bitrate(u32 uBitrate);
 int  hardware_camera_maj_get_current_qpdelta();

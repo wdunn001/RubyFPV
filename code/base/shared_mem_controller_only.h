@@ -32,6 +32,8 @@ typedef struct
    int iCurrentVideoWidth;
    int iCurrentVideoHeight;
    int iCurrentVideoFPS;
+   u32 uLastSetVideoBitrate;
+   u32 uLastSetVideoKeyframeMs;
    u32 uCurrentFECTimeMicros; // in micro seconds per second   
    int iCurrentPacketsInBuffers;
    int iMaxPacketsInBuffers;

@@ -45,7 +45,7 @@
 #include "../base/hardware.h"
 #include "../base/hardware_files.h"
 #include "../base/hardware_camera.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/hardware_radio_serial.h"
 #include "../base/vehicle_settings.h"
 #include "../radio/radioflags.h"
@@ -356,7 +356,7 @@ bool _check_for_update_from_boot()
 
    hw_execute_bash_command(szComm, szFoundFile);
 
-   if ( (strlen(szFoundFile) == 0) || (NULL == strstr(szFoundFile, "ruby_update")) )
+   if ( (strlen(szFoundFile) == 0) || (NULL == strstr(szFoundFile, "ruby_update")) || (NULL != strstr(szFoundFile, "No such")) )
    {
       log_line("No update archive found on %s folder. Skipping update from %s", FOLDER_WINDOWS_PARTITION, FOLDER_WINDOWS_PARTITION);
       return false;

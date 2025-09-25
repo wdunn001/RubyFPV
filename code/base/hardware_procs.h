@@ -4,11 +4,8 @@
 extern "C" {
 #endif 
 
-int hw_launch_process(const char *szFile);
-int hw_launch_process1(const char *szFile, const char* szParam1);
-int hw_launch_process2(const char *szFile, const char* szParam1, const char* szParam2);
-int hw_launch_process3(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3);
-int hw_launch_process4(const char *szFile, const char* szParam1, const char* szParam2, const char* szParam3, const char* szParam4);
+int hw_execute_process(const char *szCommand, int iTimeoutMs, char* szOutput, int iMaxOutputLength);
+int hw_execute_process_wait(const char *szCommand);
 int hw_process_exists(const char* szProcName);
 char* hw_process_get_pids_inline(const char* szProcName);
 void hw_process_get_pids(const char* szProcName, char* szOutput);
@@ -33,7 +30,7 @@ int hw_execute_bash_command_raw_silent(const char* command, char* outBuffer);
 void hw_execute_ruby_process(const char* szPrefixes, const char* szProcess, const char* szParams, char* szOutput);
 void hw_execute_ruby_process_wait(const char* szPrefixes, const char* szProcess, const char* szParams, char* szOutput, int iWait);
 
-void hw_init_worker_thread_attrs(pthread_attr_t* pAttr);
+void hw_init_worker_thread_attrs(pthread_attr_t* pAttr, const char* szSource);
 int hw_get_current_thread_priority(const char* szLogPrefix);
 int hw_increase_current_thread_priority(const char* szLogPrefix, int iNewPriority);
 

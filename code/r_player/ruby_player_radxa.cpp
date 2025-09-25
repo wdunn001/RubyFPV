@@ -53,7 +53,7 @@
 #include "../base/config.h"
 #include "../base/config_obj_names.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/hdmi.h"
 #include "../renderer/drm_core.h"
 #include <ctype.h>

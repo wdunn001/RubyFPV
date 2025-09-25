@@ -91,6 +91,7 @@ MenuRadioConfig::MenuRadioConfig(void)
 
    m_bShowOnlyControllerUnusedInterfaces = false;
    m_pItemSelectTxCard = NULL;
+   m_iTxCardSelectedIndex = -1;
    m_iIndexCurrentItem = 0;
 
    m_iIdFontRegular = g_idFontMenu;
@@ -226,6 +227,7 @@ void MenuRadioConfig::computeMenuItems()
       removeMenuItem(m_pItemSelectTxCard);
 
    m_pItemSelectTxCard = NULL;
+   m_iTxCardSelectedIndex = -1;
 
    m_bHasSwapInterfacesCommand = false;
    m_bHasRotateRadioLinksOrderCommand = false;
@@ -520,48 +522,60 @@ void MenuRadioConfig::onItemValueChanged(int itemIndex)
 {
 }
 
-void MenuRadioConfig::onItemEndEdit(int itemIndex)
+void MenuRadioConfig::onSelectedPreferredTxCard(int iVehicleRadioLink)
 {
-   if ( NULL != m_pItemSelectTxCard )
-   {
-      int iSelection = m_pItemSelectTxCard->getSelectedIndex();
-      log_line("Changed auto tx card for radio link %d to: %d", m_iCurrentRadioLink+1, iSelection);
+   int iSelection = m_pItemSelectTxCard->getSelectedIndex();
+   log_line("MenuRadioConfig: Changed auto tx card selection index for vehicle radio link %d from %d to %d", iVehicleRadioLink+1, m_iTxCardSelectedIndex, iSelection);
 
-      // Remove all first
+   if ( m_iTxCardSelectedIndex == iSelection )
+   {
+      log_line("MenuRadioConfig: No change in auto tx.");
+      removeMenuItem(m_pItemSelectTxCard);
+      m_pItemSelectTxCard = NULL;
+      m_iTxCardSelectedIndex = -1;
+      return;
+   }
+
+   // Remove all preferred cards for this link first
+   for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+   {
+      if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != iVehicleRadioLink )
+         continue;
+      radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+      if ( NULL != pRadioHWInfo )
+         controllerRemoveCardTXPreferred(pRadioHWInfo->szMAC);
+   }
+     
+   if ( iSelection > 0 )
+   {
+      int iCount = 0;
       for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
       {
-         radio_hw_info_t* pNICInfo = hardware_get_radio_info(i);
-         if ( g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId != m_iCurrentRadioLink )
+         if ( g_SM_RadioStats.radio_interfaces[i].assignedVehicleRadioLinkId != iVehicleRadioLink )
             continue;
-         controllerRemoveCardTXPreferred(pNICInfo->szMAC);
-      }
-        
-      if ( iSelection > 0 )
-      {
-         int iCount = 0;
-         for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
+         radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+         iCount++;
+         if ( iCount == iSelection )
          {
-            radio_hw_info_t* pNICInfo = hardware_get_radio_info(i);
-            if ( g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId != m_iCurrentRadioLink )
-               continue;
-            iCount++;
-            if ( iCount == iSelection )
-            {
-               controllerSetCardTXPreferred(pNICInfo->szMAC);
-               break;
-            }
+            controllerSetCardTXPreferred(pRadioHWInfo->szMAC);
+            break;
          }
       }
-      removeAllItems();
-      m_pItemSelectTxCard = NULL;
-
-      showProgressInfo();
-      pairing_stop();
-      pairing_start_normal();
-      hideProgressInfo();   
    }
+   removeMenuItem(m_pItemSelectTxCard);
+   m_pItemSelectTxCard = NULL;
+   m_iTxCardSelectedIndex = -1;
+
+   send_control_message_to_router(PACKET_TYPE_LOCAL_CONTROL_UPDATED_RADIO_TX_POWERS, 0);
 }
-      
+
+void MenuRadioConfig::onItemEndEdit(int itemIndex)
+{
+   if ( NULL == m_pItemSelectTxCard )
+      return;
+
+   onSelectedPreferredTxCard(m_iCurrentRadioLink);
+}
 
 void MenuRadioConfig::onReturnFromChild(int iChildMenuId, int returnValue)
 {
@@ -575,11 +589,16 @@ void MenuRadioConfig::onClickAutoTx(int iRadioLink)
    m_pItemSelectTxCard = new MenuItemSelect("");
    m_pItemSelectTxCard->addSelection("Auto");
 
+   int iSelectedIndex = 0; // auto option
+   int iMinPriority = 10000;
+
    for( int i=0; i<hardware_get_radio_interfaces_count(); i++ )
    {
       if ( g_SM_RadioStats.radio_interfaces[i].assignedLocalRadioLinkId != iRadioLink )
          continue;
       radio_hw_info_t* pRadioHWInfo = hardware_get_radio_info(i);
+      if ( NULL == pRadioHWInfo )
+         continue;
       t_ControllerRadioInterfaceInfo* pCardInfo = controllerGetRadioCardInfo(pRadioHWInfo->szMAC);
       if ( NULL == pCardInfo )
          continue;
@@ -595,7 +614,8 @@ void MenuRadioConfig::onClickAutoTx(int iRadioLink)
    
       strcpy(szName, "NoName");
    
-      char* szCardName = controllerGetCardUserDefinedName(pRadioHWInfo->szMAC);
+      char szCardName[64];
+      controllerGetCardUserDefinedNameOrShortType(pRadioHWInfo, szCardName);
       if ( NULL != szCardName && 0 != szCardName[0] )
          strcpy(szName, szCardName);
       else if ( NULL != pCardInfo )
@@ -603,11 +623,20 @@ void MenuRadioConfig::onClickAutoTx(int iRadioLink)
 
       sprintf(szBuff, "Int. %d, Port %s, %s", i+1, pRadioHWInfo->szUSBPort, szName);
       m_pItemSelectTxCard->addSelection(szBuff);
-   
+
+
+      int iCardPriority = controllerIsCardTXPreferred(pRadioHWInfo->szMAC);
+      if ( (iCardPriority <= 0) || (iCardPriority > iMinPriority) )
+         continue;
+      iMinPriority = iCardPriority;
+      iSelectedIndex = m_pItemSelectTxCard->getSelectionsCount()-1;
    }
+
+
    addMenuItem(m_pItemSelectTxCard);
    m_pItemSelectTxCard->setIsEditable();
    m_pItemSelectTxCard->setPopupSelectorToRight();
+   m_pItemSelectTxCard->setSelectedIndex(iSelectedIndex);
    m_pItemSelectTxCard->beginEdit();
 }
 
@@ -1305,6 +1334,7 @@ void MenuRadioConfig::drawOneRadioLinkCapabilities(float xStart, float xEnd, flo
 float MenuRadioConfig::drawOneRadioLink(float xStart, float xEnd, float yStart, int iVehicleRadioLink)
 {
    float height_text = g_pRenderEngine->textHeight(m_iIdFontRegular);
+   float height_text_small = g_pRenderEngine->textHeight(m_iIdFontSmall);
    float height_text_large = g_pRenderEngine->textHeight(m_iIdFontLarge);
    float hIcon = height_text*2.4;
    float fPaddingInnerY = 0.02;
@@ -1732,10 +1762,12 @@ float MenuRadioConfig::drawOneRadioLink(float xStart, float xEnd, float yStart, 
             continue;
 
          int iCardPriority = controllerIsCardTXPreferred(pNICInfo2->szMAC);
-         if ( iCardPriority <= 0 || iCardPriority > iMinPriority )
+         if ( (iCardPriority <= 0) || (iCardPriority > iMinPriority) )
             continue;
          iMinPriority = iCardPriority;
-         sprintf(szBuff, "Preferred Tx Card: Interface %d, Port %s", i+1, pNICInfo2->szUSBPort);
+         char szCardName[64];
+         controllerGetCardUserDefinedNameOrShortType(pNICInfo2, szCardName);
+         sprintf(szBuff, "Preferred Tx Card: Interface %d, %s Port %s", i+1, szCardName, pNICInfo2->szUSBPort);
          if ( ! controllerIsCardInternal(pNICInfo2->szMAC) )
             strcat(szBuff, " (Ext)");
       }
@@ -1898,11 +1930,24 @@ float MenuRadioConfig::drawOneRadioLink(float xStart, float xEnd, float yStart, 
          sprintf(szTxPower, "%d mW", iCardMw);
       else
          sprintf(szTxPower, "%.1f W", (float)iCardMw/1000.0);
+      float xLine1 = xLineCtrl + height_text*0.2;
+      float yLine1 = yLineCtrl - height_text*1.2;
       if ( iArrowCount <= iCountInterfacesAssignedToThisLink/2 )
          g_pRenderEngine->drawText(xLineCtrl + height_text*0.2, yLineCtrl - height_text*1.2, g_idFontMenuSmall, szTxPower);
       else
+      {
          g_pRenderEngine->drawText(xLineCtrl + height_text*0.2, yLineMarginCtrl - height_text*1.2, g_idFontMenuSmall, szTxPower);
-
+         yLine1 = yLineMarginCtrl - height_text*1.2;
+      }
+      if ( ! pCS->iFixedTxPower )
+      {
+         int iCardPowerMwNow = tx_power_compute_uplink_power_for_model_link(g_pCurrentModel, iVehicleRadioLink, i, pCardInfo->cardModel);
+         if ( iCardPowerMwNow < 1000 )
+            sprintf(szTxPower, "%d mW", iCardPowerMwNow);
+         else
+            sprintf(szTxPower, "%.1f W", (float)iCardPowerMwNow/1000.0);
+         g_pRenderEngine->drawText(xLine1, yLine1 + height_text_small, m_iIdFontSmall, szTxPower);
+      }
       if ( bCanUplink )
       {
          float dx = xLineVeh - xLineCtrl;

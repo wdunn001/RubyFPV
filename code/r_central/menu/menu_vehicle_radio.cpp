@@ -45,6 +45,7 @@
 #include "menu_vehicle_radio_pit.h"
 #include "menu_vehicle_radio_rt_capab.h"
 #include "../../base/tx_powers.h"
+#include "../../common/models_connect_frequencies.h"
 #include "../../utils/utils_controller.h"
 #include "../link_watch.h"
 #include "../launchers_controller.h"
@@ -263,7 +264,8 @@ void MenuVehicleRadioConfig::populateFrequencies()
       strcpy(szTmp, L("Radio Link Frequency"));
       if ( g_pCurrentModel->radioLinksParams.links_count > 1 )
          sprintf(szTmp, L("Radio Link %d Frequency"), iRadioLinkId+1 );
-
+      if ( ! is_vehicle_radio_link_used(g_pCurrentModel, &g_SM_RadioStats, iRadioLinkId) )
+         strcat(szTmp, " (Not used)");
       strcpy(szTooltip, L("Sets the radio link frequency for this radio link."));
       snprintf(szBuff, sizeof(szBuff)/sizeof(szBuff[0]), " Radio type: %s.", str_get_radio_card_model_string(g_pCurrentModel->radioInterfacesParams.interface_card_model[iRadioInterfaceId]));
       strcat(szTooltip, szBuff);
@@ -396,6 +398,8 @@ void MenuVehicleRadioConfig::populateTxPowers()
       strcpy(szTitle, L("Radio Link Tx Power (mW)"));
       if ( g_pCurrentModel->radioLinksParams.links_count > 1 )
          sprintf(szTitle, L("Radio Link %d Tx Power (mw)"), iLink+1);
+      if ( ! is_vehicle_radio_link_used(g_pCurrentModel, &g_SM_RadioStats, iLink) )
+         strcat(szTitle, " (Not used)");        
       m_pItemsSelect[40+iLink] = createMenuItemTxPowers(szTitle, false, bBoost2W, bBoost4W, iVehicleLinkPowerMaxMw);
       m_IndexTxPowers[iLink] = addMenuItem(m_pItemsSelect[40+iLink]);
       selectMenuItemTxPowersValue(m_pItemsSelect[40+iLink], false, bBoost2W, bBoost4W, &(iLinkPowersMw[0]), iCountLinkInterfaces, iVehicleLinkPowerMaxMw);
@@ -487,6 +491,28 @@ void MenuVehicleRadioConfig::sendNewRadioLinkFrequency(int iVehicleLinkIndex, u3
       return;
 
    log_line("MenuVehicleRadio: Changing radio link %d frequency to %u khz (%s)", iVehicleLinkIndex+1, uNewFreqKhz, str_format_frequency(uNewFreqKhz));
+
+   if ( ! is_vehicle_radio_link_used(g_pCurrentModel, &g_SM_RadioStats, iVehicleLinkIndex) )
+   {
+      if ( link_is_reconfiguring_radiolink() )
+      {
+         add_menu_to_stack(new MenuConfirmation("Configuration In Progress","Another radio link configuration change is in progress. Please wait.", 0, true));
+         valuesToUI();
+         return;
+      }
+      log_line("MenuVehicleRadio: User changed unused radio link %d frequency to %s", iVehicleLinkIndex+1, str_format_frequency(uNewFreqKhz));
+
+      u32 param = uNewFreqKhz & 0xFFFFFF;
+      param = param | (((u32)iVehicleLinkIndex)<<24);
+      if ( ! handle_commands_send_to_vehicle(COMMAND_ID_SET_RADIO_LINK_FREQUENCY, param, NULL, 0) )
+         valuesToUI();
+      else
+      {
+         link_set_is_reconfiguring_radiolink(iVehicleLinkIndex, false, true, true);
+         warnings_add_configuring_radio_link(iVehicleLinkIndex, "Changing frequency");
+      }
+      return;
+   }
 
    type_radio_links_parameters newRadioLinkParams;
    memcpy((u8*)&newRadioLinkParams, (u8*)&(g_pCurrentModel->radioLinksParams), sizeof(type_radio_links_parameters));
@@ -683,18 +709,17 @@ void MenuVehicleRadioConfig::onSelectItem()
          return;
       }
 
-      u32 nicFreq[MAX_RADIO_INTERFACES];
+      u32 uVehicleRadioInterfacesFrequencies[MAX_RADIO_INTERFACES];
+      int iVehicleRadioInterfacesCapab[MAX_RADIO_INTERFACES];
       for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
-         nicFreq[i] = g_pCurrentModel->radioInterfacesParams.interface_current_frequency_khz[i];
-
+      {
+         uVehicleRadioInterfacesFrequencies[i] = g_pCurrentModel->radioInterfacesParams.interface_current_frequency_khz[i];
+         iVehicleRadioInterfacesCapab[i] = g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[i];
+      }
       int iRadioInterfaceId = g_pCurrentModel->getRadioInterfaceIndexForRadioLink(n);
-      nicFreq[iRadioInterfaceId] = freq;
+      uVehicleRadioInterfacesFrequencies[iRadioInterfaceId] = freq;
 
-      int nicFlags[MAX_RADIO_INTERFACES];
-      for( int i=0; i<MAX_RADIO_INTERFACES; i++ )
-         nicFlags[i] = g_pCurrentModel->radioInterfacesParams.interface_capabilities_flags[i];
-
-      const char* szError = controller_validate_radio_settings( g_pCurrentModel, nicFreq, nicFlags, NULL, NULL, NULL);
+      const char* szError = controller_validate_radio_settings( g_pCurrentModel, uVehicleRadioInterfacesFrequencies, iVehicleRadioInterfacesCapab, NULL, NULL, NULL);
       
          if ( NULL != szError && 0 != szError[0] )
          {

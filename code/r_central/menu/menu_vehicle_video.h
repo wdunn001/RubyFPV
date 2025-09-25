@@ -22,7 +22,7 @@ class MenuVehicleVideo: public Menu
    private:
       type_video_capture_resolution_info* m_pVideoResolutions;
       int m_iVideoResolutionsCount;
-      int m_IndexRes, m_IndexFPS;
+      int m_IndexRes, m_IndexFPS, m_IndexFPSSelector;
       int m_IndexBidirectional;
       int m_IndexVideoBitrate;
       int m_IndexVideoProfile;
@@ -37,8 +37,11 @@ class MenuVehicleVideo: public Menu
 
       void addItems();
       void checkAddWarningInMenu();
+      int getMaxFPSForCurrentVideoRes(bool* pFound);
+      bool isStandardFPS(int iFPS);
       void showFPSWarning(int w, int h, int fps);
       void sendVideoSettings();
 
       bool m_bShowCompact;
+      bool m_bShowCustomFPS;
 };

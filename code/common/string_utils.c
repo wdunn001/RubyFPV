@@ -551,47 +551,69 @@ void str_getDataRateDescriptionNoSufix(int dataRateBPS, char* szOutput)
    }
 }
 
+char* str_getDataRateDescriptionAlternative(int dataRateBPS)
+{
+   static char s_szFormatDatarateAlternate[64];
+   s_szFormatDatarateAlternate[0] = 0;
+   if ( (dataRateBPS >= 0) || (dataRateBPS <= -100) )
+      sprintf(s_szFormatDatarateAlternate, ".n-%s", str_format_datarate_inline(dataRateBPS));
+   else
+   {
+      if ( dataRateBPS == -1 )
+         strcpy(s_szFormatDatarateAlternate, "BPSK");
+      else if ( (dataRateBPS == -2) || (dataRateBPS == -3) )
+         strcpy(s_szFormatDatarateAlternate, "QPSK");
+      else if ( (dataRateBPS == -4) || (dataRateBPS == -5) )
+         strcpy(s_szFormatDatarateAlternate, "16-QAM");
+      else if ( (dataRateBPS == -6) || (dataRateBPS == -7) || (dataRateBPS == -8) )
+         strcpy(s_szFormatDatarateAlternate, "64-QAM");
+      else
+         strcpy(s_szFormatDatarateAlternate, "256-QAM");
+   }
+   return s_szFormatDatarateAlternate;
+}
+
 char* str_format_datarate_inline(int dataRateBPS)
 {
-   static char s_szFormatDatarate[64];
-   s_szFormatDatarate[0] = 0;
+   static char s_szFormatDatarateInline[64];
+   s_szFormatDatarateInline[0] = 0;
 
    if ( dataRateBPS <= -100 )
    {
-      strcpy(s_szFormatDatarate, "Lowest");
+      strcpy(s_szFormatDatarateInline, "Lowest");
    }
    else if ( dataRateBPS < 0 )
    {
       int mcsIndex = -dataRateBPS-1;
       if ( mcsIndex <= MAX_MCS_INDEX )
-         sprintf(s_szFormatDatarate, "MCS-%d", mcsIndex );
+         sprintf(s_szFormatDatarateInline, "MCS-%d", mcsIndex );
       else
-         sprintf(s_szFormatDatarate, "MCS-?");
+         sprintf(s_szFormatDatarateInline, "MCS-?");
    }
    else if ( 0 == dataRateBPS )
    {
-      strcpy(s_szFormatDatarate, "Auto");
+      strcpy(s_szFormatDatarateInline, "Auto");
    }
    else if ( dataRateBPS <= 56 )
    {
-       sprintf(s_szFormatDatarate, "*%d Mbps", dataRateBPS);
+       sprintf(s_szFormatDatarateInline, "*%d Mbps", dataRateBPS);
    }
    else
    {
       if ( dataRateBPS >= 1000000 )
       {
          if ( ((dataRateBPS /1000) % 1000) != 0 )
-            sprintf(s_szFormatDatarate, "%1.f Mbps", (float)dataRateBPS/1000.0/1000.0);
+            sprintf(s_szFormatDatarateInline, "%1.f Mbps", (float)dataRateBPS/1000.0/1000.0);
          else
-            sprintf(s_szFormatDatarate, "%d Mbps", dataRateBPS/1000/1000);
+            sprintf(s_szFormatDatarateInline, "%d Mbps", dataRateBPS/1000/1000);
       }
       else if ( dataRateBPS >= 10000 )
-         sprintf(s_szFormatDatarate, "%d kbps", dataRateBPS/1000);
+         sprintf(s_szFormatDatarateInline, "%d kbps", dataRateBPS/1000);
       else
-         sprintf(s_szFormatDatarate, "%d bps", dataRateBPS);
+         sprintf(s_szFormatDatarateInline, "%d bps", dataRateBPS);
    }
 
-   return s_szFormatDatarate;   
+   return s_szFormatDatarateInline;   
 }
 
 char* str_format_bitrate_inline(int iBitrateBPS)
@@ -905,6 +927,7 @@ const char* str_get_hardware_wifi_name(u32 wifi_type)
 const char* str_get_hardware_camera_type_string(u32 uCamType)
 {
    static char s_szStrCameraTypeName[128];
+   s_szStrCameraTypeName[0] = 0;
    str_get_hardware_camera_type_string_to_string(uCamType, s_szStrCameraTypeName);
    return s_szStrCameraTypeName;
 }
@@ -1097,8 +1120,9 @@ const char* str_get_radio_card_model_string(int cardModel)
    if ( cardModel == CARD_MODEL_BLUE_8812EU )       strcpy(s_szCardModelDescription, "Blue RTL8812EU");
    if ( cardModel == CARD_MODEL_RTL8812AU_OIPC_USIGHT ) strcpy(s_szCardModelDescription, "RTL8812AU Ultrasight");
    if ( cardModel == CARD_MODEL_RTL8812AU_OIPC_USIGHT2 ) strcpy(s_szCardModelDescription, "RTL8812AU Ultrasight 2");
-   if ( cardModel == CARD_MODEL_RTL8812AU_AF1 )     strcpy(s_szCardModelDescription, "RTL8812AU-AF1");
    if ( cardModel == CARD_MODEL_RTL8733BU )         strcpy(s_szCardModelDescription, "RTL8733BU");
+   if ( cardModel == CARD_MODEL_BONNET_LOW_POWER )  strcpy(s_szCardModelDescription, "Bonnet L");
+   if ( cardModel == CARD_MODEL_BONNET_HIGH_POWER ) strcpy(s_szCardModelDescription, "Bonnet H");
    
    if ( cardModel == CARD_MODEL_SIK_RADIO )         strcpy(s_szCardModelDescription, "SiK-Radio");
    if ( cardModel == CARD_MODEL_SERIAL_RADIO )      strcpy(s_szCardModelDescription, "Serial-Radio");
@@ -1134,8 +1158,9 @@ const char* str_get_radio_card_model_string_short(int cardModel)
    if ( cardModel == CARD_MODEL_BLUE_8812EU )       strcpy(s_szCardModelDescription, "RTL8812EU");
    if ( cardModel == CARD_MODEL_RTL8812AU_OIPC_USIGHT ) strcpy(s_szCardModelDescription, "RTL8812AU USight");
    if ( cardModel == CARD_MODEL_RTL8812AU_OIPC_USIGHT2 ) strcpy(s_szCardModelDescription, "RTL8812AU USight2");
-   if ( cardModel == CARD_MODEL_RTL8812AU_AF1 )     strcpy(s_szCardModelDescription, "RTL8812AU-AF1");
    if ( cardModel == CARD_MODEL_RTL8733BU )         strcpy(s_szCardModelDescription, "RTL8733BU");
+   if ( cardModel == CARD_MODEL_BONNET_LOW_POWER )  strcpy(s_szCardModelDescription, "Bonnet-L");
+   if ( cardModel == CARD_MODEL_BONNET_HIGH_POWER ) strcpy(s_szCardModelDescription, "Bonnet-H");
 
    if ( cardModel == CARD_MODEL_SIK_RADIO )         strcpy(s_szCardModelDescription, "SiK-Radio");
    if ( cardModel == CARD_MODEL_SERIAL_RADIO )      strcpy(s_szCardModelDescription, "Serial-Radio");

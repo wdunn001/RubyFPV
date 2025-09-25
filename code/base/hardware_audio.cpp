@@ -34,7 +34,7 @@
 #include "config.h"
 #include "hardware_files.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include <ctype.h>
 #include <pthread.h>
 
@@ -223,7 +223,7 @@ int hardware_audio_play_file_async(const char* szFile)
    strcpy(s_szAudioFilePlayAsync, szFile);
 
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "Play audio file async");
    if ( 0 != pthread_create(&s_pThreadAudioPlayAsync, &attr, &_thread_audio_play_async, NULL) )
    {
       pthread_attr_destroy(&attr);

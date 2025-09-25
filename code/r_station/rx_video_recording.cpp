@@ -54,7 +54,7 @@
 #include "../base/models.h"
 #include "../base/radio_utils.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/parser_h264.h"
 #include "../base/camera_utils.h"

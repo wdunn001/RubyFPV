@@ -54,7 +54,7 @@
 #include "../base/models.h"
 #include "../base/radio_utils.h"
 #include "../base/hardware.h"
-#include "../base/hw_procs.h"
+#include "../base/hardware_procs.h"
 #include "../base/ruby_ipc.h"
 #include "../base/parser_h264.h"
 #include "../base/camera_utils.h"
@@ -664,7 +664,7 @@ void rx_video_output_init()
    s_bRxVideoOutputStreamerMustReinitialize = false;
 
    pthread_attr_t attr;
-   hw_init_worker_thread_attrs(&attr);
+   hw_init_worker_thread_attrs(&attr, "video output watchdog");
    if ( 0 != pthread_create(&s_pThreadRxVideoOutputStreamer, &attr, &_thread_rx_video_output_streamer_watchdog, NULL) )
       log_error_and_alarm("[VideoOutput] Failed to create thread for video streamer output check");
    pthread_attr_destroy(&attr);

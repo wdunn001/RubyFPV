@@ -34,7 +34,7 @@
 #include "base.h"
 #include "config.h"
 #include "hardware.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "../radio/radioflags.h"
 #include "../radio/radiopackets2.h"
 #include <ctype.h>
@@ -281,7 +281,7 @@ int getLowerLevelDataRate(int iDatarateBSP)
    {
       for( int i=0; i<getDataRatesCount(); i++ )
       {
-         if ( iDatarateBSP >= getDataRatesBPS()[i] )
+         if ( getDataRatesBPS()[i] >= iDatarateBSP )
          if ( i > 0 )
             return getDataRatesBPS()[i-1];
       }

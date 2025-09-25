@@ -50,8 +50,9 @@ MenuVehicleVideo::MenuVehicleVideo(void)
 {
    m_Width = 0.42;
    m_xPos = menu_get_XStartPos(m_Width); m_yPos = 0.1;
-   
+   m_pItemsSelect[0] = NULL;
    m_bShowCompact = false;
+   m_bShowCustomFPS = false;
    m_IndexShowFull = -1;
 }
 
@@ -84,9 +85,12 @@ void MenuVehicleVideo::addItems()
    float fSliderWidth = 0.12 * Menu::getScaleFactor();
    
    removeAllItems();
+   m_pItemsSelect[0] = NULL;
 
    m_IndexShowFull = -1;
    m_IndexBidirectional = -1;
+   m_IndexFPSSelector = -1;
+   m_IndexFPS = -1;
 
    char szBuff[32];
 
@@ -118,11 +122,31 @@ void MenuVehicleVideo::addItems()
    m_pItemsSelect[0]->setIsEditable();
    m_IndexRes = addMenuItem(m_pItemsSelect[0]);      
 
-   int iMaxFPS = 90;
+   bool bFound = false;
+   int iMaxFPS = getMaxFPSForCurrentVideoRes(&bFound);
+
+   m_pItemsSelect[3] = new MenuItemSelect(L("FPS"), L("Sets the FPS of the video stream."));
+   m_pItemsSelect[3]->addSelection("24");
+   m_pItemsSelect[3]->addSelection("30");
    if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-      iMaxFPS = 120;
-   m_pItemsSlider[0] = new MenuItemSlider(L("FPS"), L("Sets the FPS of the video stream."), 2,iMaxFPS, 30, fSliderWidth);
-   m_IndexFPS = addMenuItem(m_pItemsSlider[0]);
+   if ( iMaxFPS >= 59 )
+      m_pItemsSelect[3]->addSelection("59");
+   if ( iMaxFPS >= 60 )
+      m_pItemsSelect[3]->addSelection("60");
+   if ( iMaxFPS >= 90 )
+      m_pItemsSelect[3]->addSelection("90");
+   if ( iMaxFPS >= 120 )
+      m_pItemsSelect[3]->addSelection("120");
+   m_pItemsSelect[3]->addSelection(L("Custom"));
+   m_pItemsSelect[3]->setIsEditable();
+   m_IndexFPSSelector = addMenuItem(m_pItemsSelect[3]);
+
+   m_IndexFPS = -1;
+   if ( m_bShowCustomFPS || (! isStandardFPS(g_pCurrentModel->video_params.iVideoFPS)) )
+   {
+      m_pItemsSlider[0] = new MenuItemSlider(L("Custom FPS"), L("Sets the FPS of the video stream to any custom supported value."), 2,iMaxFPS, 30, fSliderWidth);
+      m_IndexFPS = addMenuItem(m_pItemsSlider[0]);
+   }
 
    m_IndexVideoBitrate = -1;
    m_pMenuItemVideoWarning = NULL;
@@ -214,7 +238,6 @@ void MenuVehicleVideo::addItems()
 void MenuVehicleVideo::valuesToUI()
 {
    char szBuff[128];
-   bool found = false;
    
    checkAddWarningInMenu();
 
@@ -226,23 +249,10 @@ void MenuVehicleVideo::valuesToUI()
    else
       m_pItemsSelect[10]->setSelectedIndex(0);
 
-   int iMaxFPS = 90;
-   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
-      iMaxFPS = 120;
-    
-   for(int i=0; i<m_iVideoResolutionsCount; i++ )
-   {
-      if ( m_pVideoResolutions[i].iWidth == g_pCurrentModel->video_params.iVideoWidth )
-      if ( m_pVideoResolutions[i].iHeight == g_pCurrentModel->video_params.iVideoHeight )
-      {
-         m_pItemsSelect[0]->setSelection(i);
-         iMaxFPS = getOptionsVideoResolutionMaxFPS(g_pCurrentModel->getActiveCameraType(), m_pVideoResolutions[i].iWidth, m_pVideoResolutions[i].iHeight);
-         found = true;
-         break;
-      }
-   }
+   bool bFound = false;
+   int iMaxFPS = getMaxFPSForCurrentVideoRes(&bFound);
 
-   if ( ! found )
+   if ( ! bFound )
    {
       sprintf(szBuff, "Info: You are using a custom resolution (%d x %d) on this %s.", g_pCurrentModel->video_params.iVideoWidth, g_pCurrentModel->video_params.iVideoHeight, g_pCurrentModel->getVehicleTypeString());
       addTopLine(szBuff);
@@ -254,8 +264,33 @@ void MenuVehicleVideo::valuesToUI()
       m_pItemsSlider[2]->setEnabled( true );
    }
 
-   m_pItemsSlider[0]->setMaxValue(iMaxFPS);
-   m_pItemsSlider[0]->setCurrentValue(g_pCurrentModel->video_params.iVideoFPS);
+   if ( -1 != m_IndexFPSSelector )
+   {
+       int iDelta = 1;
+       if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+           iDelta = 0;
+
+       if ( m_bShowCustomFPS || (! isStandardFPS(g_pCurrentModel->video_params.iVideoFPS)) )
+          m_pItemsSelect[3]->setSelectedIndex(m_pItemsSelect[3]->getSelectionsCount()-1);
+       else if ( g_pCurrentModel->video_params.iVideoFPS == 24 )
+          m_pItemsSelect[3]->setSelectedIndex(0);
+       else if ( g_pCurrentModel->video_params.iVideoFPS == 30 )
+          m_pItemsSelect[3]->setSelectedIndex(1);
+       else if ( (g_pCurrentModel->video_params.iVideoFPS == 59) && g_pCurrentModel->isActiveCameraOpenIPC() )
+          m_pItemsSelect[3]->setSelectedIndex(2);
+       else if ( g_pCurrentModel->video_params.iVideoFPS == 60 )
+          m_pItemsSelect[3]->setSelectedIndex(3-iDelta);
+       else if ( g_pCurrentModel->video_params.iVideoFPS == 90 )
+          m_pItemsSelect[3]->setSelectedIndex(4-iDelta);
+       else if ( g_pCurrentModel->video_params.iVideoFPS == 120 )
+          m_pItemsSelect[3]->setSelectedIndex(5-iDelta);
+   }
+
+   if ( -1 != m_IndexFPS )
+   {
+      m_pItemsSlider[0]->setMaxValue(iMaxFPS);
+      m_pItemsSlider[0]->setCurrentValue(g_pCurrentModel->video_params.iVideoFPS);
+   }
 
    if ( -1 != m_IndexVideoProfile )
    {
@@ -298,6 +333,41 @@ void MenuVehicleVideo::checkAddWarningInMenu()
    */
 }
 
+int MenuVehicleVideo::getMaxFPSForCurrentVideoRes(bool* pFound)
+{
+   int iMaxFPS = 90;
+   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+      iMaxFPS = 120;
+    
+   bool bFound = false;
+   for(int i=0; i<m_iVideoResolutionsCount; i++ )
+   {
+      if ( m_pVideoResolutions[i].iWidth == g_pCurrentModel->video_params.iVideoWidth )
+      if ( m_pVideoResolutions[i].iHeight == g_pCurrentModel->video_params.iVideoHeight )
+      {
+         if ( NULL != m_pItemsSelect[0] )
+            m_pItemsSelect[0]->setSelection(i);
+         iMaxFPS = getOptionsVideoResolutionMaxFPS(g_pCurrentModel->getActiveCameraType(), m_pVideoResolutions[i].iWidth, m_pVideoResolutions[i].iHeight);
+         bFound = true;
+         break;
+      }
+   }
+
+   if ( NULL != pFound )
+      *pFound = bFound;
+   return iMaxFPS;
+}
+
+bool MenuVehicleVideo::isStandardFPS(int iFPS)
+{
+   if ( (iFPS == 24) || (iFPS == 30) || (iFPS == 60) || (iFPS == 90) || (iFPS == 120) )
+      return true;
+   if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+   if ( iFPS == 59 )
+      return true;
+   return false;
+}
+
 void MenuVehicleVideo::showFPSWarning(int w, int h, int fps)
 {
    char szBuff[128];
@@ -323,7 +393,35 @@ void MenuVehicleVideo::sendVideoSettings()
  
    paramsNew.iVideoWidth = m_pVideoResolutions[videoResolutionIndex].iWidth;
    paramsNew.iVideoHeight = m_pVideoResolutions[videoResolutionIndex].iHeight;
-   paramsNew.iVideoFPS = m_pItemsSlider[0]->getCurrentValue();
+
+   bool bHasCustomFPVSelection = false;
+   if ( -1 != m_IndexFPSSelector )
+   {
+       int iIndex = m_pItemsSelect[3]->getSelectedIndex();
+       if ( iIndex < m_pItemsSelect[3]->getSelectionsCount() - 1 )
+       {
+          int iDelta = 1;
+          if ( g_pCurrentModel->isActiveCameraOpenIPC() )
+              iDelta = 0;
+          if ( iIndex == 0 )
+             paramsNew.iVideoFPS = 24;
+          else if ( iIndex == 1 )
+             paramsNew.iVideoFPS = 30;
+          else if ( (iIndex == 2) && g_pCurrentModel->isActiveCameraOpenIPC() )
+             paramsNew.iVideoFPS = 59;
+          else if ( iIndex == 3-iDelta )
+             paramsNew.iVideoFPS = 60;
+          else if ( iIndex == 4-iDelta )
+             paramsNew.iVideoFPS = 90;
+          else if ( iIndex == 5-iDelta )
+             paramsNew.iVideoFPS = 120;
+       }
+       else
+          bHasCustomFPVSelection = true;
+   }
+   if ( (-1 != m_IndexFPS) && bHasCustomFPVSelection )
+      paramsNew.iVideoFPS = m_pItemsSlider[0]->getCurrentValue();
+
    if ( paramsNew.iVideoFPS > m_pVideoResolutions[videoResolutionIndex].iMaxFPS )
    {
       paramsNew.iVideoFPS = m_pVideoResolutions[videoResolutionIndex].iMaxFPS;
@@ -439,9 +537,17 @@ void MenuVehicleVideo::onSelectItem()
       return;
    }
 
-   if ( (m_IndexRes == m_SelectedIndex) || (m_IndexFPS == m_SelectedIndex) )
+   if ( (m_IndexRes == m_SelectedIndex) || ((m_IndexFPS != -1) && (m_IndexFPS == m_SelectedIndex)) || ((m_IndexFPSSelector != -1) && (m_IndexFPSSelector == m_SelectedIndex)) )
    {
       sendVideoSettings();
+      if ( (m_IndexFPSSelector != -1) && (m_IndexFPSSelector == m_SelectedIndex) )
+      {
+         if ( m_pItemsSelect[3]->getSelectedIndex() == m_pItemsSelect[3]->getSelectionsCount() - 1 )
+            m_bShowCustomFPS = true;
+         else
+            m_bShowCustomFPS = false;
+         addItems();
+      }
       return;
    }
 

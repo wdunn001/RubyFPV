@@ -46,7 +46,7 @@
 #include "hardware.h"
 #include "gpio.h"
 #include "config.h"
-#include "hw_procs.h"
+#include "hardware_procs.h"
 #include "hardware_camera.h"
 #include "hardware_files.h"
 #include "hardware_i2c.h"

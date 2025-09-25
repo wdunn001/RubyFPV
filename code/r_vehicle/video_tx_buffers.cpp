@@ -286,7 +286,6 @@ void VideoTxPacketsBuffer::_fillVideoPacketHeaders(int iBufferIndex, int iPacket
       m_pLastPacketHeaderVideoFilledIn->uVideoStatusFlags2 |= VIDEO_STATUS_FLAGS2_IS_END_OF_FRAME;
 
    m_iVideoStreamInfoIndex++;
-   m_pLastPacketHeaderVideoFilledIn->uStreamInfoFlags = (u8)m_iVideoStreamInfoIndex;   
    m_pLastPacketHeaderVideoFilledIn->uStreamInfo = 0;
    u32 uTmp1, uTmp2;
 
@@ -314,12 +313,22 @@ void VideoTxPacketsBuffer::_fillVideoPacketHeaders(int iBufferIndex, int iPacket
           m_pLastPacketHeaderVideoFilledIn->uStreamInfo = g_pCurrentModel->video_link_profiles[iVideoProfile].uProfileEncodingFlags;
           break;
 
+      case VIDEO_STREAM_INFO_FLAG_RETRANSMISSION_ID:
+          m_iVideoStreamInfoIndex++;
+      case VIDEO_STREAM_INFO_FLAG_SET_VIDEO_BITRATE:
+          m_pLastPacketHeaderVideoFilledIn->uStreamInfo = video_sources_get_last_set_video_bitrate();
+          break;
+
+      case VIDEO_STREAM_INFO_FLAG_SET_KF_MS:
+          m_pLastPacketHeaderVideoFilledIn->uStreamInfo = video_sources_get_last_set_keyframe();
+          break;
+
       default:
           m_iVideoStreamInfoIndex = 0;
           m_pLastPacketHeaderVideoFilledIn->uStreamInfo = 0;
           break;
    }
-
+   m_pLastPacketHeaderVideoFilledIn->uStreamInfoFlags = (u8)m_iVideoStreamInfoIndex;   
    if ( bIsECPacket && bEndOfTransmissionFrame )
    {
       // Each time we add an EC packet:
@@ -389,6 +398,11 @@ void VideoTxPacketsBuffer::setCustomECScheme(u16 uECScheme)
 {
    m_uCustomECScheme = uECScheme;
    updateVideoHeader(g_pCurrentModel);
+}
+
+int VideoTxPacketsBuffer::getCurrentTotalBlockPackets()
+{
+   return m_uNextBlockDataPackets + m_uNextBlockECPackets;
 }
 
 void VideoTxPacketsBuffer::updateVideoHeader(Model* pModel)
@@ -493,7 +507,10 @@ void VideoTxPacketsBuffer::fillVideoPacketsFromCSI(u8* pVideoData, int iDataSize
    {
       m_iUsableRawVideoDataSize = m_PacketHeaderVideo.uCurrentBlockPacketSize - sizeof(t_packet_header_video_segment_important);
       int iSizeLeftToFillInCurrentPacket = m_iUsableRawVideoDataSize - m_iTempVideoBufferFilledBytes;
-      m_ParserInputH264.parseData(pVideoDataLeft, iSizeLeftToFillInCurrentPacket, g_TimeNow);
+      int iCountToParseAndAdd = iSizeLeftToFillInCurrentPacket;
+      if ( iCountToParseAndAdd > iDataSizeLeft )
+         iCountToParseAndAdd = iDataSizeLeft;
+      m_ParserInputH264.parseData(pVideoDataLeft, iCountToParseAndAdd, g_TimeNow);
       if ( m_ParserInputH264.lastParseDetectedNALStart() != -1 )
       {
          m_uCurrentH264NALIndex++;
@@ -509,14 +526,21 @@ void VideoTxPacketsBuffer::fillVideoPacketsFromCSI(u8* pVideoData, int iDataSize
             m_uTempNALPresenceFlags |= VIDEO_STATUS_FLAGS2_IS_NAL_I;
       }
      
-      memcpy(&m_TempVideoBuffer[m_iTempVideoBufferFilledBytes], pVideoDataLeft, iSizeLeftToFillInCurrentPacket);
-      m_iTempVideoBufferFilledBytes += iSizeLeftToFillInCurrentPacket;
+      memcpy(&m_TempVideoBuffer[m_iTempVideoBufferFilledBytes], pVideoDataLeft, iCountToParseAndAdd);
+      m_iTempVideoBufferFilledBytes += iCountToParseAndAdd;
 
-      iDataSizeLeft -= iSizeLeftToFillInCurrentPacket;
-      pVideoDataLeft += iSizeLeftToFillInCurrentPacket;
+      iDataSizeLeft -= iCountToParseAndAdd;
+      pVideoDataLeft += iCountToParseAndAdd;
 
       // No more room in temp packet buffer or an end of frame? Add it
-      if ( (m_iTempVideoBufferFilledBytes >= m_iUsableRawVideoDataSize) || (bEndOfFrame && (iDataSizeLeft == 0)) )
+      bool bAddPacket = false;
+      if ( m_iTempVideoBufferFilledBytes >= m_iUsableRawVideoDataSize )
+         bAddPacket = true;
+      if ( bEndOfFrame && (iDataSizeLeft == 0) )
+      if ( m_ParserInputH264.getCurrentNALType() != 8 )
+      if ( m_ParserInputH264.getCurrentNALType() != 7 )
+         bAddPacket = true;
+      if ( bAddPacket )
       {
          if ( (m_ParserInputH264.getCurrentFrameSlices() % m_ParserInputH264.getDetectedSlices()) == 0 )
             m_uTempNALPresenceFlags |= VIDEO_STATUS_FLAGS2_IS_NAL_END;
@@ -568,7 +592,7 @@ bool VideoTxPacketsBuffer::fillVideoPacketsFromRTSPPacket(u8* pVideoRawData, int
    }
 
    m_iUsableRawVideoDataSize = m_PacketHeaderVideo.uCurrentBlockPacketSize - sizeof(t_packet_header_video_segment_important);
-   
+
    if ( iRawDataSize > m_iUsableRawVideoDataSize - m_iTempVideoBufferFilledBytes )
    {
       log_line("[VideoTxBuffer] Tried to add a video packet (%d bytes, NAL type: %u) larger than max usable video packet size: %d at pos %d",
@@ -604,6 +628,57 @@ bool VideoTxPacketsBuffer::fillVideoPacketsFromRTSPPacket(u8* pVideoRawData, int
    if ( bEndOfFrameDetected )
       m_uCurrentH264FrameIndex++;
    return bEndOfFrameDetected;
+}
+
+void VideoTxPacketsBuffer::fillVideoPacketsFromNALFrames(u8* pVideoData, int iDataSize, u32 uNALPresenceFlags, int iHasPendingDataPacketsToSend)
+{
+   if ( (NULL == pVideoData) || (iDataSize <= 0) )
+      return;
+
+   if ( NULL != g_pProcessorTxVideo )
+      process_data_tx_video_on_new_data(pVideoData, iDataSize);
+
+   int iCountPacketsAdded = 0;
+   int iDataSizeLeft = iDataSize;
+   u8* pVideoDataLeft = pVideoData;
+   while ( iDataSizeLeft > 0 )
+   {
+      m_iUsableRawVideoDataSize = m_PacketHeaderVideo.uCurrentBlockPacketSize - sizeof(t_packet_header_video_segment_important);
+      int iSizeLeftToFillInCurrentPacket = m_iUsableRawVideoDataSize - m_iTempVideoBufferFilledBytes;
+      int iCountToParseAndAdd = iSizeLeftToFillInCurrentPacket;
+      if ( iCountToParseAndAdd > iDataSizeLeft )
+         iCountToParseAndAdd = iDataSizeLeft;
+     
+      memcpy(&m_TempVideoBuffer[m_iTempVideoBufferFilledBytes], pVideoDataLeft, iCountToParseAndAdd);
+      m_iTempVideoBufferFilledBytes += iCountToParseAndAdd;
+
+      iDataSizeLeft -= iCountToParseAndAdd;
+      pVideoDataLeft += iCountToParseAndAdd;
+
+      // No more room in the temp packet buffer or the end of data? Add it (video packet)
+      if ( (m_iTempVideoBufferFilledBytes >= m_iUsableRawVideoDataSize) || (iDataSizeLeft == 0) )
+      {
+         m_uTempNALPresenceFlags = uNALPresenceFlags;
+         if ( 0 == iCountPacketsAdded )
+            m_uTempNALPresenceFlags |= VIDEO_STATUS_FLAGS2_IS_NAL_START;
+         if ( 0 == iDataSizeLeft )
+            m_uTempNALPresenceFlags |= VIDEO_STATUS_FLAGS2_IS_NAL_END;
+         if ( 0 != iCountPacketsAdded )
+            m_uTempNALPresenceFlags &= ~(VIDEO_STATUS_FLAGS2_IS_NAL_OTHER);
+
+         int iCountPacketsToEOF = 0;
+         if ( iDataSizeLeft > 0 )
+            iCountPacketsToEOF += 1 + iDataSizeLeft/m_iUsableRawVideoDataSize;
+         
+         _addNewVideoPacket(m_TempVideoBuffer, m_iTempVideoBufferFilledBytes, m_uTempNALPresenceFlags, true, iCountPacketsToEOF, iHasPendingDataPacketsToSend);
+         
+         m_iTempVideoBufferFilledBytes = 0;
+         m_uTempNALPresenceFlags = 0;
+         iCountPacketsAdded++;
+      }
+   }
+   m_uCurrentH264NALIndex++;
+   m_uCurrentH264FrameIndex++;
 }
 
 void VideoTxPacketsBuffer::_addNewVideoPacket(u8* pRawVideoData, int iRawVideoDataSize, u32 uNALPresenceFlags, bool bEndOfTransmissionFrame, int iCountPacketsToEOF, int iCountDataPacketsAfter)
@@ -799,6 +874,19 @@ int VideoTxPacketsBuffer::hasPendingPacketsToSend()
 {
    return m_iCountReadyToSend;
 }
+
+u32 VideoTxPacketsBuffer::getFirstPacketToSendVideoBlockIndex()
+{
+   if ( m_iCountReadyToSend <= 0 )
+      return 0;
+   if ( NULL == m_VideoPackets[m_iCurrentBufferIndexToSend][m_iCurrentBufferPacketIndexToSend].pPH )
+      return 0xFFFFFFFF;
+   if ( m_VideoPackets[m_iCurrentBufferIndexToSend][m_iCurrentBufferPacketIndexToSend].bEmpty )
+      return 0xFFFFFFFF;
+   t_packet_header_video_segment* pCurrentVideoPacketHeader = m_VideoPackets[m_iCurrentBufferIndexToSend][m_iCurrentBufferPacketIndexToSend].pPHVS;
+   return pCurrentVideoPacketHeader->uCurrentBlockIndex;
+}
+
 
 int VideoTxPacketsBuffer::sendAvailablePackets(int iMaxCountToSend)
 {

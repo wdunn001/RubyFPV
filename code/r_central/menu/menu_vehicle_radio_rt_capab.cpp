@@ -42,7 +42,7 @@
 
 
 MenuVehicleRadioRuntimeCapabilities::MenuVehicleRadioRuntimeCapabilities(void)
-:Menu(MENU_ID_VEHICLE_RADIO_RUNTIME_CAPS, "Radio Runtime Capabilities", NULL)
+:Menu(MENU_ID_VEHICLE_RADIO_RUNTIME_CAPS, "Developer: Radio Runtime Capabilities", NULL)
 {
    m_Width = 0.6;
    m_Height = 0.64;
@@ -187,7 +187,7 @@ void MenuVehicleRadioRuntimeCapabilities::Render()
             bShowRedPL = true;
             strcpy(szLegacyPower, "-- mW");
          }
-         else if ( g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwLegacy[0][i] < iRadioInterfacePowerMaxMw*0.96 )
+         else if ( g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwLegacy[0][i] < (iRadioInterfacePowerMaxMw*9)/10 )
             bShowYellowPL = true;
 
       }
@@ -216,7 +216,7 @@ void MenuVehicleRadioRuntimeCapabilities::Render()
             bShowRedPM = true;
             strcpy(szMCSPower, "-- mW");
          }
-         else if ( g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwMCS[0][i] < iRadioInterfacePowerMaxMw-1 )
+         else if ( g_pCurrentModel->radioRuntimeCapabilities.iMaxTxPowerMwMCS[0][i] < (iRadioInterfacePowerMaxMw*9)/10 )
             bShowYellowPM = true;
       }
       else
