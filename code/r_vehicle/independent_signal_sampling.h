@@ -41,3 +41,8 @@ void reset_sampling_statistics();
 
 // Main sampling function
 bool sample_signal_data(float* rssi, float* dbm, bool racing_mode);
+
+// RubyFPV integration functions
+float get_rssi_from_rubyfpv();
+float get_dbm_from_rubyfpv();
+void set_rubyfpv_signal_callbacks(float (*rssi_callback)(), float (*dbm_callback)());

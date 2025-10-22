@@ -57,3 +57,4 @@ rubalink_api_response_t rubalink_api_get_logs(int max_lines);
 void rubalink_api_set_response(rubalink_api_response_t* response, int status_code, const char* message, const char* data);
 const char* rubalink_api_get_status_text(int status_code);
 bool rubalink_api_validate_json(const char* json_string);
+rubalink_api_response_t rubalink_api_handle_config_request(const char* config_json, char* response_buffer, size_t response_size);

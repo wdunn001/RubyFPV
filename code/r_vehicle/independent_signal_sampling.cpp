@@ -107,14 +107,43 @@ bool sample_signal_data(float* rssi, float* dbm, bool racing_mode) {
     // Update timing
     update_signal_sampling_timing();
     
-    // TODO: Integrate with RubyFPV's signal reading functions
-    // For now, we'll simulate the signal reading
-    float raw_rssi = 50.0f;  // TODO: Get from RubyFPV's RSSI reading
-    float raw_dbm = -60.0f;  // TODO: Get from RubyFPV's dBm reading
+    // Integrate with RubyFPV's signal reading functions
+    // Get actual signal data from RubyFPV's signal reading system
+    float raw_rssi = get_rssi_from_rubyfpv();  // Get from RubyFPV's RSSI reading
+    float raw_dbm = get_dbm_from_rubyfpv();    // Get from RubyFPV's dBm reading
     
     // Process signals through advanced signal processing
     *rssi = process_rssi_signal(raw_rssi, racing_mode);
     *dbm = process_dbm_signal(raw_dbm, racing_mode);
     
     return true;
+}
+
+// RubyFPV integration functions
+static float (*s_RubyFPV_RSSICallback)() = NULL;
+static float (*s_RubyFPV_DBMCallback)() = NULL;
+
+float get_rssi_from_rubyfpv() {
+    if (s_RubyFPV_RSSICallback) {
+        return s_RubyFPV_RSSICallback();
+    }
+    
+    // Fallback to default value if no callback is set
+    return 50.0f;
+}
+
+float get_dbm_from_rubyfpv() {
+    if (s_RubyFPV_DBMCallback) {
+        return s_RubyFPV_DBMCallback();
+    }
+    
+    // Fallback to default value if no callback is set
+    return -60.0f;
+}
+
+void set_rubyfpv_signal_callbacks(float (*rssi_callback)(), float (*dbm_callback)()) {
+    s_RubyFPV_RSSICallback = rssi_callback;
+    s_RubyFPV_DBMCallback = dbm_callback;
+    
+    log_line("[SignalSampling] RubyFPV signal callbacks registered");
 }

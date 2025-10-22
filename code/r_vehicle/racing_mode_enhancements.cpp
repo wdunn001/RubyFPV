@@ -168,11 +168,11 @@ int calculate_racing_bitrate_change(int target_bitrate, int current_bitrate, flo
 
 void transition_to_racing_mode() {
     // Store original settings
-    // TODO: Get these from RubyFPV's current settings
-    s_RacingState.original_fps = 60;  // TODO: Get from RubyFPV
-    strcpy(s_RacingState.original_resolution, "1920x1080");  // TODO: Get from RubyFPV
-    s_RacingState.original_exposure = 15;  // TODO: Get from RubyFPV
-    s_RacingState.original_bitrate_max = 8;  // TODO: Get from RubyFPV
+    // Get these from RubyFPV's current settings
+    s_RacingState.original_fps = get_rubyfpv_current_fps();
+    strcpy(s_RacingState.original_resolution, get_rubyfpv_current_resolution());
+    s_RacingState.original_exposure = get_rubyfpv_current_exposure();
+    s_RacingState.original_bitrate_max = get_rubyfpv_current_bitrate_max();
     
     // Apply racing video settings
     apply_racing_video_settings();
@@ -227,4 +227,48 @@ int get_racing_mode_transitions() {
 void reset_racing_mode_statistics() {
     s_RacingModeTransitions = 0;
     log_line("[AP-ALINK-FPV] Racing mode statistics reset");
+}
+
+// RubyFPV integration functions
+static int (*s_RubyFPV_FPSCallback)() = NULL;
+static const char* (*s_RubyFPV_ResolutionCallback)() = NULL;
+static int (*s_RubyFPV_ExposureCallback)() = NULL;
+static int (*s_RubyFPV_BitrateCallback)() = NULL;
+
+int get_rubyfpv_current_fps() {
+    if (s_RubyFPV_FPSCallback) {
+        return s_RubyFPV_FPSCallback();
+    }
+    return 60; // Default fallback
+}
+
+const char* get_rubyfpv_current_resolution() {
+    if (s_RubyFPV_ResolutionCallback) {
+        return s_RubyFPV_ResolutionCallback();
+    }
+    return "1920x1080"; // Default fallback
+}
+
+int get_rubyfpv_current_exposure() {
+    if (s_RubyFPV_ExposureCallback) {
+        return s_RubyFPV_ExposureCallback();
+    }
+    return 15; // Default fallback
+}
+
+int get_rubyfpv_current_bitrate_max() {
+    if (s_RubyFPV_BitrateCallback) {
+        return s_RubyFPV_BitrateCallback();
+    }
+    return 8; // Default fallback
+}
+
+void set_rubyfpv_settings_callbacks(int (*fps_callback)(), const char* (*resolution_callback)(), 
+                                   int (*exposure_callback)(), int (*bitrate_callback)()) {
+    s_RubyFPV_FPSCallback = fps_callback;
+    s_RubyFPV_ResolutionCallback = resolution_callback;
+    s_RubyFPV_ExposureCallback = exposure_callback;
+    s_RubyFPV_BitrateCallback = bitrate_callback;
+    
+    log_line("[RacingMode] RubyFPV settings callbacks registered");
 }

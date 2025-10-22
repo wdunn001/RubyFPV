@@ -57,3 +57,7 @@ bool is_emergency_mode();
 unsigned long get_time_since_last_change();
 unsigned long get_time_since_last_increase();
 int get_last_bitrate();
+
+// RubyFPV integration functions
+int get_hardware_rssi_offset_from_rubyfpv();
+void set_rubyfpv_hardware_callback(int (*hardware_callback)());

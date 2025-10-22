@@ -33,7 +33,7 @@ int execute_command(const char *command) {
     }
     
     // Check for command length to prevent buffer overflow attacks
-    if (strlen(command) > s_CommandConfig.max_command_length) {
+    if (strlen(command) > (size_t)s_CommandConfig.max_command_length) {
 #ifdef DEBUG
         fprintf(stderr, "Error: execute_command() command too long (>%d chars)\n", 
                 s_CommandConfig.max_command_length);

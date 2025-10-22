@@ -65,3 +65,11 @@ void restore_original_video_settings();
 int get_racing_mode_duration_ms();
 int get_racing_mode_transitions();
 void reset_racing_mode_statistics();
+
+// RubyFPV integration functions
+int get_rubyfpv_current_fps();
+const char* get_rubyfpv_current_resolution();
+int get_rubyfpv_current_exposure();
+int get_rubyfpv_current_bitrate_max();
+void set_rubyfpv_settings_callbacks(int (*fps_callback)(), const char* (*resolution_callback)(), 
+                                   int (*exposure_callback)(), int (*bitrate_callback)());

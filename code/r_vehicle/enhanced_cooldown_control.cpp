@@ -68,7 +68,7 @@ bool should_change_bitrate(int new_bitrate, int current_bitrate) {
 bool should_trigger_emergency_drop(int current_bitrate, float filtered_rssi) {
     // Calculate dynamic RSSI threshold based on current MCS
     int current_mcs = bitrate_to_mcs(current_bitrate);
-    int dynamic_threshold = get_dynamic_rssi_threshold(current_mcs, 0); // TODO: Get hardware offset
+    int dynamic_threshold = get_dynamic_rssi_threshold(current_mcs, get_hardware_rssi_offset_from_rubyfpv());
     
     // Use the more conservative threshold (lower value = more sensitive)
     int effective_threshold = (dynamic_threshold < s_CooldownConfig.emergency_rssi_threshold) ? 
@@ -172,4 +172,21 @@ unsigned long get_time_since_last_increase() {
 
 int get_last_bitrate() {
     return s_CooldownState.last_bitrate;
+}
+
+// RubyFPV integration functions
+static int (*s_RubyFPV_HardwareCallback)() = NULL;
+
+int get_hardware_rssi_offset_from_rubyfpv() {
+    if (s_RubyFPV_HardwareCallback) {
+        return s_RubyFPV_HardwareCallback();
+    }
+    
+    // Fallback to default value if no callback is set
+    return 0;
+}
+
+void set_rubyfpv_hardware_callback(int (*hardware_callback)()) {
+    s_RubyFPV_HardwareCallback = hardware_callback;
+    log_line("[Cooldown] RubyFPV hardware callback registered");
 }

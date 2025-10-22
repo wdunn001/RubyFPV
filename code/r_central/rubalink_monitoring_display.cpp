@@ -6,6 +6,13 @@
 #include "../r_vehicle/racing_mode_enhancements.h"
 #include <sys/time.h>
 
+// Helper function to get current time in milliseconds
+static unsigned long get_current_time_ms() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (unsigned long)(tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+
 static rubalink_monitoring_data_t s_MonitoringData = {0};
 static bool s_MonitoringDisplayActive = false;
 
@@ -139,11 +146,4 @@ void rubalink_monitoring_get_statistics(char* stats_buffer, int max_length) {
              s_MonitoringData.filtered_dbm,
              s_MonitoringData.current_bitrate,
              s_MonitoringData.racing_mode_active ? "Yes" : "No");
-}
-
-// Helper function to get current time in milliseconds
-static unsigned long get_current_time_ms() {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (unsigned long)(tv.tv_sec * 1000 + tv.tv_usec / 1000);
 }

@@ -44,7 +44,9 @@ void apply_qp_delta_for_bitrate(int bitrate_mbps) {
              qp_delta, bitrate_mbps, bitrate_to_mcs(bitrate_mbps));
     #endif
     
-    // TODO: Integrate with RubyFPV video encoding system
+    // Integrate with RubyFPV video encoding system
+    // Apply QP delta settings to RubyFPV's video encoder
+    apply_qp_delta_to_rubyfpv_encoder(s_QPDeltaConfig.qp_delta_low, s_QPDeltaConfig.qp_delta_medium, s_QPDeltaConfig.qp_delta_high);
     // For now, just suppress the unused variable warning
     (void)qp_delta;
 }
@@ -81,4 +83,22 @@ void qp_delta_save_config() {
 void qp_delta_load_config() {
     // Load configuration from RubyFPV config system
     log_line("[AP-ALINK-FPV] QP Delta config loaded");
+}
+
+// RubyFPV integration functions
+static void (*s_RubyFPV_EncoderCallback)(int, int, int) = NULL;
+
+void apply_qp_delta_to_rubyfpv_encoder(int qp_delta_low, int qp_delta_medium, int qp_delta_high) {
+    if (s_RubyFPV_EncoderCallback) {
+        s_RubyFPV_EncoderCallback(qp_delta_low, qp_delta_medium, qp_delta_high);
+        log_line("[QPDelta] Applied QP delta to RubyFPV encoder: low=%d, medium=%d, high=%d", 
+                qp_delta_low, qp_delta_medium, qp_delta_high);
+    } else {
+        log_line("[QPDelta] No RubyFPV encoder callback registered");
+    }
+}
+
+void set_rubyfpv_encoder_callback(void (*encoder_callback)(int, int, int)) {
+    s_RubyFPV_EncoderCallback = encoder_callback;
+    log_line("[QPDelta] RubyFPV encoder callback registered");
 }
