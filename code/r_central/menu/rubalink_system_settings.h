@@ -1,7 +1,23 @@
 #pragma once
 
 #include "../../base/base.h"
-#include "../../r_vehicle/rubalink_seamless_integration.h"
+
+// RubALink adaptive system types
+typedef enum {
+    RUBALINK_ADAPTIVE_AUTO = 0,
+    RUBALINK_ADAPTIVE_RUBALINK,
+    RUBALINK_ADAPTIVE_RUBYFPV
+} rubalink_adaptive_type_t;
+
+// Vehicle profile types
+typedef enum {
+    VEHICLE_PROFILE_RACING = 0,
+    VEHICLE_PROFILE_LONG_RANGE,
+    VEHICLE_PROFILE_CINEMATIC,
+    VEHICLE_PROFILE_FREESTYLE,
+    VEHICLE_PROFILE_SURVEILLANCE,
+    VEHICLE_PROFILE_DEFAULT
+} vehicle_profile_type_t;
 
 // RubALink System Settings
 typedef struct {

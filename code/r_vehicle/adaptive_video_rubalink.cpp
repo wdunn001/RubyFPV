@@ -117,7 +117,8 @@ void adaptive_video_update_enhanced_cooldown(int new_bitrate, int current_bitrat
 
 // Dynamic RSSI thresholds
 int adaptive_video_get_dynamic_rssi_threshold(int mcs_rate) {
-    return get_dynamic_rssi_threshold_for_mcs(mcs_rate);
+    // Use default hardware offset of 0
+    return ::get_dynamic_rssi_threshold(mcs_rate, 0);
 }
 
 void adaptive_video_update_dynamic_thresholds() {
@@ -151,16 +152,16 @@ void adaptive_video_enable_racing_mode(bool enable) {
     s_RacingConfig.enabled = enable;
     
     if (enable) {
-        racing_mode_activate();
+        ::enable_racing_mode();
         log_line("[AdaptiveVideo-RubALink] Racing mode ACTIVATED");
     } else {
-        racing_mode_deactivate();
+        ::disable_racing_mode();
         log_line("[AdaptiveVideo-RubALink] Racing mode DEACTIVATED");
     }
 }
 
 bool adaptive_video_is_racing_mode_active() {
-    return s_RacingConfig.enabled && racing_mode_is_active();
+    return s_RacingConfig.enabled && ::is_racing_mode_active();
 }
 
 int adaptive_video_calculate_racing_bitrate(int current_bitrate, float signal_quality) {

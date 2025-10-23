@@ -1,5 +1,5 @@
 #include "rubalink_system_settings.h"
-#include "../../r_vehicle/rubalink_seamless_integration.h"
+#include "../../r_vehicle/rubalink_integration.h"
 
 static rubalink_system_settings_t s_SystemSettings = {0};
 static bool s_SystemSettingsActive = false;
@@ -36,10 +36,10 @@ void rubalink_system_settings_load_defaults() {
     s_SystemSettings.auto_detection_enabled = true;
     
     // Profile-based Settings
-    s_SystemSettings.racing_profile_adaptive = RUBALINK_ADAPTIVE_ADVANCED;
-    s_SystemSettings.long_range_profile_adaptive = RUBALINK_ADAPTIVE_ADVANCED;
+    s_SystemSettings.racing_profile_adaptive = RUBALINK_ADAPTIVE_RUBALINK;
+    s_SystemSettings.long_range_profile_adaptive = RUBALINK_ADAPTIVE_RUBALINK;
     s_SystemSettings.cinematic_profile_adaptive = RUBALINK_ADAPTIVE_RUBYFPV;
-    s_SystemSettings.freestyle_profile_adaptive = RUBALINK_ADAPTIVE_ADVANCED;
+    s_SystemSettings.freestyle_profile_adaptive = RUBALINK_ADAPTIVE_RUBALINK;
     s_SystemSettings.surveillance_profile_adaptive = RUBALINK_ADAPTIVE_RUBYFPV;
     s_SystemSettings.default_profile_adaptive = RUBALINK_ADAPTIVE_AUTO;
     

@@ -1,7 +1,7 @@
 #include "rubalink_settings_panel.h"
 #include "../../r_vehicle/rubalink_integration.h"
+#include "../../r_vehicle/adaptive_video_rubalink.h"
 #include "../../r_vehicle/advanced_signal_processing.h"
-#include "../../r_vehicle/independent_signal_sampling.h"
 #include "../../r_vehicle/enhanced_cooldown_control.h"
 #include "../../r_vehicle/racing_mode_enhancements.h"
 

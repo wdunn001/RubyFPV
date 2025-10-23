@@ -103,9 +103,9 @@ bool rubalink_radio_update_signal_stats() {
             shared_mem_radio_stats_radio_interface* pSMInterface = &s_pSMRadioStats->radio_interfaces[i];
             
             // Update signal values from shared memory
-            iface->last_rssi = pSMInterface->lastDbm + 200;  // Convert from dBm offset format
-            iface->last_dbm = pSMInterface->lastDbm;
-            iface->last_dbm_noise = pSMInterface->lastDbmNoise;
+            iface->last_dbm = pSMInterface->signalInfo.signalInfoAll.iDbmLast;
+            iface->last_dbm_noise = pSMInterface->signalInfo.signalInfoAll.iDbmNoiseLast;
+            iface->last_rssi = (iface->last_dbm > -200) ? (iface->last_dbm + 200) : 0;  // Convert from dBm to RSSI approximation
             
             // Calculate SNR
             if (iface->last_dbm > -200 && iface->last_dbm_noise > -200) {
@@ -115,9 +115,9 @@ bool rubalink_radio_update_signal_stats() {
             }
             
             // Get current data rate (MCS)
-            if (pSMInterface->lastReceivedDataRateBPSMCS < 0) {
+            if (pSMInterface->lastRecvDataRate < 0) {
                 // Negative value indicates MCS rate
-                iface->current_mcs_rate = -pSMInterface->lastReceivedDataRateBPSMCS - 1;
+                iface->current_mcs_rate = -pSMInterface->lastRecvDataRate - 1;
             }
             
             iface->last_update_time = current_time;
