@@ -48,6 +48,12 @@ rubalink_api_response_t rubalink_api_get_vehicle_profiles();
 rubalink_api_response_t rubalink_api_set_profile_adaptive_type(const char* profile_name, const char* adaptive_type);
 rubalink_api_response_t rubalink_api_detect_vehicle_profile(const char* vehicle_name, int video_width, int video_height, int fps, int max_bitrate);
 
+// Radio Interface Management API
+rubalink_api_response_t rubalink_api_get_radio_interfaces();
+rubalink_api_response_t rubalink_api_set_radio_mcs_rate(int interface_index, int mcs_rate);
+rubalink_api_response_t rubalink_api_enable_radio_rate_control(int interface_index, bool enable);
+rubalink_api_response_t rubalink_api_get_radio_signal_data(int interface_index);
+
 // Statistics API
 rubalink_api_response_t rubalink_api_get_statistics();
 rubalink_api_response_t rubalink_api_reset_statistics();

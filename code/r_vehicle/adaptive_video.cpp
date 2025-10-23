@@ -39,6 +39,7 @@
 #include "../base/hardware_cam_maj.h"
 #include "../common/string_utils.h"
 #include "adaptive_video.h"
+#include "adaptive_video_rubalink.h"
 #include "shared_vars.h"
 #include "timers.h"
 #include "video_tx_buffers.h"

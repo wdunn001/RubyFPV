@@ -1,13 +1,12 @@
 #include "rubalink_api_endpoints.h"
 #include "../r_vehicle/rubalink_integration.h"
-#include "../r_vehicle/rubalink_seamless_integration.h"
 #include "../menu/rubalink_settings_panel.h"
 #include "rubalink_monitoring_display.h"
-#include "../../base/rubalink_config.h"
-#include "../../r_vehicle/signal_pattern_analysis.h"
-#include "../../r_vehicle/fallback_logic.h"
+#include "../r_vehicle/rubalink_radio_interface.h"
+#include "../r_vehicle/adaptive_video_rubalink.h"
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 void rubalink_api_init() {
     log_line("[RubALink] API endpoints initialized");
@@ -53,14 +52,16 @@ rubalink_api_response_t rubalink_api_get_performance_metrics() {
     rubalink_monitoring_data_t* data = rubalink_monitoring_get_data();
     char metrics_json[512];
     snprintf(metrics_json, sizeof(metrics_json),
-             "{\"current_mcs\":%d,\"current_qp_delta\":%d,\"filtered_rssi\":%.1f,\"filtered_dbm\":%.1f,\"current_bitrate\":%d,\"bitrate_changes_per_minute\":%d,\"signal_stability\":%.1f}",
+             "{\"current_mcs\":%d,\"current_qp_delta\":%d,\"filtered_rssi\":%.1f,\"filtered_dbm\":%.1f,\"current_bitrate\":%d,\"bitrate_changes_per_minute\":%d,\"signal_stability\":%.1f,\"radio_interfaces_count\":%d,\"radio_signal_quality\":%.1f}",
              data->current_mcs,
              data->current_qp_delta,
              data->filtered_rssi,
              data->filtered_dbm,
              data->current_bitrate,
              data->bitrate_changes_per_minute,
-             data->average_signal_stability);
+             data->average_signal_stability,
+             data->radio_interfaces_count,
+             data->radio_signal_quality);
     
     rubalink_api_set_response(&response, 200, "OK", metrics_json);
     return response;
@@ -717,6 +718,126 @@ rubalink_api_response_t rubalink_api_handle_config_request(const char* config_js
         rubalink_api_set_response(&response, 400, "Bad Request", error_json);
     } else {
         rubalink_api_set_response(&response, 200, "OK", "{\"message\":\"No configuration changes\"}");
+    }
+    
+    return response;
+}
+
+// Radio Interface Management API Implementation
+
+rubalink_api_response_t rubalink_api_get_radio_interfaces() {
+    rubalink_api_response_t response;
+    
+    int interface_count = rubalink_radio_get_interfaces_count();
+    char interfaces_json[2048];
+    char interface_data[512];
+    
+    strcpy(interfaces_json, "{\"radio_interfaces\":[");
+    
+    for (int i = 0; i < interface_count; i++) {
+        rubalink_radio_interface_t* iface = rubalink_radio_get_interface(i);
+        if (iface && iface->pRadioInfo) {
+            if (i > 0) strcat(interfaces_json, ",");
+            
+            snprintf(interface_data, sizeof(interface_data),
+                     "{\"index\":%d,\"name\":\"%s\",\"type\":%d,\"driver\":%d,\"is_wifi\":%s,\"supports_rate_control\":%s,\"rssi\":%d,\"dbm\":%d,\"mcs_rate\":%d,\"rate_control_enabled\":%s}",
+                     i,
+                     iface->pRadioInfo->szName,
+                     iface->pRadioInfo->iRadioType,
+                     iface->pRadioInfo->iRadioDriver,
+                     rubalink_radio_is_wifi_interface(i) ? "true" : "false",
+                     rubalink_radio_supports_rate_control(i) ? "true" : "false",
+                     iface->last_rssi,
+                     iface->last_dbm,
+                     iface->current_mcs_rate,
+                     iface->rate_control_enabled ? "true" : "false");
+            
+            strcat(interfaces_json, interface_data);
+        }
+    }
+    
+    strcat(interfaces_json, "],\"count\":");
+    char count_str[16];
+    snprintf(count_str, sizeof(count_str), "%d}", interface_count);
+    strcat(interfaces_json, count_str);
+    
+    rubalink_api_set_response(&response, 200, "OK", interfaces_json);
+    return response;
+}
+
+rubalink_api_response_t rubalink_api_set_radio_mcs_rate(int interface_index, int mcs_rate) {
+    rubalink_api_response_t response;
+    
+    if (interface_index < 0 || interface_index >= rubalink_radio_get_interfaces_count()) {
+        rubalink_api_set_response(&response, 400, "Bad Request", "{\"error\":\"Invalid interface index\"}");
+        return response;
+    }
+    
+    if (!rubalink_radio_supports_rate_control(interface_index)) {
+        rubalink_api_set_response(&response, 400, "Bad Request", "{\"error\":\"Interface does not support rate control\"}");
+        return response;
+    }
+    
+    if (mcs_rate < 0 || mcs_rate > 15) {
+        rubalink_api_set_response(&response, 400, "Bad Request", "{\"error\":\"MCS rate must be between 0 and 15\"}");
+        return response;
+    }
+    
+    bool success = rubalink_radio_set_mcs_rate(interface_index, mcs_rate);
+    if (success) {
+        char success_json[256];
+        snprintf(success_json, sizeof(success_json), 
+                "{\"message\":\"MCS rate set to %d\",\"interface_index\":%d,\"mcs_rate\":%d}", 
+                mcs_rate, interface_index, mcs_rate);
+        rubalink_api_set_response(&response, 200, "OK", success_json);
+    } else {
+        rubalink_api_set_response(&response, 500, "Internal Server Error", "{\"error\":\"Failed to set MCS rate\"}");
+    }
+    
+    return response;
+}
+
+rubalink_api_response_t rubalink_api_enable_radio_rate_control(int interface_index, bool enable) {
+    rubalink_api_response_t response;
+    
+    if (interface_index < 0 || interface_index >= rubalink_radio_get_interfaces_count()) {
+        rubalink_api_set_response(&response, 400, "Bad Request", "{\"error\":\"Invalid interface index\"}");
+        return response;
+    }
+    
+    bool success = rubalink_radio_set_rate_control(interface_index, enable);
+    if (success) {
+        char success_json[256];
+        snprintf(success_json, sizeof(success_json), 
+                "{\"message\":\"Rate control %s\",\"interface_index\":%d,\"enabled\":%s}", 
+                enable ? "enabled" : "disabled", interface_index, enable ? "true" : "false");
+        rubalink_api_set_response(&response, 200, "OK", success_json);
+    } else {
+        rubalink_api_set_response(&response, 500, "Internal Server Error", "{\"error\":\"Failed to set rate control\"}");
+    }
+    
+    return response;
+}
+
+rubalink_api_response_t rubalink_api_get_radio_signal_data(int interface_index) {
+    rubalink_api_response_t response;
+    
+    if (interface_index < 0 || interface_index >= rubalink_radio_get_interfaces_count()) {
+        rubalink_api_set_response(&response, 400, "Bad Request", "{\"error\":\"Invalid interface index\"}");
+        return response;
+    }
+    
+    rubalink_radio_interface_t* iface = rubalink_radio_get_interface(interface_index);
+    if (iface) {
+        char signal_json[256];
+        snprintf(signal_json, sizeof(signal_json), 
+                "{\"interface_index\":%d,\"rssi\":%d,\"dbm\":%d,\"snr\":%d,\"vlq\":%.1f,\"timestamp\":%lu}", 
+                interface_index, iface->last_rssi, iface->last_dbm, iface->last_snr,
+                rubalink_radio_calculate_vlq(interface_index),
+                iface->last_update_time);
+        rubalink_api_set_response(&response, 200, "OK", signal_json);
+    } else {
+        rubalink_api_set_response(&response, 500, "Internal Server Error", "{\"error\":\"Failed to read signal data\"}");
     }
     
     return response;

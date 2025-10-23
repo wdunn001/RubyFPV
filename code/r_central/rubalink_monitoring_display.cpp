@@ -1,9 +1,7 @@
 #include "rubalink_monitoring_display.h"
 #include "../r_vehicle/rubalink_integration.h"
-#include "../r_vehicle/advanced_signal_processing.h"
-#include "../r_vehicle/independent_signal_sampling.h"
-#include "../r_vehicle/enhanced_cooldown_control.h"
-#include "../r_vehicle/racing_mode_enhancements.h"
+#include "../r_vehicle/rubalink_radio_interface.h"
+#include "../r_vehicle/adaptive_video_rubalink.h"
 #include <sys/time.h>
 
 // Helper function to get current time in milliseconds
@@ -57,6 +55,24 @@ void rubalink_monitoring_update_signal_processing_status() {
     s_MonitoringData.filtered_rssi = 75.5f;
     s_MonitoringData.filtered_dbm = -45.2f;
     s_MonitoringData.signal_sampling_rate = 50.0f;
+    
+    // Update radio interface data
+    rubalink_radio_interface_update();
+    
+    rubalink_radio_status_t* radio_status = rubalink_radio_get_status();
+    s_MonitoringData.radio_interfaces_count = radio_status->radio_interfaces_count;
+    s_MonitoringData.primary_interface_index = radio_status->primary_interface_index;
+    
+    // Copy radio interface status
+    for (int i = 0; i < s_MonitoringData.radio_interfaces_count && i < MAX_RADIO_INTERFACES; i++) {
+        rubalink_radio_interface_t* iface = rubalink_radio_get_interface(i);
+        if (iface) {
+            s_MonitoringData.radio_interfaces[i] = *iface;
+        }
+    }
+    
+    // Get VLQ from radio status
+    s_MonitoringData.radio_signal_quality = radio_status->primary_interface_vlq;
 }
 
 void rubalink_monitoring_update_cooldown_status() {

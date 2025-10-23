@@ -1,12 +1,5 @@
 #include "rubalink_integration.h"
-#include "dynamic_rssi_thresholds.h"
-#include "qp_delta_config.h"
-#include "advanced_signal_processing.h"
-#include "independent_signal_sampling.h"
-#include "enhanced_cooldown_control.h"
-#include "racing_mode_enhancements.h"
-#include "rubalink_seamless_integration.h"
-#include "../base/robust_command_execution.h"
+#include "adaptive_video_rubalink.h"
 
 static rubalink_integration_status_t s_IntegrationStatus = {
     .dynamic_rssi_enabled = true,
@@ -25,15 +18,8 @@ static rubalink_integration_status_t s_IntegrationStatus = {
 void rubalink_integration_init() {
     log_line("[RubALink] Initializing RubALink integration...");
     
-    // Initialize all RubALink subsystems
-    dynamic_rssi_init();
-    qp_delta_init();
-    robust_command_init();
-    advanced_signal_processing_init();
-    independent_signal_sampling_init();
-    enhanced_cooldown_init();
-    racing_mode_init();
-    rubalink_seamless_init();
+    // Initialize RubALink enhancements for adaptive video
+    adaptive_video_rubalink_init();
     
     log_line("[RubALink] RubALink integration initialized successfully");
 }
@@ -41,12 +27,8 @@ void rubalink_integration_init() {
 void rubalink_integration_cleanup() {
     log_line("[RubALink] Cleaning up RubALink integration...");
     
-    // Cleanup all subsystems
-    advanced_signal_processing_cleanup();
-    independent_signal_sampling_cleanup();
-    enhanced_cooldown_cleanup();
-    racing_mode_cleanup();
-    rubalink_seamless_cleanup();
+    // Cleanup RubALink enhancements
+    adaptive_video_rubalink_cleanup();
 }
 
 void rubalink_adaptive_video_init() {

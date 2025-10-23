@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../base/base.h"
+#include "../../r_vehicle/rubalink_radio_interface.h"
 
 // Real-time Monitoring Data Structure
 typedef struct {
@@ -16,6 +17,12 @@ typedef struct {
     int dbm_filter_chain_active;
     float filtered_rssi;
     float filtered_dbm;
+    
+    // Radio Interface Status
+    int radio_interfaces_count;
+    rubalink_radio_interface_t radio_interfaces[MAX_RADIO_INTERFACES];
+    int primary_interface_index;
+    float radio_signal_quality;  // VLQ from radio interfaces
     
     // Cooldown Status
     bool enhanced_cooldown_active;
