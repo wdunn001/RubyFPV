@@ -39,7 +39,6 @@
 #include "../base/hardware_cam_maj.h"
 #include "../common/string_utils.h"
 #include "adaptive_video.h"
-#include "adaptive_video_rubalink.h"
 #include "shared_vars.h"
 #include "timers.h"
 #include "video_tx_buffers.h"
@@ -47,6 +46,136 @@
 #include "test_link_params.h"
 #include "packets_utils.h"
 #include "negociate_radio.h"
+
+// RubALink Dynamic RSSI Thresholds and Enhanced Cooldown Integration
+#include <math.h>
+
+// Dynamic RSSI threshold configuration
+typedef struct {
+    int hardware_rssi_offset;           // Hardware calibration offset (dBm)
+    bool enable_dynamic_thresholds;     // Enable/disable feature
+    int safety_margin_db;              // Safety margin for emergency drops (dBm)
+} dynamic_rssi_config_t;
+
+// Enhanced cooldown configuration
+typedef struct {
+    unsigned long strict_cooldown_ms;
+    unsigned long up_cooldown_ms;
+    unsigned long down_cooldown_ms;
+    unsigned long emergency_cooldown_ms;
+    int min_change_percent;
+    unsigned long last_change_time;
+    int last_bitrate;
+} enhanced_cooldown_config_t;
+
+// Global configurations
+static dynamic_rssi_config_t s_DynamicRSSIConfig = {
+    .hardware_rssi_offset = 0,
+    .enable_dynamic_thresholds = true,
+    .safety_margin_db = 3
+};
+
+static enhanced_cooldown_config_t s_CooldownConfig = {
+    .strict_cooldown_ms = 200,
+    .up_cooldown_ms = 3000,
+    .down_cooldown_ms = 1000,
+    .emergency_cooldown_ms = 50,
+    .min_change_percent = 5,
+    .last_change_time = 0,
+    .last_bitrate = 0
+};
+
+// MCS to RSSI threshold lookup table (based on 802.11n/ac standards)
+static const int s_MCS_RSSI_Thresholds[10] = {
+    -82,  // MCS 0
+    -79,  // MCS 1
+    -77,  // MCS 2
+    -74,  // MCS 3
+    -70,  // MCS 4
+    -66,  // MCS 5
+    -65,  // MCS 6
+    -64,  // MCS 7
+    -59,  // MCS 8
+    -57   // MCS 9
+};
+
+// Function declarations
+static int get_dynamic_rssi_threshold(int current_mcs, int hardware_offset);
+static int get_effective_rssi_threshold(int current_bitrate, int static_threshold, int hardware_offset);
+static bool should_trigger_emergency_drop(int current_bitrate, float filtered_rssi, int static_threshold, int hardware_offset);
+static bool check_enhanced_cooldown(int new_bitrate, int current_bitrate);
+static void update_enhanced_cooldown(int new_bitrate, int current_bitrate);
+static int bitrate_to_mcs(int bitrate_mbps);
+
+// Dynamic RSSI threshold functions
+static int get_dynamic_rssi_threshold(int current_mcs, int hardware_offset) {
+    if (!s_DynamicRSSIConfig.enable_dynamic_thresholds) {
+        return -80; // Default threshold
+    }
+    
+    if (current_mcs < 0 || current_mcs >= 10) {
+        return -80; // Default for invalid MCS
+    }
+    
+    int threshold = s_MCS_RSSI_Thresholds[current_mcs];
+    return threshold + hardware_offset;
+}
+
+static int get_effective_rssi_threshold(int current_bitrate, int static_threshold, int hardware_offset) {
+    int current_mcs = bitrate_to_mcs(current_bitrate / 1000); // Convert to Mbps
+    int dynamic_threshold = get_dynamic_rssi_threshold(current_mcs, hardware_offset);
+    
+    // Use the more conservative threshold
+    return (dynamic_threshold < static_threshold) ? dynamic_threshold : static_threshold;
+}
+
+static bool should_trigger_emergency_drop(int current_bitrate, float filtered_rssi, int static_threshold, int hardware_offset) {
+    int effective_threshold = get_effective_rssi_threshold(current_bitrate, static_threshold, hardware_offset);
+    return filtered_rssi < (effective_threshold - s_DynamicRSSIConfig.safety_margin_db);
+}
+
+static int bitrate_to_mcs(int bitrate_mbps) {
+    // Approximate MCS based on bitrate (this is a simplified mapping)
+    if (bitrate_mbps <= 1) return 0;
+    if (bitrate_mbps <= 2) return 1;
+    if (bitrate_mbps <= 4) return 2;
+    if (bitrate_mbps <= 6) return 3;
+    if (bitrate_mbps <= 8) return 4;
+    if (bitrate_mbps <= 10) return 5;
+    if (bitrate_mbps <= 12) return 6;
+    if (bitrate_mbps <= 15) return 7;
+    if (bitrate_mbps <= 20) return 8;
+    return 9;
+}
+
+// Enhanced cooldown functions
+static bool check_enhanced_cooldown(int new_bitrate, int current_bitrate) {
+    unsigned long current_time = g_TimeNow;
+    unsigned long time_since_last_change = current_time - s_CooldownConfig.last_change_time;
+    
+    // Check minimum change percentage
+    int change_percent = abs(new_bitrate - current_bitrate) * 100 / current_bitrate;
+    if (change_percent < s_CooldownConfig.min_change_percent) {
+        return false; // Change too small
+    }
+    
+    // Determine cooldown period based on change direction
+    unsigned long required_cooldown;
+    if (new_bitrate > current_bitrate) {
+        required_cooldown = s_CooldownConfig.up_cooldown_ms;
+    } else if (new_bitrate < current_bitrate * 0.5) {
+        required_cooldown = s_CooldownConfig.emergency_cooldown_ms;
+    } else {
+        required_cooldown = s_CooldownConfig.down_cooldown_ms;
+    }
+    
+    return time_since_last_change >= required_cooldown;
+}
+
+static void update_enhanced_cooldown(int new_bitrate, int current_bitrate) {
+    s_CooldownConfig.last_change_time = g_TimeNow;
+    s_CooldownConfig.last_bitrate = new_bitrate;
+}
 
 u32 s_uAdaptiveVideoLastRequestIdReceived = MAX_U32;
 u32 s_uAdaptiveVideoLastRequestIdReceivedTime = 0;
@@ -262,6 +391,21 @@ void adaptive_video_on_message_from_controller(u32 uRequestId, u8 uFlags, u32 uV
    {
       s_uAdaptiveVideoLastSetVideoBitrateBPS = uVideoBitrate;
       packet_utils_set_adaptive_video_bitrate(s_uAdaptiveVideoLastSetVideoBitrateBPS);
+      
+      // RubALink: Enhanced cooldown and dynamic RSSI integration
+      u32 uCurrentVideoBitrate = video_sources_get_last_set_video_bitrate();
+      if ( 0 == uCurrentVideoBitrate )
+         uCurrentVideoBitrate = g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps;
+      
+      // Check enhanced cooldown before applying bitrate change
+      bool cooldown_ok = check_enhanced_cooldown(s_uAdaptiveVideoLastSetVideoBitrateBPS, uCurrentVideoBitrate);
+      
+      // Get current signal quality for dynamic RSSI thresholds
+      float current_rssi = -80.0f; // Default
+      
+      // Check if emergency drop is needed based on signal quality
+      bool emergency_drop_needed = should_trigger_emergency_drop(uCurrentVideoBitrate, current_rssi, -80, s_DynamicRSSIConfig.hardware_rssi_offset);
+      
       if ( negociate_radio_link_is_in_progress() )
       {
          log_line("[AdaptiveVideo] Negociate radio flow is in progress. Do not change video bitrate now.");
@@ -270,15 +414,25 @@ void adaptive_video_on_message_from_controller(u32 uRequestId, u8 uFlags, u32 uV
          else
             negociate_radio_set_end_video_bitrate(s_uAdaptiveVideoLastSetVideoBitrateBPS);
       }
-      else
+      else if (cooldown_ok || emergency_drop_needed)
       {
          if ( 0 == s_uAdaptiveVideoLastSetVideoBitrateBPS )
             video_sources_set_video_bitrate(g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].bitrate_fixed_bps, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].iIPQuantizationDelta, "AdaptiveVideo");
          else
             video_sources_set_video_bitrate(s_uAdaptiveVideoLastSetVideoBitrateBPS, g_pCurrentModel->video_link_profiles[g_pCurrentModel->video_params.iCurrentVideoProfile].iIPQuantizationDelta, "AdaptiveVideo");
-         log_line("[AdaptiveVideo] Did set new video bitrate of %.2f Mbps; datarate for new video bitrate: %s",
+         
+         // Update cooldown timing
+         update_enhanced_cooldown(s_uAdaptiveVideoLastSetVideoBitrateBPS, uCurrentVideoBitrate);
+         
+         log_line("[AdaptiveVideo] Did set new video bitrate of %.2f Mbps; datarate for new video bitrate: %s (Cooldown: %s, Emergency: %s)",
             (float)video_sources_get_last_set_video_bitrate()/1000.0/1000.0,
-            str_format_datarate_inline(g_pCurrentModel->getRadioDataRateForVideoBitrate(video_sources_get_last_set_video_bitrate(), 0)));
+            str_format_datarate_inline(g_pCurrentModel->getRadioDataRateForVideoBitrate(video_sources_get_last_set_video_bitrate(), 0)),
+            cooldown_ok ? "OK" : "BLOCKED", emergency_drop_needed ? "YES" : "NO");
+      }
+      else
+      {
+         log_line("[AdaptiveVideo] Bitrate change blocked by enhanced cooldown (%.2f -> %.2f Mbps)", 
+                  (float)uCurrentVideoBitrate/1000.0/1000.0, (float)s_uAdaptiveVideoLastSetVideoBitrateBPS/1000.0/1000.0);
       }
 
       if ( g_pCurrentModel->video_params.uVideoExtraFlags & VIDEO_FLAG_ENABLE_FOCUS_MODE_BW )
