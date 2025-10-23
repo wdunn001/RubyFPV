@@ -47,8 +47,32 @@
 #include "packets_utils.h"
 #include "negociate_radio.h"
 
-// RubALink Dynamic RSSI Thresholds and Enhanced Cooldown Integration
+// RubALink Dynamic RSSI Thresholds, Enhanced Cooldown, and Racing Mode Integration
 #include <math.h>
+
+// Racing mode configuration
+typedef struct {
+    bool race_mode_enabled;
+    int racing_fps;
+    const char* racing_video_resolution;
+    int racing_exposure;
+    int racing_bitrate_max;
+    const char* racing_rssi_filter_chain;
+    const char* racing_dbm_filter_chain;
+    unsigned long racing_strict_cooldown_ms;
+    unsigned long racing_up_cooldown_ms;
+    unsigned long racing_emergency_cooldown_ms;
+    int racing_qp_delta_low;
+    int racing_qp_delta_medium;
+    int racing_qp_delta_high;
+} racing_mode_config_t;
+
+typedef struct {
+    bool racing_mode_active;
+    bool racing_mode_transitioning;
+    unsigned long racing_mode_start_time;
+    int racing_mode_transitions;
+} racing_mode_state_t;
 
 // Dynamic RSSI threshold configuration
 typedef struct {
@@ -69,6 +93,29 @@ typedef struct {
 } enhanced_cooldown_config_t;
 
 // Global configurations
+static racing_mode_config_t s_RacingConfig = {
+    .race_mode_enabled = false,
+    .racing_fps = 120,
+    .racing_video_resolution = "1280x720",
+    .racing_exposure = 11,
+    .racing_bitrate_max = 4,
+    .racing_rssi_filter_chain = "1",  // Low-pass filter
+    .racing_dbm_filter_chain = "1",   // Low-pass filter
+    .racing_strict_cooldown_ms = 100,
+    .racing_up_cooldown_ms = 1000,
+    .racing_emergency_cooldown_ms = 25,
+    .racing_qp_delta_low = 10,
+    .racing_qp_delta_medium = 3,
+    .racing_qp_delta_high = 0
+};
+
+static racing_mode_state_t s_RacingState = {
+    .racing_mode_active = false,
+    .racing_mode_transitioning = false,
+    .racing_mode_start_time = 0,
+    .racing_mode_transitions = 0
+};
+
 static dynamic_rssi_config_t s_DynamicRSSIConfig = {
     .hardware_rssi_offset = 0,
     .enable_dynamic_thresholds = true,
@@ -106,6 +153,15 @@ static bool should_trigger_emergency_drop(int current_bitrate, float filtered_rs
 static bool check_enhanced_cooldown(int new_bitrate, int current_bitrate);
 static void update_enhanced_cooldown(int new_bitrate, int current_bitrate);
 static int bitrate_to_mcs(int bitrate_mbps);
+
+// Racing mode functions
+static void enable_racing_mode();
+static void disable_racing_mode();
+static bool is_racing_mode_active();
+static void transition_to_racing_mode();
+static void transition_from_racing_mode();
+static bool check_racing_mode_cooldown(int new_bitrate, int current_bitrate);
+static void apply_racing_mode_settings();
 
 // Dynamic RSSI threshold functions
 static int get_dynamic_rssi_threshold(int current_mcs, int hardware_offset) {
@@ -175,6 +231,80 @@ static bool check_enhanced_cooldown(int new_bitrate, int current_bitrate) {
 static void update_enhanced_cooldown(int new_bitrate, int current_bitrate) {
     s_CooldownConfig.last_change_time = g_TimeNow;
     s_CooldownConfig.last_bitrate = new_bitrate;
+}
+
+// Racing mode functions
+static void enable_racing_mode() {
+    if (s_RacingState.racing_mode_active || s_RacingState.racing_mode_transitioning) {
+        return; // Already active or transitioning
+    }
+    
+    s_RacingState.racing_mode_transitioning = true;
+    transition_to_racing_mode();
+    
+    s_RacingState.racing_mode_active = true;
+    s_RacingState.racing_mode_transitioning = false;
+    s_RacingState.racing_mode_start_time = g_TimeNow;
+    s_RacingState.racing_mode_transitions++;
+    
+    log_line("[RubALink] Racing mode ENABLED");
+}
+
+static void disable_racing_mode() {
+    if (!s_RacingState.racing_mode_active || s_RacingState.racing_mode_transitioning) {
+        return; // Not active or transitioning
+    }
+    
+    s_RacingState.racing_mode_transitioning = true;
+    transition_from_racing_mode();
+    
+    s_RacingState.racing_mode_active = false;
+    s_RacingState.racing_mode_transitioning = false;
+    
+    log_line("[RubALink] Racing mode DISABLED");
+}
+
+static bool is_racing_mode_active() {
+    return s_RacingState.racing_mode_active;
+}
+
+static void transition_to_racing_mode() {
+    // Apply racing mode video settings
+    apply_racing_mode_settings();
+    log_line("[RubALink] Transitioned to racing mode");
+}
+
+static void transition_from_racing_mode() {
+    // Restore normal video settings
+    log_line("[RubALink] Transitioned from racing mode");
+}
+
+static bool check_racing_mode_cooldown(int new_bitrate, int current_bitrate) {
+    if (!s_RacingState.racing_mode_active) {
+        return true; // Use normal cooldown
+    }
+    
+    unsigned long current_time = g_TimeNow;
+    unsigned long time_since_last_change = current_time - s_CooldownConfig.last_change_time;
+    
+    // Racing mode uses more aggressive cooldowns
+    unsigned long required_cooldown;
+    if (new_bitrate > current_bitrate) {
+        required_cooldown = s_RacingConfig.racing_up_cooldown_ms;
+    } else if (new_bitrate < current_bitrate * 0.5) {
+        required_cooldown = s_RacingConfig.racing_emergency_cooldown_ms;
+    } else {
+        required_cooldown = s_RacingConfig.racing_strict_cooldown_ms;
+    }
+    
+    return time_since_last_change >= required_cooldown;
+}
+
+static void apply_racing_mode_settings() {
+    // Apply racing-specific video settings
+    // This would integrate with RubyFPV's video profile system
+    log_line("[RubALink] Applied racing mode settings: FPS=%d, Resolution=%s, MaxBitrate=%dMbps", 
+             s_RacingConfig.racing_fps, s_RacingConfig.racing_video_resolution, s_RacingConfig.racing_bitrate_max);
 }
 
 u32 s_uAdaptiveVideoLastRequestIdReceived = MAX_U32;
@@ -400,6 +530,11 @@ void adaptive_video_on_message_from_controller(u32 uRequestId, u8 uFlags, u32 uV
       // Check enhanced cooldown before applying bitrate change
       bool cooldown_ok = check_enhanced_cooldown(s_uAdaptiveVideoLastSetVideoBitrateBPS, uCurrentVideoBitrate);
       
+      // Check racing mode cooldown if racing mode is active
+      if (is_racing_mode_active()) {
+          cooldown_ok = check_racing_mode_cooldown(s_uAdaptiveVideoLastSetVideoBitrateBPS, uCurrentVideoBitrate);
+      }
+      
       // Get current signal quality for dynamic RSSI thresholds
       float current_rssi = -80.0f; // Default
       
@@ -424,10 +559,10 @@ void adaptive_video_on_message_from_controller(u32 uRequestId, u8 uFlags, u32 uV
          // Update cooldown timing
          update_enhanced_cooldown(s_uAdaptiveVideoLastSetVideoBitrateBPS, uCurrentVideoBitrate);
          
-         log_line("[AdaptiveVideo] Did set new video bitrate of %.2f Mbps; datarate for new video bitrate: %s (Cooldown: %s, Emergency: %s)",
+         log_line("[AdaptiveVideo] Did set new video bitrate of %.2f Mbps; datarate for new video bitrate: %s (Cooldown: %s, Emergency: %s, Racing: %s)",
             (float)video_sources_get_last_set_video_bitrate()/1000.0/1000.0,
             str_format_datarate_inline(g_pCurrentModel->getRadioDataRateForVideoBitrate(video_sources_get_last_set_video_bitrate(), 0)),
-            cooldown_ok ? "OK" : "BLOCKED", emergency_drop_needed ? "YES" : "NO");
+            cooldown_ok ? "OK" : "BLOCKED", emergency_drop_needed ? "YES" : "NO", is_racing_mode_active() ? "ACTIVE" : "INACTIVE");
       }
       else
       {

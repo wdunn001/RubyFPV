@@ -18,8 +18,8 @@ _CPPFLAGS := $(_CPPFLAGS) -DRUBY_BUILD_HW_PLATFORM_OPENIPC
 else
 ifeq ($(RUBY_BUILD_ENV),radxa)
 
-LDFLAGS_CENTRAL := -L/lib/aarch64-linux-gnu -lpthread -lrt -lm
-LDFLAGS_CENTRAL2 := -lpthread -lrt -lm
+LDFLAGS_CENTRAL := -L/lib/aarch64-linux-gnu -lpthread -lrt -lm -li2c
+LDFLAGS_CENTRAL2 := -lpthread -lrt -lm -li2c
 
 LDFLAGS_RENDERER := -ldrm -lcairo
 CFLAGS_RENDERER := -I/usr/include/drm -I/usr/include/libdrm

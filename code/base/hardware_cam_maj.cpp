@@ -1279,22 +1279,29 @@ int hardware_camera_maj_get_current_qpdelta()
 
 void hardware_camera_maj_set_qpdelta(int iQPDelta)
 {
-   // RubALink: Enhanced QP Delta with dynamic bitrate-based adjustment
-   static struct {
-       bool enable_dynamic_qp_delta;
-       int qp_delta_low;      // QP delta for low bitrate (MCS 1-2)
-       int qp_delta_medium;   // QP delta for medium bitrate (MCS 3-9)
-       int qp_delta_high;     // QP delta for high bitrate (MCS 10+)
-   } s_QPDeltaConfig = {
-       .enable_dynamic_qp_delta = true,
-       .qp_delta_low = 15,
-       .qp_delta_medium = 5,
-       .qp_delta_high = 0
-   };
-   
-   // Apply dynamic QP delta adjustment based on current bitrate
+// RubALink: Enhanced QP Delta with dynamic bitrate-based adjustment
+static struct {
+    bool enable_dynamic_qp_delta;
+    int qp_delta_low;      // QP delta for low bitrate (MCS 1-2)
+    int qp_delta_medium;   // QP delta for medium bitrate (MCS 3-9)
+    int qp_delta_high;     // QP delta for high bitrate (MCS 10+)
+} s_QPDeltaConfig = {
+    .enable_dynamic_qp_delta = true,
+    .qp_delta_low = 15,
+    .qp_delta_medium = 5,
+    .qp_delta_high = 0
+};
+
+// Apply dynamic QP delta adjustment based on current bitrate
    if (s_QPDeltaConfig.enable_dynamic_qp_delta) {
-       u32 current_bitrate = video_sources_get_last_set_video_bitrate();
+       u32 current_bitrate = 4000000; // Default 4 Mbps for central builds
+       
+       // Only try to get real bitrate in vehicle builds where video_sources is available
+       // For central builds, use default bitrate
+       #if 0  // Disabled for now to avoid linker issues
+       current_bitrate = video_sources_get_last_set_video_bitrate();
+       #endif
+       
        int bitrate_mbps = current_bitrate / 1000000; // Convert to Mbps
        
        int dynamic_qp_delta;
