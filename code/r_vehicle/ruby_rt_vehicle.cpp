@@ -66,6 +66,7 @@
 #include "../base/vehicle_settings.h"
 #include "../base/vehicle_rt_info.h"
 #include "../base/hardware_radio_serial.h"
+#include "../base/wifi_link.h"
 
 // RubALink WiFi MCS Control Integration
 #include <sys/stat.h>
@@ -1424,6 +1425,42 @@ int main(int argc, char *argv[])
 
    // RubALink: Initialize WiFi MCS control after radio interfaces are opened
    initialize_wifi_mcs_control();
+
+   // Initialize WiFi Direct Link if enabled
+   if (g_pCurrentModel->wifi_direct_params.uFlags & WIFI_DIRECT_FLAG_ENABLED) {
+      log_line("Start sequence: Initializing WiFi Direct Link...");
+      
+      if (wifi_link_init()) {
+         // Configure WiFi Link
+         wifi_link_config_t wifiLinkConfig;
+         memset(&wifiLinkConfig, 0, sizeof(wifiLinkConfig));
+         
+         wifiLinkConfig.mode = g_pCurrentModel->wifi_direct_params.iMode;
+         strcpy(wifiLinkConfig.ssid, g_pCurrentModel->wifi_direct_params.szSSID);
+         strcpy(wifiLinkConfig.password, g_pCurrentModel->wifi_direct_params.szPassword);
+         wifiLinkConfig.channel = g_pCurrentModel->wifi_direct_params.iChannel;
+         strcpy(wifiLinkConfig.ip_address, g_pCurrentModel->wifi_direct_params.szIPAddress);
+         strcpy(wifiLinkConfig.netmask, g_pCurrentModel->wifi_direct_params.szNetmask);
+         wifiLinkConfig.dhcp_enabled = g_pCurrentModel->wifi_direct_params.iDHCPEnabled;
+         strcpy(wifiLinkConfig.dhcp_start, g_pCurrentModel->wifi_direct_params.szDHCPStart);
+         strcpy(wifiLinkConfig.dhcp_end, g_pCurrentModel->wifi_direct_params.szDHCPEnd);
+         wifiLinkConfig.port = g_pCurrentModel->wifi_direct_params.iPort;
+         
+         if (wifi_link_configure(&wifiLinkConfig)) {
+            if (wifi_link_start()) {
+               log_line("Start sequence: WiFi Direct Link started successfully");
+            } else {
+               log_softerror_and_alarm("Start sequence: Failed to start WiFi Direct Link");
+            }
+         } else {
+            log_softerror_and_alarm("Start sequence: Failed to configure WiFi Direct Link");
+         }
+      } else {
+         log_softerror_and_alarm("Start sequence: Failed to initialize WiFi Direct Link");
+      }
+   } else {
+      log_line("Start sequence: WiFi Direct Link is disabled");
+   }
 
    if ( NULL != g_pProcessStats )
    {
